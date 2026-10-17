@@ -82,7 +82,17 @@ function gateGames(rows, nowMs) {
 // Shared by the banking pass below and the standings read model
 // (routes/standings.js), so the table and the banked bonus are decided from
 // the same inputs.
-async function h2hInputs({ users, season, weeks, nowMs = Date.now() }) {
+//
+// `withProjection` (the standings read model's full payload only) widens the
+// SAME read to what the win-probability bar's projection needs: the venue
+// and conference fields the engine reads, and the whole regular season
+// rather than the mode weeks — the engine calibrates a team over its whole
+// schedule, so a game in a trailing non-mode week still belongs in it. The
+// raw rows come back as `rows`; `games` (the card and award input) is the
+// same either way. The banking pass never asks for it, so its read is
+// unchanged.
+const PROJECTION_FIELDS = { neutralSite: 1, homeConference: 1, awayConference: 1, season: 1 };
+async function h2hInputs({ users, season, weeks, nowMs = Date.now(), withProjection = false }) {
     const modeWeeks = weeks || await seasonModeWeeks(season);
     const shaped = withTeams(users, season);
     const drafted = new Set();
@@ -91,15 +101,20 @@ async function h2hInputs({ users, season, weeks, nowMs = Date.now() }) {
     }));
     const ids = [...drafted];
     const last = modeWeeks.length ? modeWeeks[modeWeeks.length - 1] : 0;
-    const rows = ids.length && last ? await HoopsGame.find({
-        season: Number(season), seasonType: 'regular', week: { $gte: 1, $lte: last },
-        $or: [{ homeTeamId: { $in: ids } }, { awayTeamId: { $in: ids } }]
-    }, {
+    const fields = {
         id: 1, week: 1, seasonType: 1, conferenceGame: 1, tournament: 1, gameNotes: 1,
         homeTeamId: 1, awayTeamId: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1,
         status: 1, startDate: 1, startTimeTbd: 1, _id: 0
-    }).lean() : [];
-    return { users: shaped, games: gateGames(rows, nowMs), weeks: modeWeeks, maxWeek: last, drafted };
+    };
+    const rows = ids.length && last ? await HoopsGame.find({
+        season: Number(season), seasonType: 'regular',
+        week: withProjection ? { $gte: 1 } : { $gte: 1, $lte: last },
+        $or: [{ homeTeamId: { $in: ids } }, { awayTeamId: { $in: ids } }]
+    }, withProjection ? Object.assign({}, fields, PROJECTION_FIELDS) : fields).lean() : [];
+    const games = gateGames(withProjection ? rows.filter(g => g.week <= last) : rows, nowMs);
+    const out = { users: shaped, games, weeks: modeWeeks, maxWeek: last, drafted };
+    if (withProjection) out.rows = rows;
+    return out;
 }
 
 // Decide and bank one basketball league's H2H for a season.

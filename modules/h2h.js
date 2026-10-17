@@ -368,25 +368,35 @@ function isWeekFinal(games) {
 
 // Projected win probability for a single week's matchup, reusing the same model
 // the draft-grade / standings projections use: each rostered team wins its game
-// with `winProb` and, if it wins, contributes `pointsIfWin` fantasy points (0 on
-// a loss — the projection engine's own assumption). A manager's weekly total is
-// therefore a sum of independent scaled Bernoullis. We build each side's exact
-// score distribution (DP convolution, points bucketed to whole numbers to bound
-// the state space) and cross them to get P(A > B); ties split evenly.
+// with `winProb` and, if it wins, contributes `pointsIfWin` fantasy points. A
+// manager's weekly total is therefore a sum of independent scaled Bernoullis.
+// We build each side's exact score distribution (DP convolution, points
+// bucketed to whole numbers to bound the state space) and cross them to get
+// P(A > B); ties split evenly.
 //
-// `aEntries` / `bEntries` are arrays of { winProb, pointsIfWin } (teams on a bye
-// omitted). Returns { a, b } probabilities in [0,1] summing to 1, or null when
-// neither side has a game to project. Deterministic — no RNG — so it's testable.
+// `aEntries` / `bEntries` are arrays of { winProb, pointsIfWin, pointsIfLoss? }
+// (teams on a bye omitted). Returns { a, b } probabilities in [0,1] summing to
+// 1, or null when neither side has a game to project. Deterministic — no RNG —
+// so it's testable.
+//
+// pointsIfLoss is basketball's: a league that opts into the bad-loss penalty
+// (HOOPS_DEFAULTS badLoss, off by default) loses points on a Q4 loss, so a
+// loss is not always +0 there. It may be negative, and unlike pointsIfWin it
+// is NOT floored at zero — flooring it would hand the penalised side back
+// the very points the projected total takes off. Football entries carry no
+// pointsIfLoss, so a loss adds 0 exactly as before and its odds are
+// unchanged.
 function scoreDistribution(entries) {
     let dist = new Map([[0, 1]]);
     (entries || []).forEach(e => {
         const p = Math.max(0, Math.min(1, e.winProb || 0));
         const pts = Math.max(0, Math.round(e.pointsIfWin || 0));   // whole-point buckets
+        const lossPts = Math.round(e.pointsIfLoss || 0) || 0;       // -0 → 0
         const next = new Map();
         const add = (k, v) => { if (v) next.set(k, (next.get(k) || 0) + v); };
         dist.forEach((prob, sum) => {
-            add(sum, prob * (1 - p));       // team loses → +0
-            add(sum + pts, prob * p);       // team wins  → +pointsIfWin
+            add(sum + lossPts, prob * (1 - p));   // team loses → +pointsIfLoss (0 unless penalised)
+            add(sum + pts, prob * p);             // team wins  → +pointsIfWin
         });
         dist = next;
     });

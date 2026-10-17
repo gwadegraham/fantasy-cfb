@@ -22,13 +22,17 @@ const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore,
         h2hRoster, pinnedH2HIds, computeH2HAwards } = require('../modules/h2h');
 const { findPoll } = require('../modules/scoring-detectors');
 const { pickLogo } = require('../public/logo.js');
-const { resolveCaptain } = require('../modules/captain');
+const { resolveCaptain, autoCaptainTeamId } = require('../modules/captain');
 const { sportForLeague } = require('../modules/active-season');
 const { selectedLeague } = require('../modules/league-selection');
 const { hydrateRosters } = require('../modules/roster-teams');
 const HoopsTeam = require('../models/hoopsTeam');
 const hoopsH2H = require('../modules/hoops-h2h');
 const HoopsGame = require('../models/hoopsGame');
+const { hoopsProjByWeek, currentRankWeek } = require('../modules/hoops-h2h-odds');
+const { TEAM_FIELDS: HOOPS_TEAM_FIELDS } = require('../modules/hoops-draft-projection');
+const hoopsRanks = require('../modules/hoops-ranks');
+const { pickParts } = require('../modules/hoops-captain');
 
 // The poll the PROJECTIONS should value a hypothetical ranked win against: the
 // most recent regular-season poll on file.
@@ -545,7 +549,10 @@ router.get('/h2h/:league/:season', async (req, res) => {
         let hoopsIn = null;
         if (isHoops) {
             await hydrateRosters(users, seasonNum);
-            hoopsIn = await hoopsH2H.h2hInputs({ users, season: seasonNum });
+            // The full payload also reads what the win-probability bar's
+            // projection needs (same query, wider fields); the fast path
+            // draws no bar, so it reads exactly what it always did.
+            hoopsIn = await hoopsH2H.h2hInputs({ users, season: seasonNum, withProjection: !standingsOnly });
         }
         const maxWeek = isHoops ? hoopsIn.maxWeek : H2H_MAX_WEEK;
         const weekBase = isHoops ? hoopsH2H.modeWeekBase : baseWeekScore;
@@ -713,8 +720,31 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // the live win-probability bar. Only drafted teams are projected, but all
         // teams load so opponents' SP+ is available for the pool context.
         const projByWeek = {};
-        // Football only: basketball projections are unbuilt, so its cards carry
-        // no win-probability bar (winP null, which the card already handles).
+        // Basketball's per-game entries come from its own engine
+        // (modules/hoops-h2h-odds.js), in the same { week: { team: { game } } }
+        // shape, so everything below — pre-game line, live bar, Captain —
+        // reads them exactly as it reads football's. Before #310's PR 4 the
+        // basketball bar was switched off (winP null): with no projection, a
+        // live bar was built from final games alone and read 100% / 0%.
+        if (!standingsOnly && draftedIds.length && isHoops) {
+            // Every team's rating (the opponents' barthags), and the CURRENT
+            // ranks the quadrants are graded on — the week being played, the
+            // same ranksFor the scorer and the Captain picker read.
+            const rankWeek = currentRankWeek(hoopsIn.games);
+            const [hoopsTeams, ranked] = await Promise.all([
+                HoopsTeam.find({ season: seasonNum }, HOOPS_TEAM_FIELDS).lean(),
+                // Guarded like the Captain picker's read: a rank failure grades
+                // every game Q4 (a worse bar), never a 500 for the payload.
+                rankWeek == null ? { ranks: {} } : hoopsRanks.ranksFor(seasonNum, rankWeek).catch(err => {
+                    console.error(`[standings] hoops ranks for ${seasonNum} wk${rankWeek}: ${err.message}`);
+                    return { ranks: {} };
+                })
+            ]);
+            Object.assign(projByWeek, hoopsProjByWeek({
+                teams: hoopsTeams, games: hoopsIn.rows || [], draftedIds, cardGames: hoopsIn.games,
+                ranks: ranked.ranks, cfg: resolveConfig(league, overridesFromDoc(cfgDoc))
+            }));
+        }
         if (!standingsOnly && draftedIds.length && !isHoops) {
             // Same projection as /projections, and for the same reason: this feeds
             // the same projectTeamPoints / buildPoolContext, whose seasonVal()
@@ -801,6 +831,17 @@ router.get('/h2h/:league/:season', async (req, res) => {
             const s = seasonById[id];
             if (!s) return (capCache[key] = null);
             const prior = (s.weeklyScore || []).filter(e => e.season !== 'postseason' && Number(e.week) < Number(w));
+            if (isHoops) {
+                // Basketball resolves the way its scoring pass does
+                // (modules/hoops-scoring-pass.js): a manual pick, else the
+                // default FROZEN at the lock, else a fresh auto-captain.
+                // resolveCaptain takes the first entry for the week, which
+                // can be the frozen auto row when a manual pick sits beside it.
+                const parts = pickParts(s.captains, w);
+                return (capCache[key] = parts.picked != null ? parts.picked
+                    : parts.frozenAuto != null ? parts.frozenAuto
+                    : autoCaptainTeamId(s.teams, prior));
+            }
             return (capCache[key] = resolveCaptain(s.captains, w, s.teams, prior));
         };
         const isCaptain = (id, w, teamId) => {
@@ -808,8 +849,16 @@ router.get('/h2h/:league/:season', async (req, res) => {
             return c != null && Number(c) === Number(teamId);
         };
         // A projection entry with the captain's multiplier applied to its points.
-        const capped = (id, w, teamId, e) => (e && isCaptain(id, w, teamId))
-            ? { winProb: e.winProb, pointsIfWin: e.pointsIfWin * capMult } : e;
+        // A basketball entry's pointsIfLoss (the opt-in bad-loss penalty) is
+        // multiplied too: the captain multiplies the team's whole score,
+        // negative included (captainWeeklyBonus). Football's entries carry
+        // none, so its object is the same two fields as ever.
+        const capped = (id, w, teamId, e) => {
+            if (!(e && isCaptain(id, w, teamId))) return e;
+            const out = { winProb: e.winProb, pointsIfWin: e.pointsIfWin * capMult };
+            if (e.pointsIfLoss != null) out.pointsIfLoss = e.pointsIfLoss * capMult;
+            return out;
+        };
         // A team's DISPLAYED points for the matchup card, with the captain's
         // multiplier applied.
         //
@@ -933,8 +982,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // Projected pre-game odds for a matchup: each manager's teams that play
         // that week, run through the win-probability model. Integer percents that
         // sum to 100 (or null when neither side has a projectable game).
+        // Basketball's projection runs over every stored row (whole-season
+        // calibration), which includes an overdue listing the card hides — so
+        // its pre-game line keeps to the games the card actually shows.
         const entriesFor = (id, w) => (meta[id].teams || [])
-            .flatMap(t => Object.values((projByWeek[w] && projByWeek[w][t.id]) || {}).map(e => capped(id, w, t.id, e)));
+            .flatMap(t => Object.entries((projByWeek[w] && projByWeek[w][t.id]) || {})
+                .filter(([gid]) => !isHoops || gameById[gid])
+                .map(([, e]) => capped(id, w, t.id, e)));
         // Live odds recompute as the week plays out: a team whose game is already
         // FINAL contributes its actual scored points as a certainty; a LIVE game
         // with in-progress scores uses the current fantasy points (from the
@@ -944,6 +998,11 @@ router.get('/h2h/:league/:season', async (req, res) => {
             const st = gameStatus(g, now);
             if (st === 'final') {
                 const s = scoredFor(id, w, t.id, g.id);
+                // A basketball final can bank NEGATIVE points (the bad-loss
+                // penalty), which pointsIfWin floors at 0 — so it rides as a
+                // certain loss worth that score instead. Football keeps its
+                // entry exactly as it was.
+                if (isHoops && s && s.score < 0) return capped(id, w, t.id, { winProb: 0, pointsIfWin: 0, pointsIfLoss: s.score });
                 return capped(id, w, t.id, { winProb: 1, pointsIfWin: s ? s.score : 0 });
             }
             if (st === 'live') {
@@ -960,7 +1019,10 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 }
             }
             const p = projByWeek[w] && projByWeek[w][t.id] && projByWeek[w][t.id][g.id];
-            return p ? capped(id, w, t.id, { winProb: p.winProb, pointsIfWin: p.pointsIfWin }) : null;
+            if (!p) return null;
+            const e = { winProb: p.winProb, pointsIfWin: p.pointsIfWin };
+            if (p.pointsIfLoss != null) e.pointsIfLoss = p.pointsIfLoss;
+            return capped(id, w, t.id, e);
         })).filter(Boolean);
         const oddsFrom = (ea, eb) => {
             const r = matchupWinProb(ea, eb);
@@ -991,12 +1053,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 // later. A wrong bar is worse than no bar, which is the whole
                 // premise of the skeleton.
                 //
-                // Basketball answers NO odds either: it has no projection, so
-                // liveEntriesFor would be built from final games alone — a
-                // side with one finished game against a side yet to play read
-                // 100% / 0% mid-week. A finished week's bar comes from
-                // `winner` on the card, not from this, so it is unaffected.
-                winP: (standingsOnly || isHoops) ? null : (unplayed ? liveOddsFor(a, b, w) : oddsFor(a, b, w)),
+                //
+                // Basketball answers odds from its own engine now (see the
+                // projByWeek block): every card game has an entry, so a side
+                // whose games are all still to play is projected rather than
+                // read as 0. A finished week's bar still comes from `winner`
+                // on the card; its winP is the retrospective pre-game line.
+                winP: standingsOnly ? null : (unplayed ? liveOddsFor(a, b, w) : oddsFor(a, b, w)),
                 final: !unplayed,
                 upcoming: !!upcoming
             };
@@ -1064,7 +1127,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 g.aTeams = doctor(g.aTeams); g.bTeams = doctor(g.bTeams);
                 const sum = (teams) => round(teams.filter(t => t.status === 'final').reduce((s, t) => s + (t.score || 0), 0));
                 g.aScore = sum(g.aTeams); g.bScore = sum(g.bTeams);
-                g.winP = (mode === 'pregame' || isHoops) ? g.winP : oddsFrom(liveEnt(g.aTeams), liveEnt(g.bTeams));
+                g.winP = mode === 'pregame' ? g.winP : oddsFrom(liveEnt(g.aTeams), liveEnt(g.bTeams));
             });
             featuredWeek = w.week; currentWeekOut = w.week;
         }
