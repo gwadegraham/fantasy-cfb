@@ -19,7 +19,7 @@ const { buildWeeklyRecaps, indexUpsets, indexHoopsResults, completedWeeks } = re
 // the same everywhere.
 const { competitionRanks } = require('../public/league-rank.js');
 const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore,
-        h2hRoster, pinnedH2HIds, computeH2HAwards } = require('../modules/h2h');
+        h2hRoster, pinnedH2HIds, computeH2HAwards, h2hWeekRange } = require('../modules/h2h');
 const { findPoll } = require('../modules/scoring-detectors');
 const { pickLogo } = require('../public/logo.js');
 const { resolveCaptain, autoCaptainTeamId } = require('../modules/captain');
@@ -253,6 +253,20 @@ function displayOdds(p) {
     return pct >= 1 ? Math.round(pct) : Math.round(pct * 10) / 10;
 }
 
+// Football's H2H week range, derived exactly as the scoring pass derives it
+// (h2h computeH2HAwards): regular-season games involving a rostered team, up
+// to H2H_MAX_WEEK, cut by h2hWeekRange. `games` is the projection route's
+// read, which is that same set.
+function footballH2HWeeks(games) {
+    const byWeek = {};
+    (games || []).forEach(g => {
+        if (g.seasonType && g.seasonType !== 'regular') return;
+        if (g.week == null || g.week > H2H_MAX_WEEK) return;
+        (byWeek[g.week] = byWeek[g.week] || []).push(g);
+    });
+    return h2hWeekRange(byWeek, { maxWeek: H2H_MAX_WEEK });
+}
+
 // The /projections payload rows, shared by both sports so a basketball
 // league answers exactly football's shape.
 function projectionRows(managers, odds) {
@@ -344,7 +358,8 @@ async function hoopsProjections(league, season) {
 }
 
 // A short cache for /projections. The basketball answer costs ~0.5 s of
-// event-loop CPU (a 20,000-sim Monte Carlo over ~2,000 games a sim), so a
+// event-loop CPU (a 20,000-sim Monte Carlo over ~2,000 games a sim; football's
+// ~170 ms plus seconds of Mongo on a busy tier), so a
 // handful of members opening Standings together would queue seconds of
 // work. Keyed by league + season — the whole answer is a function of those
 // and the database — and held 60 s, so a scoring write shows within a
@@ -367,109 +382,142 @@ router.projectionCache = projectionCache;
 
 // per manager for a league + season. Reuses the draft-grade projection engine
 // on each rostered team's REMAINING schedule. Read-only.
+// A FOOTBALL league's projected finish and title odds. Reuses the draft-grade
+// projection engine on each rostered team's REMAINING schedule.
+async function footballProjections(league, season) {
+    // Aggregated rather than $elemMatch'd, to reshape the roster on the
+    // server. seasons.teams stores the FULL team object per pick (that is
+    // how the draft persists them), so six managers came to 106KB — 90KB of
+    // it logos, venues, alt names and colours the projection never reads. It
+    // needs the team id; everything else it looks up in teamsById. On an M0
+    // tier, where latency tracks bytes, that one query cost 1.67 SECONDS for
+    // six documents. $elemMatch cannot slim a subdocument, only select it.
+    //
+    // The pipeline itself now lives in modules/franchise-repo.js, so it can
+    // answer from either accounts+franchises or users (#313 phase 2).
+    // `weekly`: the weekly rows + captains of the week under way, for the
+    // H2H term (attachBankedWeeks).
+    const users = await franchiseRepo.projectionManagers(league, season, { weekly: true });
+    if (!users.length) return { league, season, managers: [] };
+
+    // All four reads at once. Against an M0 tier these are seconds rather
+    // than milliseconds — latency tracks bytes — so awaiting them in a line
+    // paid for each in turn. `games` needs the rostered ids, which is why
+    // `users` is fetched first; now that it is 3KB instead of 106KB, that
+    // first hop costs ~100ms rather than 1.7s.
+    //
+    // Team subfield projection rather than $elemMatch: seasonVal() in
+    // modules/draft-projection.js falls back to `season - 1` when the current
+    // season has no value yet, so the prior season's elements have to survive
+    // the projection. These are every seasons.* path that file reads.
+    // Scoped to rostered teams: the projection only ever walks a manager's own
+    // teams, so the rest of the slate was 300 documents read and thrown away.
+    const rosteredIds = [...new Set(users.flatMap(u =>
+        ((u.seasons || [])[0] || {}).teams ? u.seasons[0].teams.map(t => t.id) : []))]
+        .filter(id => id != null);
+
+    const [teams, cfgDoc, pollDoc, games] = await Promise.all([
+        Team.find({}, {
+            id: 1, school: 1, alternateNames: 1, conference: 1,
+            'seasons.season': 1, 'seasons.spRating': 1, 'seasons.expectedWins': 1,
+            'seasons.conference': 1, 'seasons.cfpMakeOdds': 1, 'seasons.cfpChampOdds': 1
+        }).lean(),
+        ScoringConfig.findOne({ league }).lean(),
+        Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: -1 }).lean(),
+        rosteredIds.length ? Game.find(
+            { season, seasonType: 'regular',
+              $or: [{ homeId: { $in: rosteredIds } }, { awayId: { $in: rosteredIds } }] },
+            { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
+              completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
+              awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
+              pregameWinProb: 1 }).lean() : []
+    ]);
+    const teamsById = {};
+    teams.forEach(t => { teamsById[String(t.id)] = t; });
+
+    // pregameWinProb is what makes projectTeamPoints use CFBD's real pre-game
+    // number instead of estimating from the SP+ gap. /standings/h2h has always
+    // projected it; this route did not, so the same game got two different
+    // probabilities on one page. Leaving it out is not a local error either:
+    // the calibrator subtracts CFBD-sourced expected wins from the target
+    // before scaling the rest, so an unfetched field moves games it isn't on.
+    //
+    const gamesByTeam = {};
+    games.forEach(g => {
+        const h = String(g.homeId), a = String(g.awayId);
+        if (teamsById[h]) (gamesByTeam[h] = gamesByTeam[h] || []).push(g);
+        if (teamsById[a]) (gamesByTeam[a] = gamesByTeam[a] || []).push(g);
+    });
+
+    const cfg = resolveConfig(league, overridesFromDoc(cfgDoc));
+    const rankings = buildRankingProxy(season, teamsById, findPoll(pollDoc));
+    const poolCtx = buildPoolContext(teamsById, season);
+    const managers = buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx, season);
+    // Forward-looking only: if the regular season has no games left (season
+    // complete / not yet scheduled), the "projection" would just be actuals
+    // plus a stray postseason term — hide it. Client renders nothing.
+    if (!managers.length || !managers.some(m => m.remainingCount > 0)) {
+        return { league, season, managers: [] };
+    }
+
+    // Captain and H2H are part of the score the scoring job actually writes,
+    // so they belong in a projection of the FINAL score. Banked points
+    // already include them; without this the forward half did not, which
+    // understated every graham-league manager by 35-50 points.
+    //
+    // pinnedIds matters: the round robin is positional, so the projection has
+    // to pair managers the same way the scoring job will. Passing the pinned
+    // list keeps the projected matchups and the real ones in step.
+    //
+    // scheduleWeeks matters for the same reason: the round robin is
+    // numbered over the season's WHOLE H2H week range (computeH2HAwards
+    // derives it with h2hWeekRange), so week 8 is round 8 mod N. Pairing
+    // only the weeks still to play restarted the rotation at the current
+    // week and projected opponents nobody would actually face. Graham
+    // approved the fix for football mid-season (#310 follow-up).
+    //
+    // h2hExact: the week under way counts what each manager has already
+    // banked in it and the captain already chosen, and a tie pays the
+    // configured tie bonus — the matchup as the scorer settles it and the
+    // matchup card shows it (standings-projection expectedH2H). Before, the
+    // in-progress week was decided on its remaining games alone.
+    //
+    // Before anything is pinned, the ids run in SORTED order, as the real
+    // pass derives them (h2h h2hManagerIds). Football leagues mid-season are
+    // pinned, so this only matters for a new season's first week.
+    const engagement = engagementForSeason(cfgDoc && cfgDoc.engagementBySeason, season);
+    attachBankedWeeks(managers, users, season, {
+        weekBase: baseWeekScore,
+        captainOf: engagement.captainEnabled ? (s, w) => {
+            const prior = (s.weeklyScore || []).filter(e => e.season !== 'postseason' && Number(e.week) < Number(w));
+            return resolveCaptain(s.captains, w, s.teams, prior);
+        } : null
+    });
+    const engOpts = { pinnedIds: pinnedH2HIds(cfgDoc, season) || managers.map(m => m.userId).sort(), maxWeek: H2H_MAX_WEEK,
+        scheduleWeeks: footballH2HWeeks(games), h2hExact: true };
+    applyEngagement(managers, engagement, engOpts);
+
+    // 20000, not 5000. The odds used to cluster at 0 and 90-100, where a
+    // Monte-Carlo estimate is naturally steady; putting real uncertainty on
+    // the postseason moved everyone into the middle, which is exactly where
+    // the sampling error is worst. At p=0.65 and N=5000 the same unchanged
+    // board came back 76.7% one request and 79.0% the next — a visible
+    // flicker on refresh, and enough to swap two adjacent managers. 20000
+    // quarters the variance for ~170ms, against a route that already spends
+    // seconds in Mongo.
+    const odds = simulateTitleOdds(managers, 20000, Object.assign({ engagement }, engOpts));
+    return { league, season, managers: projectionRows(managers, odds) };
+}
+
 router.get('/projections/:league/:season', async (req, res) => {
     try {
         const league = req.params.league;
         const season = Number(req.params.season);
-        if (sportForLeague(league) === 'basketball') {
-            return res.json(await cachedProjection(`${league}:${season}`, () => hoopsProjections(league, season)));
-        }
-
-        // Aggregated rather than $elemMatch'd, to reshape the roster on the
-        // server. seasons.teams stores the FULL team object per pick (that is
-        // how the draft persists them), so six managers came to 106KB — 90KB of
-        // it logos, venues, alt names and colours the projection never reads. It
-        // needs the team id; everything else it looks up in teamsById. On an M0
-        // tier, where latency tracks bytes, that one query cost 1.67 SECONDS for
-        // six documents. $elemMatch cannot slim a subdocument, only select it.
-        //
-        // The pipeline itself now lives in modules/franchise-repo.js, so it can
-        // answer from either accounts+franchises or users (#313 phase 2).
-        const users = await franchiseRepo.projectionManagers(league, season);
-        if (!users.length) return res.json({ league, season, managers: [] });
-
-        // All four reads at once. Against an M0 tier these are seconds rather
-        // than milliseconds — latency tracks bytes — so awaiting them in a line
-        // paid for each in turn. `games` needs the rostered ids, which is why
-        // `users` is fetched first; now that it is 3KB instead of 106KB, that
-        // first hop costs ~100ms rather than 1.7s.
-        //
-        // Team subfield projection rather than $elemMatch: seasonVal() in
-        // modules/draft-projection.js falls back to `season - 1` when the current
-        // season has no value yet, so the prior season's elements have to survive
-        // the projection. These are every seasons.* path that file reads.
-        // Scoped to rostered teams: the projection only ever walks a manager's own
-        // teams, so the rest of the slate was 300 documents read and thrown away.
-        const rosteredIds = [...new Set(users.flatMap(u =>
-            ((u.seasons || [])[0] || {}).teams ? u.seasons[0].teams.map(t => t.id) : []))]
-            .filter(id => id != null);
-
-        const [teams, cfgDoc, pollDoc, games] = await Promise.all([
-            Team.find({}, {
-                id: 1, school: 1, alternateNames: 1, conference: 1,
-                'seasons.season': 1, 'seasons.spRating': 1, 'seasons.expectedWins': 1,
-                'seasons.conference': 1, 'seasons.cfpMakeOdds': 1, 'seasons.cfpChampOdds': 1
-            }).lean(),
-            ScoringConfig.findOne({ league }).lean(),
-            Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: -1 }).lean(),
-            rosteredIds.length ? Game.find(
-                { season, seasonType: 'regular',
-                  $or: [{ homeId: { $in: rosteredIds } }, { awayId: { $in: rosteredIds } }] },
-                { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
-                  completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
-                  awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
-                  pregameWinProb: 1 }).lean() : []
-        ]);
-        const teamsById = {};
-        teams.forEach(t => { teamsById[String(t.id)] = t; });
-
-        // pregameWinProb is what makes projectTeamPoints use CFBD's real pre-game
-        // number instead of estimating from the SP+ gap. /standings/h2h has always
-        // projected it; this route did not, so the same game got two different
-        // probabilities on one page. Leaving it out is not a local error either:
-        // the calibrator subtracts CFBD-sourced expected wins from the target
-        // before scaling the rest, so an unfetched field moves games it isn't on.
-        //
-        const gamesByTeam = {};
-        games.forEach(g => {
-            const h = String(g.homeId), a = String(g.awayId);
-            if (teamsById[h]) (gamesByTeam[h] = gamesByTeam[h] || []).push(g);
-            if (teamsById[a]) (gamesByTeam[a] = gamesByTeam[a] || []).push(g);
-        });
-
-        const cfg = resolveConfig(league, overridesFromDoc(cfgDoc));
-        const rankings = buildRankingProxy(season, teamsById, findPoll(pollDoc));
-        const poolCtx = buildPoolContext(teamsById, season);
-        const managers = buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx, season);
-        // Forward-looking only: if the regular season has no games left (season
-        // complete / not yet scheduled), the "projection" would just be actuals
-        // plus a stray postseason term — hide it. Client renders nothing.
-        if (!managers.length || !managers.some(m => m.remainingCount > 0)) {
-            return res.json({ league, season, managers: [] });
-        }
-
-        // Captain and H2H are part of the score the scoring job actually writes,
-        // so they belong in a projection of the FINAL score. Banked points
-        // already include them; without this the forward half did not, which
-        // understated every graham-league manager by 35-50 points.
-        //
-        // pinnedIds matters: the round robin is positional, so the projection has
-        // to pair managers the same way the scoring job will. Passing the pinned
-        // list keeps the projected matchups and the real ones in step.
-        const engagement = engagementForSeason(cfgDoc && cfgDoc.engagementBySeason, season);
-        const engOpts = { pinnedIds: pinnedH2HIds(cfgDoc, season), maxWeek: H2H_MAX_WEEK };
-        applyEngagement(managers, engagement, engOpts);
-
-        // 20000, not 5000. The odds used to cluster at 0 and 90-100, where a
-        // Monte-Carlo estimate is naturally steady; putting real uncertainty on
-        // the postseason moved everyone into the middle, which is exactly where
-        // the sampling error is worst. At p=0.65 and N=5000 the same unchanged
-        // board came back 76.7% one request and 79.0% the next — a visible
-        // flicker on refresh, and enough to swap two adjacent managers. 20000
-        // quarters the variance for ~170ms, against a route that already spends
-        // seconds in Mongo.
-        const odds = simulateTitleOdds(managers, 20000, Object.assign({ engagement }, engOpts));
-        res.json({ league, season, managers: projectionRows(managers, odds) });
+        // Cached 60 s per league + season, both sports (see cachedProjection).
+        const compute = sportForLeague(league) === 'basketball'
+            ? () => hoopsProjections(league, season)
+            : () => footballProjections(league, season);
+        res.json(await cachedProjection(`${league}:${season}`, compute));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
