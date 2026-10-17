@@ -28,32 +28,68 @@ const PANEL = `
     </section>`;
 
 let patched;
+let posted;
 
-async function mountPanel(prefs = {}, state = {}) {
+const THIS_DEVICE = 'https://push.example/this-device';
+
+// Lets render() finish, including the re-render after an automatic subscribe.
+const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(r => setTimeout(r, 0)); };
+
+// `device` is this browser: the endpoint its push subscription holds (null for
+// none) and its notification permission. By default it is the device the
+// server has on file, which is the ordinary "alerts are on" case.
+async function mountPanel(prefs = {}, state = {}, device = {}) {
     document.body.innerHTML = PANEL;
+    const dev = Object.assign({ endpoint: THIS_DEVICE, permission: 'granted', subscribeFails: false }, device);
 
     // supported() needs all three, or the panel renders "this browser can't".
-    navigator.serviceWorker = { register: jest.fn() };
+    let browserSub = dev.endpoint ? { endpoint: dev.endpoint, toJSON: () => ({ endpoint: dev.endpoint }) } : null;
+    const reg = {
+        pushManager: {
+            getSubscription: jest.fn(() => Promise.resolve(browserSub)),
+            subscribe: jest.fn(() => {
+                if (dev.subscribeFails) return Promise.reject(new Error('push service unavailable'));
+                const endpoint = 'https://push.example/fresh';
+                browserSub = { endpoint, toJSON: () => ({ endpoint }) };
+                return Promise.resolve(browserSub);
+            })
+        }
+    };
+    navigator.serviceWorker = {
+        register: jest.fn(() => Promise.resolve(reg)),
+        getRegistration: jest.fn(() => Promise.resolve(reg)),
+        ready: Promise.resolve(reg)
+    };
     window.PushManager = function () {};
     window.Notification = function () {};
+    window.Notification.permission = dev.permission;
+    window.Notification.requestPermission = jest.fn(() => Promise.resolve(dev.permission));
+
+    const server = Object.assign(
+        { configured: true, deviceCount: 1, allowed: true, prefs, endpoints: [THIS_DEVICE], vapidPublicKey: 'BATOte0IVNQu' }, state);
 
     patched = [];
+    posted = [];
     window.fetch = jest.fn((url, opts) => {
         if (String(url).indexOf('/users/me/push/prefs') === 0) {
             patched.push(JSON.parse(opts.body));
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         }
-        return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve(Object.assign({ configured: true, deviceCount: 1, allowed: true, prefs }, state))
-        });
+        if (String(url) === '/users/me/push' && opts && opts.method === 'POST') {
+            const endpoint = JSON.parse(opts.body).subscription.endpoint;
+            posted.push(endpoint);
+            server.endpoints = server.endpoints.concat(endpoint);
+            server.deviceCount = server.endpoints.length;
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ deviceCount: server.deviceCount }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(Object.assign({}, server)) });
     });
 
     // The module is an IIFE that publishes window.PushAlerts on load.
     // eslint-disable-next-line no-eval
     window.eval(SOURCE);
     window.PushAlerts.mount(document.querySelector('[push-alerts]'));
-    await new Promise(r => setTimeout(r, 0));
+    await settle();
 }
 
 const leadRow = () => document.querySelector('.push-pref-lead').closest('.push-pref');
@@ -228,5 +264,76 @@ describe('the panel sections', () => {
         cb.dispatchEvent(new window.Event('change', { bubbles: true }));
         await new Promise(r => setTimeout(r, 0));
         expect(patched).toEqual([{ hoopsFinal: false }]);
+    });
+});
+
+// Oct 2026: deleting the home-screen app and adding it back (to pick up the new
+// icon) silently ended alerts. The server kept the dead install's endpoint, so
+// the panel said "on for 1 device" on a phone that would never ring again.
+describe('whether alerts are on for THIS device', () => {
+    const status = () => document.querySelector('[push-status]').textContent;
+    const buttons = () => [...document.querySelectorAll('[push-actions] button')].map(b => b.textContent);
+    const DEAD = 'https://push.example/deleted-install';
+
+    it('says "this device" when the server holds this browser\'s endpoint', async () => {
+        await mountPanel();
+        expect(status()).toBe('Alerts are on for this device.');
+        expect(posted).toEqual([]);
+    });
+
+    it('counts the other devices separately', async () => {
+        await mountPanel({}, { deviceCount: 3, endpoints: [THIS_DEVICE, 'https://a', 'https://b'] });
+        expect(status()).toBe('Alerts are on for this device and 2 others.');
+    });
+
+    // THE REGRESSION: a reinstalled app has no subscription and no permission.
+    it('a reinstalled app is told it is not on here, and offered the button', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, { endpoint: null, permission: 'default' });
+        expect(status()).toMatch(/^Alerts are on for 1 other device, but not this one/);
+        expect(buttons()).toContain('Turn on for this device');
+        expect(posted).toEqual([]);                      // no prompt-less subscribe without permission
+    });
+
+    it('the button registers this device and the panel then says so', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, { endpoint: null, permission: 'default' });
+        window.Notification.requestPermission = jest.fn(() => Promise.resolve('granted'));
+        const btn = [...document.querySelectorAll('[push-actions] button')]
+            .find(b => b.textContent === 'Turn on for this device');
+        btn.click();
+        await settle();
+        expect(posted).toEqual(['https://push.example/fresh']);
+        expect(status()).toBe('Alerts are on for this device and 1 other.');
+    });
+
+    it('re-registers on its own when permission is already granted', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, { endpoint: null, permission: 'granted' });
+        expect(window.Notification.requestPermission).not.toHaveBeenCalled();
+        expect(posted).toEqual(['https://push.example/fresh']);
+        expect(status()).toBe('Alerts are on for this device and 1 other.');
+    });
+
+    // "Turn off" on the phone clears the laptop's server record too, but cannot
+    // unsubscribe the laptop's browser. When the phone later turns alerts back
+    // on, the laptop must not quietly rejoin — it gets the button.
+    it('does not silently re-add a subscription the server dropped', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, { endpoint: THIS_DEVICE, permission: 'granted' });
+        expect(posted).toEqual([]);
+        expect(status()).toMatch(/but not this one/);
+        expect(buttons()).toContain('Turn on for this device');
+    });
+
+    // "Turn off" clears every device on the server, so deviceCount 0 must never
+    // be read as "lost, re-register" — or turning alerts off would undo itself.
+    it('never re-registers after alerts were turned off', async () => {
+        await mountPanel({}, { deviceCount: 0, endpoints: [] }, { endpoint: null, permission: 'granted' });
+        expect(posted).toEqual([]);
+        expect(buttons()).toEqual(['Turn on alerts']);
+    });
+
+    it('tries once, then falls back to the button when subscribing fails', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, { endpoint: null, permission: 'granted', subscribeFails: true });
+        expect(posted).toEqual([]);
+        expect(status()).toMatch(/but not this one/);
+        expect(buttons()).toContain('Turn on for this device');
     });
 });
