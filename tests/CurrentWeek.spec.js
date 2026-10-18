@@ -13,7 +13,7 @@
 
 const SEASON = 2026;
 
-function load({ week = 2, ok = true, league = 'graham-league', sport } = {}) {
+function load({ week = 2, ok = true, league = 'graham-league', sport, body } = {}) {
     jest.resetModules();
     window.localStorage.clear();
     window.ccLeague = { code: () => league };
@@ -21,13 +21,30 @@ function load({ week = 2, ok = true, league = 'graham-league', sport } = {}) {
     const calls = [];
     window.fetch = jest.fn(url => {
         calls.push(url);
-        return Promise.resolve({ ok, json: () => Promise.resolve(week === null ? {} : { week }) });
+        return Promise.resolve({ ok, json: () => Promise.resolve(body || (week === null ? {} : { week })) });
     });
     require('../public/current-week.js');
     return { cw: window.ccCurrentWeek, calls };
 }
 
 afterEach(() => { delete window.ccLeague; delete window.ccCurrentWeek; });
+
+// Over a football weekend the endpoint holds `week` on the finished slate
+// until Monday 07:00 Central, while `upcoming` has moved on — the betting page
+// opens on that one, since next week's lines are what there is to bet on.
+describe('state: upcoming', () => {
+    it('passes the held week and the upcoming one through separately', async () => {
+        const { cw } = load({ body: { week: 7, upcoming: 8, liveNow: null } });
+        await expect(cw.state(SEASON)).resolves.toEqual({ week: 7, upcoming: 8, liveNow: null });
+        await expect(cw.get(SEASON)).resolves.toBe(7);
+    });
+
+    // Basketball's endpoint has no hold, so it sends no `upcoming`.
+    it('falls back to the week when the endpoint sends no upcoming', async () => {
+        const { cw } = load({ week: 4 });
+        await expect(cw.state(SEASON)).resolves.toMatchObject({ week: 4, upcoming: 4 });
+    });
+});
 
 describe('get', () => {
     // The dedicated week endpoint, NOT /games/scoreboard. This used to read the

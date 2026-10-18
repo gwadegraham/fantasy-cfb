@@ -109,19 +109,61 @@ function weekWindows(games) {
 // opens on.
 const WEEK_TAIL_MS = 6 * 3600 * 1000;
 
+// FOOTBALL'S WEEKEND HOLD. Past the tail, a finished slate stays the page's
+// week until Monday 07:00 Central. Without it the app flipped to next week at
+// ~3:30 AM Sunday (a 9:30 PM Saturday kickoff + the 6h tail), so anyone
+// scrolling Saturday's scores or checking H2H results on Sunday afternoon
+// landed on a week nobody had played yet. 07:00 Monday is the boundary the
+// weekly recap already draws (its popup opens then, the push goes at 07:05),
+// so "the weekend is over" means the same thing everywhere.
+//
+// Opt-in, not the default: basketball shares weekState, and its Monday-to-
+// Sunday weeks have no weekend to hold over. Central explicitly, not the
+// server's clock — the dyno runs in UTC.
+const HOLD_ZONE = 'America/Chicago';
+const HOLD_HOUR = 7;
+const DAY_MS = 24 * 3600 * 1000;
+
+// Epoch ms of a Central wall-clock time. The offset is read off the zone at
+// that instant, which is exact for 07:00 — DST changes happen at 02:00.
+function centralWallClock(y, m, d, h) {
+    const guess = Date.UTC(y, m, d, h);
+    const parts = {};
+    new Intl.DateTimeFormat('en-US', {
+        timeZone: HOLD_ZONE, hourCycle: 'h23',
+        year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric'
+    }).formatToParts(new Date(guess)).forEach(p => { parts[p.type] = Number(p.value); });
+    const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+    return guess - (asUtc - guess);
+}
+
+// When a slate whose last kickoff is `lastMs` stops being the page's week:
+// Monday 07:00 Central on or after that kickoff's Central date — but never
+// before the ordinary tail, so a Monday-night opener (Labor Day) just uses the
+// tail instead of holding a whole extra week.
+function holdUntil(lastMs) {
+    const ymd = new Date(lastMs).toLocaleDateString('en-CA', { timeZone: HOLD_ZONE });
+    const day = new Date(`${ymd}T00:00:00Z`);
+    const toMonday = (8 - day.getUTCDay()) % 7;       // Monday → 0
+    const mon = new Date(day.getTime() + toMonday * DAY_MS);
+    const monday7 = centralWallClock(mon.getUTCFullYear(), mon.getUTCMonth(), mon.getUTCDate(), HOLD_HOUR);
+    return Math.max(lastMs + WEEK_TAIL_MS, monday7);
+}
+
 // Which week should the page open on? "The one you'd want on a Saturday":
 //   1. a week currently in progress (first kickoff .. last kickoff + 6h)
-//   2. otherwise the next week to come  — Tue-Thu sits between slates and
+//   2. with { hold: true }, a week whose weekend isn't over yet (see above)
+//   3. otherwise the next week to come  — Tue-Thu sits between slates and
 //      should look forward, not back at a settled week
-//   3. otherwise the last week that happened (season over)
+//   4. otherwise the last week that happened (season over)
 // The tail here is WEEK_TAIL_MS, not the game window — a slate stops being the
 // current one on a schedule of its own, independent of how long one delayed
 // game inside it is still being played.
-function defaultWeek(windows, nowMs) {
-    return weekState(windows, nowMs).week;
+function defaultWeek(windows, nowMs, opts) {
+    return weekState(windows, nowMs, opts).week;
 }
 
-// The same pick, plus WHICH of the three branches answered.
+// The same pick, plus WHICH of the branches answered.
 //
 // `live` separates "this slate is being played right now" from "this is the
 // next one up" / "this is where the season ended", which defaultWeek's single
@@ -129,11 +171,18 @@ function defaultWeek(windows, nowMs) {
 // back as 4. Anything reporting on a FINISHED week needs the difference: the
 // standings highlights hold last week's winner while a slate is live, and
 // letting go of it the moment the tail passes is what "wait until the weekend
-// is over" means in practice.
-function weekState(windows, nowMs) {
+// is over" means in practice. A held week is NOT live — nobody is playing it.
+function weekState(windows, nowMs, { hold = false } = {}) {
     if (!windows || !windows.length) return { week: null, live: false };
     const live = windows.find(w => nowMs >= w.first && nowMs <= w.last + WEEK_TAIL_MS);
     if (live) return { week: live.week, live: true };
+    if (hold) {
+        // The most recent slate to finish — windows are week-ordered, and a
+        // week's kickoffs come after the previous week's.
+        const done = windows.filter(w => w.last + WEEK_TAIL_MS < nowMs);
+        const latest = done[done.length - 1];
+        if (latest && nowMs < holdUntil(latest.last)) return { week: latest.week, live: false };
+    }
     const next = windows.find(w => w.first > nowMs);
     if (next) return { week: next.week, live: false };
     return { week: windows[windows.length - 1].week, live: false };
@@ -400,7 +449,7 @@ function shapeGames(games, ctx) {
 }
 
 module.exports = {
-    pointsByTeamGame, captainShare, ownersByTeam, weekWindows, defaultWeek, weekState,
+    pointsByTeamGame, captainShare, ownersByTeam, weekWindows, defaultWeek, weekState, holdUntil,
     gameState, conferenceList, conferenceLabel, fbsConferenceNames, weekRangeOf,
     recordsByTeam, spreadSideOf, weekList, shapeGame, shapeGames, initialsOf, hasPossession,
     CONFERENCE_ABBR, WEEK_TAIL_MS, MAX_GAME_MS
