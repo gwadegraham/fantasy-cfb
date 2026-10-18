@@ -3,7 +3,7 @@
 // No DB: everything here takes plain objects.
 
 const {
-    pointsByTeamGame, ownersByTeam, weekWindows, defaultWeek,
+    pointsByTeamGame, ownersByTeam, weekWindows, defaultWeek, weekState, holdUntil,
     gameState, conferenceList, conferenceLabel, fbsConferenceNames, weekRangeOf,
     weekList, recordsByTeam, spreadSideOf, shapeGames, initialsOf,
     WEEK_TAIL_MS, MAX_GAME_MS
@@ -146,6 +146,64 @@ describe('weekWindows / defaultWeek', () => {
 
     test('no games at all resolves to null rather than throwing', () => {
         expect(defaultWeek([], Date.now())).toBe(null);
+    });
+});
+
+// The weekend hold. Without it the app flipped to next week at ~3:30 AM Sunday
+// (9:30 PM Saturday kickoff + 6h tail), so Sunday-afternoon H2H checks landed on
+// a week nobody had played. Real 2026 kickoffs; times in the names are Central.
+describe('weekState { hold: true }', () => {
+    const at = (iso) => Date.parse(iso);
+    const windows = weekWindows([
+        { week: 7, startDate: '2026-10-17T16:00:00.000Z' },
+        { week: 7, startDate: '2026-10-18T02:30:00.000Z' },   // Sat 9:30 PM CDT
+        { week: 8, startDate: '2026-10-22T23:30:00.000Z' },   // Thu 6:30 PM CDT
+        { week: 8, startDate: '2026-10-25T02:00:00.000Z' }
+    ]);
+    const hold = { hold: true };
+
+    test('Sunday afternoon stays on the finished week', () => {
+        const sun2pm = at('2026-10-18T19:00:00.000Z');
+        expect(weekState(windows, sun2pm, hold)).toEqual({ week: 7, live: false });
+        // ...where the unheld answer has already moved on. This is the bug.
+        expect(weekState(windows, sun2pm).week).toBe(8);
+    });
+
+    test('lets go at Monday 07:00 Central, not a minute before', () => {
+        expect(defaultWeek(windows, at('2026-10-19T11:59:00.000Z'), hold)).toBe(7);  // 6:59 AM CDT
+        expect(defaultWeek(windows, at('2026-10-19T12:01:00.000Z'), hold)).toBe(8);  // 7:01 AM CDT
+    });
+
+    test('a slate in progress still wins, and reads as live', () => {
+        expect(weekState(windows, at('2026-10-23T01:00:00.000Z'), hold)).toEqual({ week: 8, live: true });
+    });
+
+    test('opt-in: without it the weekend is not held (basketball shares this)', () => {
+        expect(defaultWeek(windows, at('2026-10-18T19:00:00.000Z'))).toBe(8);
+    });
+
+    // DST ends Sun 1 Nov 2026, so that Monday's 07:00 CST is 13:00Z, an hour
+    // later in UTC than the October boundary above.
+    test('holds across the DST change to Monday 07:00 CST', () => {
+        const lastKick = at('2026-11-01T02:30:00.000Z');       // Sat 31 Oct 9:30 PM CDT
+        expect(holdUntil(lastKick)).toBe(at('2026-11-02T13:00:00.000Z'));
+    });
+
+    // Labor Day: week 1 ends on a Monday night. Monday 07:00 that day is
+    // already behind it, so only the ordinary tail applies — holding to the
+    // NEXT Monday would cover all of Tue-Thu and hide week 2.
+    test('a Monday-night finale uses the plain tail, not a week-long hold', () => {
+        const mon = at('2026-09-07T23:30:00.000Z');            // Mon 6:30 PM CDT
+        expect(holdUntil(mon)).toBe(mon + WEEK_TAIL_MS);
+        const labor = weekWindows([
+            { week: 1, startDate: '2026-09-07T23:30:00.000Z' },
+            { week: 2, startDate: '2026-09-10T23:30:00.000Z' }
+        ]);
+        expect(defaultWeek(labor, at('2026-09-08T14:00:00.000Z'), hold)).toBe(2);
+    });
+
+    test('after the season it still lands on the final week', () => {
+        expect(defaultWeek(windows, at('2027-01-01T00:00:00.000Z'), hold)).toBe(8);
     });
 });
 

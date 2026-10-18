@@ -354,7 +354,7 @@ describe('GET /games/current-week/:season', () => {
         expect(res.status).toBe(200);
         expect(typeof res.body.week === 'number' || res.body.week === null).toBe(true);
         // The point of the endpoint: it carries the week and nothing heavy.
-        expect(Object.keys(res.body).sort()).toEqual(['live', 'liveNow', 'season', 'seasonType', 'week']);
+        expect(Object.keys(res.body).sort()).toEqual(['live', 'liveNow', 'season', 'seasonType', 'upcoming', 'week']);
         expect(res.body.games).toBeUndefined();
         expect(res.body.conferences).toBeUndefined();
     });
@@ -386,6 +386,26 @@ describe('GET /games/current-week/:season', () => {
         // number moves on, but nothing is being played.
         const between = await request(app).get('/games/current-week/2032');
         expect(between.body).toMatchObject({ week: 2, live: false, liveNow: null });
+    });
+
+    // The weekend hold: Sunday afternoon, the finished slate is still the
+    // week My Team / Standings / the scoreboard open on, while `upcoming` has
+    // moved on for the betting page. Date.now is pinned because the hold is a
+    // wall-clock rule (Monday 07:00 Central).
+    test('holds the finished week over the weekend; upcoming moves on', async () => {
+        await Game.create([
+            gameDoc({ id: 741, season: 2034, week: 1, startDate: '2026-10-18T02:30:00.000Z' }),
+            gameDoc({ id: 742, season: 2034, week: 2, startDate: '2026-10-24T16:00:00.000Z' })
+        ]);
+        const spy = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-18T19:00:00.000Z'));
+        try {
+            const cheap = await request(app).get('/games/current-week/2034');
+            expect(cheap.body).toMatchObject({ week: 1, upcoming: 2, live: false, liveNow: null });
+            const full = await request(app).get('/games/scoreboard/graham-league/2034');
+            expect(full.body.week).toBe(1);
+        } finally {
+            spy.mockRestore();
+        }
     });
 
     // In January every REGULAR window is in the past, so a regular-season-only

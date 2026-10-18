@@ -33,12 +33,16 @@
     function unpin() { ls(function (s) { s.removeItem('weekPinned'); }); }
 
     // The league's current week, plus `liveNow` — the slate being PLAYED right
-    // now as { week, seasonType }, or null between slates. Resolves to
-    // { week: null, liveNow: null } when it can't be answered. Cached per
-    // league+season: several tiles on one page ask, and they must not race.
+    // now as { week, seasonType }, or null between slates — and `upcoming`, the
+    // next slate to be played. They differ on a football weekend: `week` holds
+    // the finished slate until Monday 07:00 Central, `upcoming` has already
+    // moved on (the betting page wants that one). Resolves to
+    // { week: null, upcoming: null, liveNow: null } when it can't be answered.
+    // Cached per league+season: several tiles on one page ask, and they must
+    // not race.
     function state(season) {
         var league = leagueCode();
-        if (!league || !season) return Promise.resolve({ week: null, liveNow: null });
+        if (!league || !season) return Promise.resolve({ week: null, upcoming: null, liveNow: null });
         var key = league + '/' + season;
         if (!cache[key]) {
             // /games/current-week, not /games/scoreboard. This used to read the
@@ -52,14 +56,17 @@
                 .then(function (r) { return r.ok ? r.json() : null; })
                 .then(function (d) {
                     var ln = d && d.liveNow;
+                    var week = d && typeof d.week === 'number' ? d.week : null;
                     return {
-                        week: d && typeof d.week === 'number' ? d.week : null,
+                        week: week,
+                        // Basketball's endpoint has no hold and no `upcoming`.
+                        upcoming: d && typeof d.upcoming === 'number' ? d.upcoming : week,
                         liveNow: (ln && typeof ln.week === 'number')
                             ? { week: ln.week, seasonType: ln.seasonType || 'regular' }
                             : null
                     };
                 })
-                .catch(function () { return { week: null, liveNow: null }; });
+                .catch(function () { return { week: null, upcoming: null, liveNow: null }; });
         }
         return cache[key];
     }

@@ -1533,9 +1533,12 @@ async function init() {
 
     // Open on the week people are actually betting. Week 0 is a real week here
     // (early-season games), so it stays reachable with the arrows — it just
-    // isn't where the page should land in November.
+    // isn't where the page should land in November. `upcoming`, not `week`:
+    // over a weekend `week` holds the finished slate until Monday morning,
+    // but next week's lines are what there is to bet on.
     if (window.ccCurrentWeek) {
-        var wk = await window.ccCurrentWeek.get(currentSeason);
+        var st = await window.ccCurrentWeek.state(currentSeason);
+        var wk = st && st.upcoming != null ? st.upcoming : (st && st.week);
         if (wk != null) currentWeek = wk;
     }
 

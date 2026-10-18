@@ -529,7 +529,14 @@ router.get('/current-week/:season', async (req, res) => {
         ).lean();
         const forType = (t) => weekWindows(rows.filter(g => g.seasonType === t));
         const now = Date.now();
-        const { week } = weekState(forType(seasonType), now);
+        const windows = forType(seasonType);
+        // Held over the weekend for football (see weekState) — this is what My
+        // Team, Standings and the scoreboard open on.
+        const { week } = weekState(windows, now, { hold: true });
+        // The next slate to bet on, WITHOUT the hold. Sunday is when next
+        // week's lines go up, so the betting page must not be pinned to a
+        // weekend whose games are all final.
+        const { week: upcoming } = weekState(windows, now);
 
         // Whichever slate is being PLAYED right now, across both season types,
         // or null between slates. Distinct from `week`: on a Wednesday `week` is
@@ -551,6 +558,7 @@ router.get('/current-week/:season', async (req, res) => {
             season,
             seasonType,
             week: Number.isFinite(week) ? week : null,
+            upcoming: Number.isFinite(upcoming) ? upcoming : null,
             live: !!(liveNow && liveNow.seasonType === seasonType && liveNow.week === week),
             liveNow
         });
@@ -581,7 +589,7 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
                 { week: 1, startDate: 1, _id: 0 }
             ).lean();
             windows = weekWindows(weekRows);
-            if (!Number.isFinite(week)) week = defaultWeek(windows, nowMs);
+            if (!Number.isFinite(week)) week = defaultWeek(windows, nowMs, { hold: true });
         }
 
         if (week == null || !Number.isFinite(week)) {
