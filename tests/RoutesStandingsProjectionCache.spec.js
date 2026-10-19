@@ -21,6 +21,7 @@ const seasons = require('../modules/active-season');
 const franchiseRepo = require('../modules/franchise-repo');
 
 const FOOTBALL = 'graham-league';
+const CLAUNTS = 'claunts-league';   // a second FOOTBALL league: a sport + season key would merge it with graham-league
 const HOOPS = 'hoops-league';
 const router = require('../routes/standings');
 const app = express();
@@ -49,21 +50,27 @@ const get = (league, season) => request(app).get(`/standings/projections/${leagu
 test('the fixture routes each league to its own sport', () => {
     expect(seasons.sportForLeague(HOOPS)).toBe('basketball');
     expect(seasons.sportForLeague(FOOTBALL)).toBe('football');
+    expect(seasons.sportForLeague(CLAUNTS)).toBe('football');
 });
 
 test('the key holds league AND season: no two of them share an answer', async () => {
-    const pairs = [[FOOTBALL, 2026], [HOOPS, 2026], [FOOTBALL, 2027], [HOOPS, 2027]];
+    // Two football leagues in one season (Graham and Claunts must never share
+    // a projection), both sports, two seasons — and a pair whose league and
+    // season run together into the same string ('graham-league' + 226 vs
+    // 'graham-league2' + 26), which only a separator in the key keeps apart.
+    const pairs = [[FOOTBALL, 2026], [CLAUNTS, 2026], [HOOPS, 2026], [FOOTBALL, 2027], [CLAUNTS, 2027], [HOOPS, 2027],
+        [FOOTBALL, 226], [`${FOOTBALL}2`, 26]];
     for (const [league, season] of pairs) {
         const res = await get(league, season);
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ league, season, managers: [] });
     }
-    expect(spy).toHaveBeenCalledTimes(4);
+    expect(spy).toHaveBeenCalledTimes(pairs.length);
     // ...and each one is still cached under its own key.
     for (const [league, season] of pairs) {
         expect((await get(league, season)).body).toEqual({ league, season, managers: [] });
     }
-    expect(spy).toHaveBeenCalledTimes(4);
+    expect(spy).toHaveBeenCalledTimes(pairs.length);
 });
 
 describe.each([['football', FOOTBALL, 2026], ['basketball', HOOPS, 2027]])('%s', (sport, league, season) => {
