@@ -336,3 +336,66 @@ describe('engagement terms', () => {
         });
     });
 });
+
+// The weekly simulation (Captain / H2H on) is one code path for both sports;
+// only the shape of a game entry differs (basketball carries pointsIfLoss,
+// which can be negative). Each fixture below is run in both shapes.
+describe('simulateTitleOdds: the week under way and the tie bonus (both sports)', () => {
+    const SHAPES = {
+        football: (pts) => ({ winProb: 1, pointsIfWin: pts }),
+        basketball: (pts) => (pts >= 0 ? { winProb: 1, pointsIfWin: pts, pointsIfLoss: -1 } : { winProb: 0, pointsIfWin: 5, pointsIfLoss: pts })
+    };
+    const week = (game) => ({ 1: [{ teamId: 1, games: [game] }] });
+    const run = (ms, eng, extra) => simulateTitleOdds(ms, 50, Object.assign({ engagement: eng, postseasonSd: 0, pinnedIds: ['a', 'b'] }, extra));
+
+    test('basketball: a NEGATIVE banked week (a penalised loss) still counts in the matchup', () => {
+        // A banked -2 this week; B has a certain -1 left. B wins the week.
+        //   right:           A 3, B 2 - 1 + 3 = 4  -> B
+        //   negative banked dropped (a "> 0" guard): A wins the week, 6 vs 1 -> A
+        const eng = { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 };
+        const ms = [
+            { userId: 'a', postExpected: 3, byWeek: { 1: [] }, bankedWeek: { 1: -2 } },
+            { userId: 'b', postExpected: 2, byWeek: { 1: [{ teamId: 1, games: [{ winProb: 0, pointsIfWin: 0, pointsIfLoss: -1 }] }] } }
+        ];
+        expect(run(ms, eng, { h2hExact: true }).b).toBe(1);
+    });
+
+    describe.each(Object.keys(SHAPES))('%s', (sport) => {
+        const certain = SHAPES[sport];
+
+        test('the banked week decides the matchup but is NOT added to the season total again', () => {
+            // A banked 10 this week (already inside postExpected 4) with nothing
+            // left; B has a certain 5 to come; C sits outside the H2H on 7.5.
+            //   right:                A wins the week, 4 + 3 = 7;  B 5;  C 7.5 -> C
+            //   banked dropped:       B wins the week, 5 + 3 = 8         -> B
+            //   banked folded again:  A = 4 + 10 + 3 = 17                -> A
+            const eng = { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 };
+            const ms = [
+                { userId: 'a', postExpected: 4, byWeek: { 1: [] }, bankedWeek: { 1: 10 } },
+                { userId: 'b', postExpected: 0, byWeek: week(certain(5)) },
+                { userId: 'c', postExpected: 7.5, byWeek: {} }
+            ];
+            expect(run(ms, eng, { h2hExact: true }).c).toBe(1);
+        });
+
+        test('a tie pays h2hTieBonus to each side — not half a win, not a whole one', () => {
+            // A and B tie with a certain equal score every sim. The tie bonus (1)
+            // is deliberately NOT winBonus / 2 (1.5): that value would let the
+            // old "half a win apiece" pass. C, outside the H2H, sits on top of
+            // the score A and B share plus 1.2.
+            //   right:          A = B = s + 1   < C = s + 1.2 -> C
+            //   tie = win / 2:  A = B = s + 1.5 > C           -> A, B
+            //   tie = win:      A = B = s + 3                 -> A, B
+            const eng = { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 1 };
+            const s = sport === 'football' ? 4 : -1;
+            const g = certain(s);
+            const ms = [
+                { userId: 'a', postExpected: 0, byWeek: week(g) },
+                { userId: 'b', postExpected: 0, byWeek: week(g) },
+                { userId: 'c', postExpected: s + 1.2, byWeek: {} }
+            ];
+            expect(run(ms, eng).c).toBe(1);
+            expect(run(ms, eng, { h2hExact: true }).c).toBe(1);
+        });
+    });
+});
