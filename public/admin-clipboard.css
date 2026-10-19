@@ -17,7 +17,7 @@
 .cb-knob { width: 18px; height: 18px; border-radius: 50%; flex: none; position: relative; z-index: 1; box-sizing: border-box;
     display: flex; align-items: center; justify-content: center; font-size: 8px; background: var(--cc-bg); border: 2px solid var(--cc-border-2); }
 .cb-knob i { padding: 0; color: var(--cc-muted-bright); }
-.cb-ph b { font: 400 9px Graduate, serif; letter-spacing: .04em; line-height: 1.25; text-transform: uppercase; color: var(--cc-muted-2); }
+.cb-ph b { font: 400 10px Graduate, serif; letter-spacing: .04em; line-height: 1.25; text-transform: uppercase; color: var(--cc-muted-2); }
 .cb-ph small { font: 600 9px Poppins, sans-serif; color: var(--cc-accent); }
 .cb-ph-done .cb-knob { background: var(--cc-surface-3); border-color: var(--cc-surface-3); }
 .cb-ph-done b { color: var(--cc-muted); }
@@ -36,7 +36,7 @@
 .cb-head span { margin-left: auto; font-size: 11px; color: var(--cc-muted); white-space: nowrap; }
 .cb-sub { font-size: 11.5px; color: var(--cc-muted); margin: 2px 0 6px; }
 .cb-preview { font-size: 11.5px; color: var(--cc-interactive); margin: 0 0 6px; }
-.cb-back { all: unset; cursor: pointer; text-decoration: underline; color: var(--cc-interactive); }
+.cb-back { all: unset; cursor: pointer; text-decoration: underline; color: var(--cc-interactive); display: inline-block; padding: 8px 4px; margin: -8px 0; }
 .cb-back:focus-visible { outline: 2px solid var(--cc-info); outline-offset: 2px; }
 
 .cb-grp { font: 600 9.5px Poppins, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--cc-muted-2);

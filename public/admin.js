@@ -637,8 +637,12 @@ function openTool(attr, opener) {
     if (drawer && !drawer.open) drawer.open = true;
     if (!c.classList.contains('open') && typeof opener === 'function') opener();
     // Scroll the whole tool card into view, falling back to the container
-    // itself if the markup ever stops nesting one inside the other.
-    (c.closest('.function-container') || c).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // itself if the markup ever stops nesting one inside the other. Focus
+    // follows, so Tab continues inside the tool that just opened.
+    var card = c.closest('.function-container') || c;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var head = card.querySelector('.button-container button');
+    if (head) head.focus({ preventScroll: true });
     return true;
 }
 

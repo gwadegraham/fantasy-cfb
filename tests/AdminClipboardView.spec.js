@@ -78,9 +78,10 @@ describe('what it fetches', () => {
         ]));
     });
 
-    test('a commissioner never asks for platform data', async () => {
+    test('a commissioner never asks for platform data — but does make the league reads', async () => {
         await boot({ admin: false });
         expect(calls).not.toContain('/teams/2026/cfp-odds/status');
+        expect(calls).toEqual(expect.arrayContaining(['/seasons/football', '/draft/graham-league/2026']));
     });
 
     test('no managed league: no league reads', async () => {
@@ -97,7 +98,7 @@ describe('what it draws', () => {
         expect(root.querySelector('.cb-head h2').textContent).toBe('Week 8');
         expect(Array.from(root.querySelectorAll('.cb-grp')).map(g => g.textContent)).toEqual(['Platform · every league', 'gg']);
         expect(items(root)).toEqual(expect.arrayContaining([
-            'Week 8: 3 finals not scored yet', 'CFP odds board is 23 days old', 'Recap alert sent', 'Draft complete', 'Captain 2× · H2H +3'
+            '3 finals not scored yet', 'CFP odds board is 23 days old', 'Recap alert sent', 'Draft complete', 'Captain 2× · H2H +3'
         ]));
     });
 
@@ -117,7 +118,8 @@ describe('what it draws', () => {
     test('a commissioner: no platform group, and unscored finals say when automation runs', async () => {
         const root = await boot({ admin: false, tools: ['draft'] });
         expect(root.querySelectorAll('.cb-grp').length).toBe(1);
-        const row = item(root, 'not scored');
+        expect(item(root, 'not scored')).toBeUndefined();
+        const row = item(root, 'New results to score');
         expect(row.querySelector('[data-cb-fix]')).toBeNull();
         expect(row.querySelector('.cb-auto').textContent).toBe('Auto · 23:00');
     });
@@ -143,14 +145,20 @@ describe('what it draws', () => {
         expect(root.textContent).toContain('<img src=x onerror=alert(1)>');
     });
 
-    test('every fetch failing still leaves a page (the phase falls back)', async () => {
+    test('every fetch failing: the Clipboard stays hidden rather than guess a phase', async () => {
         page(['scores']);
         global.fetch = jest.fn(() => Promise.reject(new Error('offline')));
         window.ccCurrentWeek = { state: () => Promise.reject(new Error('offline')) };
         (0, eval)(MODEL);
         (0, eval)(VIEW);
         await flush();
-        expect(document.querySelector('[admin-clipboard]').hidden).toBe(false);
+        expect(document.querySelector('[admin-clipboard]').hidden).toBe(true);
+    });
+
+    test('readiness alone still places the season', async () => {
+        const root = await boot({ routes: { '/seasons/football': () => json({}, 500) } });
+        expect(root.hidden).toBe(false);
+        expect(root.querySelector('[aria-current="step"]').textContent).toContain('In season');
     });
 });
 
@@ -172,10 +180,64 @@ describe('where a tap goes', () => {
         expect(root.querySelector('.cb-head h2').textContent).toBe('Week 8');
     });
 
+    test('focus stays on the stepper button a keyboard user pressed', async () => {
+        const root = await boot();
+        const btn = root.querySelector('[data-cb-phase="draft"]');
+        btn.focus();
+        btn.click();
+        expect(document.activeElement).toBe(root.querySelector('[data-cb-phase="draft"]'));
+        expect(document.activeElement).not.toBe(btn); // a fresh node: the stepper was redrawn
+    });
+
     test('tapping the current phase is the normal view', async () => {
         const root = await boot();
         root.querySelector('[data-cb-phase="season"]').click();
         expect(root.querySelector('.cb-card').classList.contains('is-preview')).toBe(false);
+    });
+});
+
+describe('openTool (public/admin.js)', () => {
+    // The real function, lifted out of admin.js: loading the whole file needs
+    // the full page. It has to open the drawer BEFORE the opener runs, since
+    // toggleSub measures scrollHeight and a card in a closed drawer is 0.
+    const ADMIN = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
+    const src = ADMIN.match(/function openTool\(attr, opener\) \{[\s\S]*?\n\}/)[0];
+    const openTool = new Function(src + '; return openTool;')();
+
+    beforeEach(() => {
+        document.body.innerHTML = `
+            <details admin-toolbox><summary>Toolbox</summary>
+                <div class="function-container"><div class="button-container"><button>Update Scores</button></div>
+                    <div class="sub-container" scores-container></div></div>
+            </details>`;
+        Element.prototype.scrollIntoView = jest.fn();
+    });
+
+    test('opens the drawer before the card, then focuses the tool', () => {
+        let drawerOpenWhenOpenerRan = null;
+        const opener = jest.fn(() => { drawerOpenWhenOpenerRan = document.querySelector('details').open; });
+        expect(openTool('scores-container', opener)).toBe(true);
+        expect(opener).toHaveBeenCalled();
+        expect(drawerOpenWhenOpenerRan).toBe(true);
+        expect(document.activeElement.textContent).toBe('Update Scores');
+    });
+
+    test('an already-open card is not toggled shut', () => {
+        document.querySelector('[scores-container]').classList.add('open');
+        const opener = jest.fn();
+        openTool('scores-container', opener);
+        expect(opener).not.toHaveBeenCalled();
+    });
+
+    test('a tool not on the page: false, nothing runs', () => {
+        const opener = jest.fn();
+        expect(openTool('cfp-odds-container', opener)).toBe(false);
+        expect(opener).not.toHaveBeenCalled();
+    });
+
+    test('the readiness Fix and the status strip both route through it', () => {
+        expect(ADMIN).toMatch(/if \(target\) openTool\(target\[0\], target\[1\]\);/);
+        expect(ADMIN).toMatch(/openTool\('scores-container', displayScoresContainer\);/);
     });
 });
 

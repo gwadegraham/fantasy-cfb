@@ -131,6 +131,9 @@
     }
 
     function render(cb) {
+        // No phase means nothing said where the season is: stay hidden and
+        // leave the page to the panels below rather than guess.
+        if (!cb.phase) { root.hidden = true; return; }
         var current = cb.phases.filter(function (p) { return p.state === 'now'; })[0];
         var steps = cb.phases.map(function (p) {
             var shown = p.key === cb.shown;
@@ -173,8 +176,15 @@
 
     var input = null;
 
-    function draw(phase) {
+    // Redrawing replaces the stepper, so the button a keyboard user just
+    // pressed is gone; put focus back on its replacement (or on Back's
+    // target) instead of letting it fall to <body>.
+    function draw(phase, focusPhase) {
         render(model.build(input, phase ? { phase: phase } : null));
+        if (focusPhase) {
+            var again = root.querySelector('.cb-ph[data-cb-phase="' + focusPhase + '"]');
+            if (again) again.focus();
+        }
     }
 
     function openFix(key) {
@@ -189,7 +199,7 @@
         var ph = e.target.closest('[data-cb-phase]');
         if (ph && input) {
             var key = ph.getAttribute('data-cb-phase');
-            draw(key === model.phaseOf(input) ? null : key);
+            draw(key === model.phaseOf(input) ? null : key, key);
         }
     });
 
