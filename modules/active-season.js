@@ -70,7 +70,11 @@ async function prime() {
         League.find({}, { code: 1, sport: 1, season: 1, commissioners: 1, _id: 0 }).lean()
     ]);
 
-    const next = { sports: {}, leagues: {}, sportStatus: {}, leagueSport: {}, commissioners: {} };
+    // commissioners has no prototype: it is indexed by a league code from the
+    // URL, and `constructor` or `__proto__` on a plain {} is a function, not
+    // a list — which threw inside canManageLeague, before most handlers' try,
+    // and so took the dyno down (#600 review).
+    const next = { sports: {}, leagues: {}, sportStatus: {}, leagueSport: {}, commissioners: Object.create(null) };
     sports.forEach(s => {
         // Finiteness, not just presence. A row written by updateOne skips schema
         // validation, so one can exist with no `season` at all — Number(undefined)
@@ -150,8 +154,8 @@ function sportForLeague(code) {
 // WRITES League.commissioners must call prime() after it; with one web dyno
 // that makes the change immediate, and the interval covers any other.
 function commissionersOf(code) {
-    if (!cache || !cache.commissioners[code]) return [];
-    return cache.commissioners[code].slice();
+    const list = cache && Object.prototype.hasOwnProperty.call(cache.commissioners, code) ? cache.commissioners[code] : null;
+    return Array.isArray(list) ? list.slice() : [];
 }
 
 // Every league an account commissions, from the same cache.

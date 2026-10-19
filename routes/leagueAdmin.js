@@ -352,7 +352,11 @@ function build({ pageLocals = () => ({}) } = {}) {
         try {
             const named = await leagueCatalog.named(req);
             if (named.some(l => (l.name || '').trim().toLowerCase() === name.toLowerCase())) {
-                return res.status(409).json({ message: `There is already a league called "${name}".` });
+                // Only an Admin is told it is a league: the list holds leagues
+                // a League Manager has no part in, basketball ones included.
+                return res.status(409).json({ message: isAdmin(req)
+                    ? `There is already a league called "${name}".`
+                    : 'That name is not available; try another.' });
             }
             const taken = new Set(named.map(l => l.code)
                 .concat((await League.find({}, { code: 1, _id: 0 }).lean()).map(d => d.code)));
@@ -511,7 +515,9 @@ function build({ pageLocals = () => ({}) } = {}) {
             if (found.length !== wanted.length) return res.status(400).json({ message: 'Unknown account.' });
             const before = (doc.commissioners || []).map(String);
             await League.updateOne({ code }, { $set: { commissioners: wanted } });
-            await seasons.prime();
+            // Saved either way; a failed re-prime is caught up by the
+            // interval, and must not report a saved list as a failure.
+            await seasons.prime().catch(e => console.error(`league commissioners: re-prime failed: ${e && e.message}`));
             const name = id => {
                 const a = found.find(x => String(x._id) === id);
                 return a ? [a.firstName, a.lastName].filter(Boolean).join(' ') : id;

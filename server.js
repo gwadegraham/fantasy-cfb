@@ -837,6 +837,8 @@ app.use(['/users', '/draft', '/scoring-config', '/leagues'], (req, res, next) =>
     if (req.path === '/me/push' && (req.method === 'POST' || req.method === 'DELETE')) return next();
     if (req.path === '/me/push/prefs' && req.method === 'PATCH') return next();
     if (req.path === '/me/push/test' && req.method === 'POST') return next();
+    // Score and roster writes from the jobs: no league check of their own.
+    if (requireCommissioner.jobOnlyUsersWrite(req)) return requireAdmin(req, res, next);
     return requireCommissioner(req, res, next);
 });
 

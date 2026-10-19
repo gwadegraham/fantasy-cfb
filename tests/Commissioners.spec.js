@@ -105,6 +105,17 @@ describe('canManageLeague', () => {
         expect(canManageLeague(req, OTHER_HOOPS)).toBe(false);
     });
 
+    // A code from the URL that names an Object.prototype member used to
+    // reach `.slice` on a function and throw — before most handlers' try,
+    // which kills the process (#600 review).
+    test.each(['constructor', '__proto__', 'toString', 'hasOwnProperty'])('a league code of %s is just a league nobody runs', async (code) => {
+        await appoint(HOOPS, [JEFF]);
+        expect(() => canManageLeague(reqFor(), code)).not.toThrow();
+        expect(canManageLeague(reqFor(), code)).toBe(false);
+        expect(seasons.commissionersOf(code)).toEqual([]);
+        expect(isCommissionerOf({ userId: String(JEFF), role: '' }, code)).toBe(false);
+    });
+
     test('fail soft: an unprimed cache is Admins only, and nothing throws', async () => {
         await appoint(HOOPS, [JEFF]);
         seasons._reset();
@@ -136,6 +147,30 @@ describe('the write gate (requireCommissioner)', () => {
         expect(gate(reqFor())).toBe(403);
         await appoint(HOOPS, [JEFF]);
         expect(gate(reqFor())).toBe('next');
+    });
+});
+
+// The two /users writes only the jobs make. Their handlers check no league,
+// so a role-less commissioner passing the role gate could rewrite scores and
+// rosters in any league; server.js sends them to requireAdmin instead.
+describe('job-only /users writes', () => {
+    const { jobOnlyUsersWrite } = requireCommissioner;
+    const r = (method, baseUrl, p) => ({ method, baseUrl, path: p });
+    test('PATCH /users/:id and /users/draft/:id are job-only', () => {
+        expect(jobOnlyUsersWrite(r('PATCH', '/users', '/64b000000000000000000001'))).toBe(true);
+        expect(jobOnlyUsersWrite(r('PATCH', '/users', '/draft/64b000000000000000000001'))).toBe(true);
+    });
+    test('the self-service and league-checked PATCHes are not', () => {
+        ['/me/profile', '/me/captain', '/me/push/prefs', '/64b0/captain', '/64b0/roster-team']
+            .forEach(p => expect(jobOnlyUsersWrite(r('PATCH', '/users', p))).toBe(false));
+        expect(jobOnlyUsersWrite(r('POST', '/users', '/64b0'))).toBe(false);
+        expect(jobOnlyUsersWrite(r('PATCH', '/draft', '/64b0'))).toBe(false);
+    });
+    test('server.js routes them to requireAdmin, ahead of the commissioner gate', () => {
+        const src = require('fs').readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+        const at = src.indexOf('requireCommissioner.jobOnlyUsersWrite(req)) return requireAdmin(req, res, next)');
+        expect(at).toBeGreaterThan(-1);
+        expect(at).toBeLessThan(src.indexOf('return requireCommissioner(req, res, next);', at));
     });
 });
 

@@ -839,6 +839,16 @@ describe('a League Manager creates and runs their own league (#600)', () => {
         expect(elsewhere.status).toBe(403);
     });
 
+    // The name check runs against every league; only an Admin is told the
+    // name belongs to one.
+    test("a taken name is refused without saying it is someone's league", async () => {
+        await create({ sport: 'basketball', name: 'Hardwood Heroes' });
+        const res = await create({ sport: 'basketball', name: 'Hardwood Heroes' }, JEFF());
+        expect(res.status).toBe(409);
+        expect(res.text).not.toContain('Hardwood');
+        expect(res.text).not.toContain('already a league');
+    });
+
     test('opening it lands on the basketball admin page', async () => {
         const code = await make();
         const res = await as(JEFF()).get(`/leagues/admin/${code}/open`);
