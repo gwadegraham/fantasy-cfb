@@ -4,7 +4,7 @@
 // weeklyScore[].scoreByTeam, so per-team season points need no Team lookup, and
 // the drafts collection is backfilled to 2023.
 
-const { buildRecords, buildDraftHistory, teamPointsFor, pointsForTeam, breakdownFor, isPostseason } = require('../modules/hall-of-fame');
+const { buildRecords, buildDraftHistory, teamPointsFor, pointsForTeam, breakdownFor, isPostseason, seasonFinishedFor, teamName } = require('../modules/hall-of-fame');
 
 // 2026 is the in-progress season everywhere in these tests.
 const isFinished = (yr) => Number(yr) < 2026;
@@ -389,5 +389,129 @@ describe('isPostseason', () => {
         expect(isPostseason({ week: 17 })).toBe(true);
         expect(isPostseason({ week: 5 })).toBe(false);
         expect(isPostseason(null)).toBe(false);
+    });
+});
+
+// ---- basketball (#562) ----------------------------------------------------
+//
+// Basketball names a season by its ENDING year and plays it while football's is
+// live; its weeks run to ~22, and its postseason games sit inside ordinary weeks
+// flagged per row (noModes), not in one bucket. Rows carry a teamId only.
+
+describe('seasonFinishedFor', () => {
+    test('basketball: a past season is finished, the active one is not while it is being played', () => {
+        const done = seasonFinishedFor({ sport: 'basketball', activeYear: 2028, status: 'in-season', users: [] });
+        expect(done(2027)).toBe(true);
+        expect(done(2028)).toBe(false);
+    });
+
+    // The bug: judged against football's season (2026 in Oct 2026, 2027 in
+    // Aug 2027), basketball 2027 stayed "in progress" until football reached
+    // 2028 — a year after it wrapped.
+    test('basketball: the active season finishes once its SportSeason is complete', () => {
+        const done = seasonFinishedFor({ sport: 'basketball', activeYear: 2027, status: 'complete', users: [] });
+        expect(done(2027)).toBe(true);
+        expect(done(2028)).toBe(false);
+    });
+
+    test('basketball: a postseason-tagged week does not finish the season early', () => {
+        const users = [user('a', 'Ann', [season(2027, 50, [wk(20, 50, [], 'postseason')])])];
+        const done = seasonFinishedFor({ sport: 'basketball', activeYear: 2027, status: 'in-season', users });
+        expect(done(2027)).toBe(false);
+    });
+
+    test('basketball with no season row finishes nothing', () => {
+        const done = seasonFinishedFor({ sport: 'basketball', activeYear: null, status: null, users: [] });
+        expect(done(2026)).toBe(false);
+        expect(done(2027)).toBe(false);
+    });
+
+    test('football keeps its rule: past seasons, plus one whose postseason bucket is scored', () => {
+        const users = [user('a', 'Ann', [
+            season(2026, 50, [wk(1, 10), wk(17, 40, [], 'postseason')]),
+            season(2025, 50, [wk(1, 50)])
+        ])];
+        const done = seasonFinishedFor({ sport: 'football', activeYear: 2026, status: 'complete', users });
+        expect(done(2025)).toBe(true);
+        expect(done(2026)).toBe(true);
+        expect(done(2027)).toBe(false);
+        // status is a basketball signal only: 'complete' alone doesn't finish football
+        const noPost = seasonFinishedFor({ sport: 'football', activeYear: 2026, status: 'complete', users: [] });
+        expect(noPost(2026)).toBe(false);
+    });
+});
+
+describe('basketball records', () => {
+    const roster = [{ id: 150, school: 'Duke' }, { id: 2, school: 'Auburn' }];
+    const ht = (teamId, score, extra) => Object.assign({ teamId, gameId: teamId * 1000 + score, score }, extra || {});
+    const done2027 = (yr) => Number(yr) === 2027;
+    const hoopsRec = (users, key) => buildRecords(users, done2027, { sport: 'basketball' }).find(r => r.key === key);
+
+    function hoopsSeason() {
+        return season(2027, 0, [
+            wk(3, 9, [ht(150, 5), ht(2, 4)]),
+            // A late-February week: past 16, still the regular season.
+            wk(18, 12, [ht(150, 7), ht(2, 5)]),
+            // Conference tournament week: a regular game alongside a 10-pt title.
+            wk(20, 13, [ht(2, 3), ht(150, 10, { noModes: true })]),
+            // The NCAA run.
+            wk(21, 16, [ht(150, 16, { noModes: true })])
+        ], roster);
+    }
+
+    test('weeks past 16 are ordinary weeks, not the postseason bucket', () => {
+        const u = [user('a', 'Ann', [hoopsSeason()])];
+        const week = hoopsRec(u, 'bestWeek');
+        expect(week.detail).toBe('Week 18');
+        expect(week.value).toBe(12);
+    });
+
+    test('a week holding any postseason game cannot be biggest week', () => {
+        // Week 20 (13) and 21 (16) out-score week 18 (12) only on the tournament games.
+        const u = [user('a', 'Ann', [hoopsSeason()])];
+        expect(hoopsRec(u, 'bestWeek').value).toBe(12);
+    });
+
+    test('postseason games get their own record, from the flagged rows', () => {
+        const u = [user('a', 'Ann', [hoopsSeason()])];
+        const post = hoopsRec(u, 'bestPostseason');
+        expect(post.value).toBe(26);
+        expect(post.detail).toBe('2 games');
+        expect(post.breakdown.rows).toEqual([{ label: 'Duke', value: 26, sub: '2 games' }]);
+    });
+
+    test('best single game is a regular-season game, named from the roster', () => {
+        const u = [user('a', 'Ann', [hoopsSeason()])];
+        const game = hoopsRec(u, 'bestTeamGame');
+        expect(game.value).toBe(7);
+        expect(game.detail).toBe('Duke · Week 18');
+    });
+
+    test('id-only rows read as schools in every breakdown', () => {
+        const u = [user('a', 'Ann', [hoopsSeason()])];
+        expect(hoopsRec(u, 'bestSeason').breakdown.rows.map(r => r.label)).toEqual(['Duke', 'Auburn']);
+        expect(hoopsRec(u, 'bestWeek').breakdown.rows.map(r => r.label)).toEqual(['Duke', 'Auburn']);
+        const team = hoopsRec(u, 'bestTeamSeason');
+        expect(team.detail).toBe('Duke');
+        expect(team.breakdown.rows.map(r => r.label)).toEqual(['Week 3', 'Week 18', 'Week 20', 'Week 21']);
+    });
+
+    test('the same rows under football rules keep football behaviour', () => {
+        // No sport → football: week 18+ is the postseason bucket, noModes means nothing.
+        const u = [user('a', 'Ann', [hoopsSeason()])];
+        const recs = buildRecords(u, done2027);
+        expect(recs.find(r => r.key === 'bestWeek').detail).toBe('Week 3');
+        expect(recs.find(r => r.key === 'bestPostseason').value).toBe(41);
+    });
+});
+
+describe('teamName', () => {
+    test('prefers the row name, falls back to the roster by id, else null', () => {
+        const s = season(2027, 0, [], [{ id: 150, school: 'Duke' }]);
+        expect(teamName(s, { team: 'Iowa', teamId: 150 })).toBe('Iowa');
+        expect(teamName(s, { teamId: 150 })).toBe('Duke');
+        expect(teamName(s, { teamId: 9 })).toBeNull();
+        expect(teamName(s, {})).toBeNull();
+        expect(teamName(null, null)).toBeNull();
     });
 });
