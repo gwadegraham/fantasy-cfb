@@ -1,11 +1,26 @@
 #!/usr/bin/env python3
-"""Build a 1200x630 social share image from a tall BADGE master (#321).
+"""Build a 1200x630 social share image from a tall crest (#321).
 
-    python3 design/tools/make_badge_og.py design/brand/campus-clash-hardwood-badge.png \
-        images/hardwood-og.png F0833F
+The masters are the vector crests in design/brand/. Nothing in design/tools
+rasterizes SVG, so render one at 2x with headless Chrome first (transparent
+background, 1095x1437 CSS px -> 2190x2874), then fit it here:
 
-make_og.py centres a horizontal lockup, and Hardwood has none (the issue
-deliberately skipped making one). The badge is tall, so it is fitted to the
+    echo "<style>html,body{margin:0;background:transparent}img{display:block;\
+      width:1095px;height:1437px}</style><img src='file://$PWD/design/brand/crest-hardwood.svg'>" \
+        > /tmp/crest.html
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+        --allow-file-access-from-files --default-background-color=00000000 \
+        --force-device-scale-factor=2 --window-size=1095,1437 \
+        --screenshot=/tmp/crest-2x.png file:///tmp/crest.html
+
+    python3 design/tools/make_badge_og.py /tmp/crest-2x.png images/hardwood-og.png F0833F
+
+Two cards ship from this: images/hardwood-og.png (crest-hardwood.svg, glow
+F0833F, for /hardwood) and images/campus-clash-parent-og.png (crest-parent.svg,
+glow C9CEE6 = --cc-muted-bright, for the logged-out root at server.js).
+
+make_og.py centres a horizontal lockup, and only football has one (#321
+deliberately skipped a Hardwood one). The badge is tall, so it is fitted to the
 canvas HEIGHT instead and centred, over the page navy with a soft glow in the
 sport's accent. No text on the image: every unfurler prints the page's
 og:title and og:description beside it, and a centred badge survives the

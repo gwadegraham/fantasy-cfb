@@ -1,7 +1,3 @@
-Here’s a **simple branding reference sheet** for your project, **Campus Clash** — clean, modern, and ready to share with designers or developers working on the site:
-
----
-
 # 🎓 Campus Clash – Branding Reference Sheet
 
 ---
@@ -16,9 +12,22 @@ Here’s a **simple branding reference sheet** for your project, **Campus Clash*
 | **Text (Secondary)** | `#A4A9C2`  | Subtext, less prominent UI elements     |
 | **Card / Panel BG**  | `#1A1F33`  | Grid tiles, highlight containers        |
 | **Borders / Lines**  | `#2A2E42`  | Subtle dividers                         |
-| **Success Green**    | `#71d28d`  | Positive outcomes                       |
-| **Info Blue**        | `#4686ec`  | Buttons, neutral links                  |
-| **Gold Highlight**   | `#fbd266`  | Awards, top team scores, special cases  |
+| **Success Green**    | `#22C37A`  | Wins, positive outcomes                 |
+| **Info Blue**        | `#6C9BFF`  | Neutral highlights, focus rings         |
+| **Gold Highlight**   | `#E0B341`  | Leaders, awards, attention              |
+
+The source of truth is the `--cc-*` token block at the top of `public/styles.css`; this table mirrors it. If they disagree, the CSS wins.
+
+**The accent follows the sport.** Football (Gridiron) uses the red above. Basketball (Hardwood) swaps it for `#F0833F` orange via `:root[data-sport="basketball"]`. Sport-neutral surfaces (login, invites, the root link preview) use the parent crest, whose accent is `#C9CEE6` (`--cc-muted-bright`).
+
+---
+
+## 🛡️ Marks
+
+* **Look:** flat, clean, three colours per crest (navy, one accent, cream). No textures, no distressing, no gradients inside the mark.
+* **Masters** live in `design/brand/` (not publicly served): `crest-gridiron.svg`, `crest-hardwood.svg`, `crest-parent.svg`.
+* **Web derivatives** live in `images/`, which is publicly served, so only add a file there once a page references it. The tools in `design/tools/` build them.
+* **The navbar wordmark is live CSS type** (Graduate + Pacifico), not an image. Do not replace it with a logo file.
 
 ---
 
@@ -69,8 +78,4 @@ All fonts are loaded via Google Fonts.
 | **CTA Buttons**         | `#ed5858` with `#F4F6FB` text                         |
 | **Tables**              | Background `#F4F6FB`, text `#101322`                  |
 | **Team Scores / Cards** | `#1A1F33`, border `#2A2E42`, text `#F4F6FB`           |
-| **Chart Lines**         | `#ed5858`, `#4686ec`, `#71d28d`, `#fbd266`, `#A4A9C2` |
-
----
-
-Let me know if you'd like this exported as a PDF, style guide template, or HTML reference file.
+| **Chart Lines**         | `#ed5858`, `#6C9BFF`, `#22C37A`, `#E0B341`, `#A4A9C2` |

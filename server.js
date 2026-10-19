@@ -492,7 +492,7 @@ app.get('/', (req, res) => {
         const TITLE = 'Campus Clash — College Football Fantasy';
         const DESC = 'Fantasy college football where you draft entire programs, not players. '
             + 'Every Saturday counts.';
-        const OG_IMAGE = SITE + '/images/campus-clash-og.png';
+        const OG_IMAGE = SITE + '/images/campus-clash-parent-og.png';
         res.type('html').send(
             '<!DOCTYPE html><html lang="en"><head>'
             + '<meta charset="utf-8">'
