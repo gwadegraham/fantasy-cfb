@@ -113,11 +113,14 @@
       z-index: 1;
     }
 
-    /* One-shot ring pulse behind the crest (the draft-room hero idiom). */
+    /* One-shot ring pulse behind the crest (the draft-room hero idiom).
+       Centred on the SHIELD, not the image: the parent crest's skyline puts
+       the shield's middle at ~63% down, and a ring centred higher arcs
+       through the gaps between the buildings. */
     .crest-wrap::after {
       content: "";
       position: absolute;
-      left: 50%; top: 52%;
+      left: 50%; top: 63%;
       width: 78%; aspect-ratio: 1;
       transform: translate(-50%, -50%);
       border-radius: 50%;
@@ -138,6 +141,8 @@
       color: var(--cc-muted);
     }
     .brand-tagline b { color: var(--cc-text); font-weight: 600; }
+    /* One sentence per line; balance alone splits the first one. */
+    .brand-tagline span { display: inline-block; }
 
     /* ---- Form panel ------------------------------------------------------- */
     .form-panel {
@@ -470,7 +475,7 @@
         <img class="crest" src="https://campusclash.io/images/campus-clash-crest-parent-720.webp"
              alt="Campus Clash" width="720" height="994" />
       </span>
-      <p class="brand-tagline">Draft <b>programs</b>, not players. Every Saturday counts.</p>
+      <p class="brand-tagline"><span>Draft <b>programs</b>, not players.</span> <span>Every game counts.</span></p>
     </section>
 
     <section class="form-panel">
@@ -483,7 +488,7 @@
         </div>
 
         <p class="eyebrow anim d1" id="eyebrow">Est. 2023 &middot; Members only</p>
-        <h1 class="anim d1" id="headline">Take the field</h1>
+        <h1 class="anim d1" id="headline">Game on</h1>
         <p class="subhead anim d2" id="subhead">Sign in to your franchise.</p>
 
         <form id="login-form" class="anim d3" novalidate>
@@ -594,7 +599,7 @@
       document.body.classList.add('is-invite');
       isSignup = true;
       document.getElementById('eyebrow').textContent = 'Invited · One more step';
-      // Short enough to hold one line at the same size as "Take the field";
+      // Short enough to hold one line at the same size as "Game on";
       // the subhead does the instructing.
       document.getElementById('headline').textContent = 'Almost there';
       document.getElementById('subhead').textContent =
