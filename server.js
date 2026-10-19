@@ -20,7 +20,7 @@ const { inviteBind, COOKIE: INVITE_COOKIE, COOKIE_MAX_AGE_MS: INVITE_COOKIE_MAX_
 const inviteToken = require('./modules/invite-token');
 const auth0Management = require('./modules/auth0-management');
 const authSubBackfill = require('./modules/auth-sub-backfill');
-const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
+const { leagueCodeFor, canManageLeague, managedLeagues } = require('./modules/league-access');
 const leagueSelection = require('./modules/league-selection');
 const ScoringConfig = require('./models/scoringConfig');
 const League = require('./models/league');
@@ -96,6 +96,10 @@ app.use((req, res, next) => {
     res.locals.spoof = devRole.readSpoof(req); // {roles, league} | null, for the dev widget
     next();
 });
+
+// The home-screen icon picked on /install: the apple-touch-icon every view
+// links, and a per-visitor /manifest.json that shadows public/manifest.json.
+require('./modules/app-icon').mount(app);
 
 // Claim a commissioner invite. Must sit BETWEEN the auth router (so there is a
 // session to read) and the identity guard below — an invitee has no franchise
@@ -189,6 +193,15 @@ app.use(async (req, res, next) => {
     // the football, since the invite and error pages render without this
     // middleware.
     res.locals.sportIcon = res.locals.viewerSport === 'basketball' ? 'fa-basketball' : 'fa-football';
+    // The navbar's admin link (#600): the admin page for the VIEWED league's
+    // sport when the viewer runs that league, else for one they do run; null
+    // hides it. Sync (season cache), so it costs nothing on asset requests.
+    try {
+        res.locals.adminHref = hoopsAdmin.adminHref(req, res.locals.viewerLeagueCode);
+    } catch (e) {
+        console.error(`admin link: ${e.message}`);
+        res.locals.adminHref = null;
+    }
     // canSwitch: whether to OFFER a switcher. isAdmin: whether the sticky
     // localStorage choice may override the server's answer. They were one flag
     // and must not be: leagueCode outlives a logout, and it is validated
@@ -268,10 +281,15 @@ app.get('/draft-token', requiresAuth(), (req, res) => {
     // `role === 'League Manager' && user.league === league`, so a token
     // carrying a league the viewer PICKED would hand a League Manager
     // commissioner powers in another league's draft room.
+    // The commissioner LIST (#600) is not in the token: the socket checks it
+    // live, against the draft's own league, so it cannot be carried from one
+    // league's room into another's.
     { userId: ctx.userId, role: ctx.role, name: ctx.firstName, league: leagueCodeFor(req.effUser) },
     process.env.AUTH_SECRET
   );
-  res.json({ token });
+  // What the room should SHOW: the commissioner controls, for the leagues this
+  // person runs. Display only — every control is re-checked by the socket.
+  res.json({ token, isAdmin: devRole.effectiveRoles(req).includes('Admin'), manages: managedLeagues(req) });
 });
 
 // register the given template engine 
@@ -576,7 +594,7 @@ app.get('/draft-room', (req, res) => {
 app.get('/draft-board', (req, res) => {
     if (!req.oidc.isAuthenticated()) return res.redirect('/login');
     const roles = devRole.effectiveRoles(req);
-    if (!roles.includes('Admin') && !roles.includes('League Manager')) return res.redirect('/');
+    if (!roles.includes('Admin') && !managedLeagues(req).length) return res.redirect('/');
     const user = buildUserContext(req.effUser);
     res.render('draftBoard', {
         user, userState: safeJson(req.effUser),
@@ -614,13 +632,15 @@ app.get('/admin', (req, res) => {
         const user = buildUserContext(req.effUser);
         // Only commissioners get the admin page; other members go home.
         // Effective roles so a dev role-spoof is honored.
+        // A commissioner on some league's list (#600) counts, role or not.
         const roles = devRole.effectiveRoles(req);
-        if (!roles.includes('Admin') && !roles.includes('League Manager')) {
+        const isAdmin = roles.includes('Admin');
+        if (!isAdmin && !managedLeagues(req).length) {
             return res.redirect('/');
         }
-        const isAdmin = roles.includes('Admin');
         // Football and basketball admin are separate pages (#518).
-        const elsewhere = hoopsAdmin.footballAdminRedirect(roles, res.locals.viewerSport);
+        const viewed = res.locals.viewerLeagueCode;
+        const elsewhere = hoopsAdmin.footballAdminRedirect(req, viewed);
         if (elsewhere) return res.redirect(elsewhere);
         const userState = safeJson(req.effUser);
 
@@ -630,7 +650,14 @@ app.get('/admin', (req, res) => {
         // was dead on the only path that creates a draft.
         res.render('admin', {
             user, userState, isAdmin,
-            year: hoopsAdmin.footballAdminSeason(roles, res.locals.viewerLeagueCode, req.effUser),
+            canCreateLeague: isAdmin || roles.includes('League Manager'),
+            // Named outright, as /hoops/admin does: the client used to work
+            // this out from the Auth0 flag, which cannot name any league a
+            // commissioner was appointed to or created (#600).
+            // Not for an Admin, whose page has always followed the client's
+            // own league choice (public/league.js ccLeagueCode).
+            manageLeague: isAdmin ? null : hoopsAdmin.footballManagedLeague(req, viewed),
+            year: hoopsAdmin.footballAdminSeason(req, viewed),
             draftDefaults: safeJson(draftDefaults.BY_SPORT)
         });
     } else {

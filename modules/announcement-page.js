@@ -6,11 +6,13 @@
 // these handlers do not gate on auth, so they need no login — which is also
 // why each path is on modules/identity-guard.js's ALLOW_PATH list.
 //
-// Two pages so far: /season-preview (football, Jul 2026) and /hardwood
-// (basketball, Oct 2026).
+// Pages: /season-preview (football, Jul 2026), /hardwood (basketball, Oct
+// 2026) and /install (how to add the app to a home screen; unlinked, sent by
+// hand).
 
 const fs = require('fs');
 const path = require('path');
+const appIcon = require('./app-icon');
 
 // Canonical, absolute URLs so link previews (iMessage, Slack, etc.) resolve
 // the image no matter where the page is opened from.
@@ -43,18 +45,42 @@ const PAGES = {
         icons: '<link rel="icon" type="image/svg+xml" href="/images/favicon-hardwood.svg">'
             + '<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-hardwood-32.png">'
             + '<link rel="apple-touch-icon" href="/images/apple-touch-icon-hardwood.png">'
+    },
+    // The install guide. It carries the app's manifest and home-screen tags
+    // because this is the page people are on when they tap Add to Home Screen:
+    // without them iOS saves a bookmark to /install instead of the app.
+    '/install': {
+        file: 'docs/announcements/install.html',
+        docTitle: 'Install Campus Clash',
+        title: 'Put Campus Clash on your home screen',
+        desc: 'Add Campus Clash to your phone or computer like an app, '
+            + 'and turn on game-day alerts. Takes about 30 seconds.',
+        image: '/images/campus-clash-og.png',
+        imageType: 'image/png',
+        imageAlt: 'Campus Clash',
+        // A function of the request: the home-screen icon is whichever one the
+        // visitor picked on this page (modules/app-icon.js).
+        icons: req => '<link rel="icon" type="image/svg+xml" href="/images/favicon.svg">'
+            + '<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">'
+            + '<link rel="apple-touch-icon" sizes="180x180" href="' + appIcon.src(appIcon.fromReq(req), 180) + '">'
+            + '<link rel="manifest" href="/manifest.json">'
+            + '<meta name="theme-color" content="#101322">'
+            + '<meta name="apple-mobile-web-app-capable" content="yes">'
+            + '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
     }
 };
 
-// The whole document for one page, given its fragment. Pure.
-function shell(urlPath, page, fragment) {
+// The whole document for one page, given its fragment. Pure. `req` only feeds
+// a page whose icons depend on the visitor.
+function shell(urlPath, page, fragment, req) {
+    const icons = typeof page.icons === 'function' ? page.icons(req || {}) : (page.icons || '');
     const og = SITE + page.image;
     return '<!DOCTYPE html><html lang="en"><head>'
         + '<meta charset="utf-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1">'
         + '<meta name="robots" content="noindex">'
         + '<title>' + page.docTitle + '</title>'
-        + (page.icons || '')
+        + icons
         + '<meta name="description" content="' + page.desc + '">'
         // Open Graph (iMessage, Facebook, Slack, LinkedIn, …)
         + '<meta property="og:type" content="website">'
@@ -84,7 +110,7 @@ function mount(app, root) {
         app.get(urlPath, (req, res) => {
             try {
                 const fragment = fs.readFileSync(path.join(root, page.file), 'utf8');
-                res.type('html').send(shell(urlPath, page, fragment));
+                res.type('html').send(shell(urlPath, page, fragment, req));
             } catch (err) {
                 res.status(404).send('Announcement not found.');
             }

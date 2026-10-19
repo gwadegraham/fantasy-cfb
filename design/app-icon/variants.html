@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<!--
+  The home-screen icon choices offered on /install, drawn at whatever size the
+  window is. design/tools/render_app_icon_variants.sh screenshots this page once
+  per icon per size, so every PNG is rendered from the vector at its own size,
+  never downscaled (see favicon-set).
+
+    variants.html?id=football&px=180   one icon, 180px square, mid-window
+    variants.html               every icon side by side, for eyeballing
+
+  Rules every icon keeps:
+  - An opaque plate. iOS ignores alpha and fills it black.
+  - All ink inside the inner-80% circle (r = 409.6 of 1024), the part Android
+    keeps when it crops the 512 as a maskable icon.
+
+  The ids are the contract with modules/app-icon.js; renaming one strands
+  everyone who picked it on the default.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>App icon variants</title>
+<link rel="stylesheet" href="../../public/mascots.css">
+<style>
+  html, body { margin: 0; background: transparent; }
+  /* Centred at an exact pixel size: headless Chrome will not open a window
+     narrower than ~500px, so the render script shoots a 600px window and
+     centre-crops it. */
+  .one { display: grid; place-items: center; width: 100vw; height: 100vh; }
+  .one svg.icon { display: block; }
+  .all { display: flex; flex-wrap: wrap; gap: 24px; padding: 24px; background: #2a2e42; font: 14px -apple-system, sans-serif; color: #f4f6fb; }
+  .all figure { margin: 0; text-align: center; }
+  .all svg.icon { width: 180px; height: 180px; border-radius: 40px; display: block; margin-bottom: 8px; }
+  .all .safe { fill: none; stroke: #0f0; stroke-width: 3; stroke-dasharray: 12 10; }
+  /* A screenshot is one frame: freeze the mascots' idle bob. */
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+</style>
+</head>
+<body>
+<script src="../../public/mascots.js"></script>
+<script>
+  var NAVY = '#101322', CREAM = '#F4F6FB', RED = '#ED5858', GOLD = '#E0B341',
+      VIOLET = '#8E8CF0', ORANGE = '#F0833F';
+
+  // The navbar's varsity C and script C, lifted from design/brand/app-icon.svg.
+  // `knock` is the gap cut around the script C, so it is always the plate.
+  var VARSITY = 'M172-139L223-86L396-86L460-151L460-236L540-236L540-110L436 0L184 0L80-110L80-640L184-750L436-750L540-640L540-514L460-514L460-599L397-664L224-664L172-611L172-139Z';
+  var SCRIPT = 'M453 5Q334 5 246-38.5Q158-82 111-162Q64-242 64-348Q64-495 119.5-609Q175-723 270-785.5Q365-848 481-848Q589-848 645-792.5Q701-737 701-646Q701-585 679.5-548Q658-511 618-511Q590-511 574-524Q558-537 558-562Q558-571 562-595Q568-625 568-643Q568-734 471-734Q405-734 345-691Q285-648 248-564.5Q211-481 211-366Q211-246 278-180.5Q345-115 476-115Q541-115 607.5-131.5Q674-148 755-182Q770-188 780-188Q796-188 804-176Q812-164 812-145Q812-84 746-55Q675-24 598.5-9.5Q522 5 453 5Z';
+  function cc(plate, varsity, script) {
+    var s = 'transform="translate(612.0 612.0) scale(0.55100) translate(-438.0 421.5)" stroke-linejoin="round" paint-order="stroke"';
+    return '<rect width="1024" height="1024" fill="' + plate + '"/>'
+      + '<path transform="translate(398.0 424.0) scale(0.66667) translate(-310.0 375.0)" d="' + VARSITY + '" fill="' + varsity + '" stroke="' + varsity + '" stroke-width="54.0" stroke-linejoin="round" paint-order="stroke"/>'
+      + '<path ' + s + ' d="' + SCRIPT + '" fill="' + plate + '" stroke="' + plate + '" stroke-width="152.5"/>'
+      + '<path ' + s + ' d="' + SCRIPT + '" fill="' + script + '" stroke="' + script + '" stroke-width="32.7"/>';
+  }
+
+  // The favicons' balls (images/favicon.svg, favicon-hardwood.svg), scaled up.
+  // At this size the football keeps its laces.
+  function football() {
+    return '<rect width="1024" height="1024" fill="' + NAVY + '"/>'
+      + '<g transform="translate(512 512) scale(24) rotate(-35)">'
+      + '<path d="M-15.6 0C-6.55-12.8 6.55-12.8 15.6 0C6.55 12.8-6.55 12.8-15.6 0Z" fill="' + RED + '"/>'
+      + '<g fill="' + CREAM + '"><rect x="-7.6" y="-1.4" width="15.2" height="2.8" rx="1.4"/><rect x="-6.9" y="-4" width="1.8" height="8" rx="0.9"/><rect x="-3.9" y="-4" width="1.8" height="8" rx="0.9"/><rect x="-0.9" y="-4" width="1.8" height="8" rx="0.9"/><rect x="2.1" y="-4" width="1.8" height="8" rx="0.9"/><rect x="5.1" y="-4" width="1.8" height="8" rx="0.9"/></g></g>';
+  }
+  function hoops() {
+    return '<rect width="1024" height="1024" fill="' + NAVY + '"/>'
+      + '<defs><clipPath id="hb"><circle cx="16" cy="16" r="14.6"/></clipPath></defs>'
+      + '<g transform="translate(512 512) scale(26) translate(-16 -16)">'
+      + '<circle cx="16" cy="16" r="14.6" fill="' + ORANGE + '"/>'
+      + '<g clip-path="url(#hb)" fill="none" stroke="' + NAVY + '" stroke-width="1.3"><path d="M16 1.4V30.6"/><path d="M1.4 16H30.6"/><path d="M5.49 5.85C8.41 10.74 8.41 21.26 5.49 26.15"/><path d="M26.51 5.85C23.59 10.74 23.59 21.26 26.51 26.15"/></g></g>';
+  }
+  // Laces and Dribbles: the chip-size head ccMascot already draws, on navy.
+  function mascot(sport) {
+    var head = ccMascot.svg({ sport: sport, size: 'head', pose: 'cheer' })
+      .replace('<svg ', '<svg x="122" y="122" width="780" height="780" ');
+    return '<rect width="1024" height="1024" fill="' + NAVY + '"/>' + head;
+  }
+
+  var ICONS = {
+    classic:  function () { return cc(NAVY, CREAM, RED); },
+    football: football,
+    hoops:    hoops,
+    red:      function () { return cc(RED, CREAM, NAVY); },
+    cream:    function () { return cc(CREAM, NAVY, RED); },
+    gold:     function () { return cc(NAVY, CREAM, GOLD); },
+    violet:   function () { return cc(VIOLET, NAVY, CREAM); },
+    laces:    function () { return mascot('football'); },
+    dribbles: function () { return mascot('basketball'); }
+  };
+
+  function icon(id, guide) {
+    return '<svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">' + ICONS[id]()
+      + (guide ? '<circle class="safe" cx="512" cy="512" r="409.6"/>' : '') + '</svg>';
+  }
+
+  var id = new URLSearchParams(location.search).get('id');
+  if (id && ICONS[id]) {
+    document.body.className = 'one';
+    var px = parseInt(new URLSearchParams(location.search).get('px'), 10) || 512;
+    document.body.innerHTML = icon(id).replace('<svg ', '<svg width="' + px + '" height="' + px + '" ');
+  } else {
+    document.body.className = 'all';
+    document.body.innerHTML = Object.keys(ICONS).map(function (k) {
+      return '<figure>' + icon(k, location.search.indexOf('guide') !== -1) + '<figcaption>' + k + '</figcaption></figure>';
+    }).join('');
+  }
+</script>
+</body>
+</html>

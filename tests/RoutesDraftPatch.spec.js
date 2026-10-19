@@ -7,6 +7,11 @@
 
 process.env.YEAR = '2026';
 
+// The route is token-or-Admin (#600): its real caller is a job, so the
+// test calls it the way the job does.
+const TOKEN = 'test-internal-token';
+process.env.INTERNAL_API_TOKEN = TOKEN;
+
 const express = require('express');
 const request = require('supertest');
 const mongoose = require('mongoose');
@@ -55,7 +60,7 @@ describe('PATCH /users/draft/:id', () => {
     test('writes the drafted teams into an existing season', async () => {
         const user = await seed();
 
-        const res = await request(app).patch(`/users/draft/${user._id}`)
+        const res = await request(app).patch(`/users/draft/${user._id}`).set('X-Internal-Token', TOKEN)
             .send({ league: LEAGUE, season: SEASON, teams: [team(1, 'Iowa'), team(2, 'Duke')] });
 
         expect(res.status).toBe(200);
@@ -70,7 +75,7 @@ describe('PATCH /users/draft/:id', () => {
     test('pushes a season the manager did not have', async () => {
         const user = await seed([{ season: 2025, franchiseName: 'Last Year', teams: [] }]);
 
-        const res = await request(app).patch(`/users/draft/${user._id}`)
+        const res = await request(app).patch(`/users/draft/${user._id}`).set('X-Internal-Token', TOKEN)
             .send({ league: LEAGUE, season: SEASON, teams: [team(1, 'Iowa')] });
 
         expect(res.status).toBe(200);
@@ -80,7 +85,7 @@ describe('PATCH /users/draft/:id', () => {
 
     test('the response is the User shape the draft room reads', async () => {
         const user = await seed();
-        const res = await request(app).patch(`/users/draft/${user._id}`)
+        const res = await request(app).patch(`/users/draft/${user._id}`).set('X-Internal-Token', TOKEN)
             .send({ league: LEAGUE, season: SEASON, teams: [team(1, 'Iowa')] });
 
         const body = strip(res.body);
@@ -94,7 +99,7 @@ describe('PATCH /users/draft/:id', () => {
 
     test('an unknown id is 404', async () => {
         const ghost = new mongoose.Types.ObjectId();
-        const res = await request(app).patch(`/users/draft/${ghost}`).send({ league: LEAGUE, season: SEASON, teams: [] });
+        const res = await request(app).patch(`/users/draft/${ghost}`).set('X-Internal-Token', TOKEN).send({ league: LEAGUE, season: SEASON, teams: [] });
         expect(res.status).toBe(404);
     });
 
@@ -114,7 +119,7 @@ describe('PATCH /users/draft/:id', () => {
     test('an account with NO franchise is 404, not a hung request', async () => {
         const account = await Account.create({ firstName: 'Hoops', lastName: 'Only', color: '#fff' });
 
-        const res = await request(app).patch(`/users/draft/${account._id}`)
+        const res = await request(app).patch(`/users/draft/${account._id}`).set('X-Internal-Token', TOKEN)
             .send({ league: LEAGUE, season: SEASON, teams: [team(1, 'Iowa')] });
 
         expect(res.status).toBe(404);

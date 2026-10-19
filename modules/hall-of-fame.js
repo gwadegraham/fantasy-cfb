@@ -33,6 +33,7 @@ function teamPointsFor(season) {
     ((season && season.teams) || []).forEach(t => {
         if (t && t.school != null) idBySchool[t.school] = t.id;
     });
+    const schoolById = schoolsById(season);
 
     const acc = {};
     ((season && season.weeklyScore) || []).forEach(w => {
@@ -42,10 +43,30 @@ function teamPointsFor(season) {
             const key = id != null ? 'id:' + id : 'nm:' + (st.team || '?');
             const row = acc[key] || (acc[key] = { teamId: id, school: st.team || null, points: 0 });
             if (!row.school && st.team) row.school = st.team;
+            // Basketball rows carry only a teamId, so the name comes from the
+            // roster (hydrated from teamRefs by the route).
+            if (!row.school && id != null && schoolById[id]) row.school = schoolById[id];
             row.points = round1(row.points + (st.score || 0));
         });
     });
     return Object.values(acc);
+}
+
+// { teamId: school } off a season's roster.
+function schoolsById(season) {
+    const out = {};
+    ((season && season.teams) || []).forEach(t => {
+        if (t && t.id != null && t.school != null) out[Number(t.id)] = t.school;
+    });
+    return out;
+}
+
+// A scoreByTeam row's school: its own name (football), else the roster's
+// (basketball rows are id-only).
+function teamName(season, st) {
+    if (st && st.team) return st.team;
+    if (st && st.teamId != null) return schoolsById(season)[Number(st.teamId)] || null;
+    return null;
 }
 
 // A team's points from the rows above — by id, falling back to school name for
@@ -87,7 +108,24 @@ function isPostseason(w) {
     return !!w && (w.season === 'postseason' || w.week > 16);
 }
 
-const weekLabel = (w) => (isPostseason(w) ? 'Postseason' : `Week ${w.week}`);
+// Where the postseason lives differs by sport, and the records book needs it
+// kept apart either way — it scores on a much bigger scale in both.
+//
+//   football    one weeklyScore entry holds every bowl and CFP game (the
+//               bucket above), so a whole WEEK is postseason or not.
+//   basketball  weeks are real calendar weeks all the way to April (~22 of
+//               them, so `week > 16` would misfile March). Postseason games —
+//               conference tournaments, the NCAA, the NIT — sit inside those
+//               weeks, flagged per ROW with `noModes` by the scoring pass
+//               (modules/hoops-scoring-pass.js). A week can hold both kinds.
+function postseasonRules(sport) {
+    if (sport === 'basketball') {
+        return { weekIsPost: () => false, rowIsPost: (st) => !!(st && st.noModes) };
+    }
+    return { weekIsPost: isPostseason, rowIsPost: () => false };
+}
+
+const weekLabel = (w, rules) => ((rules || postseasonRules()).weekIsPost(w) ? 'Postseason' : `Week ${w.week}`);
 
 // What a record expands to show. A bare "76 pts · 16 games" says nothing; the
 // teams behind it are the whole story (Brock's 2024 postseason reads as Ohio
@@ -102,6 +140,7 @@ const weekLabel = (w) => (isPostseason(w) ? 'Postseason' : `Week ${w.week}`);
 function breakdownFor(key, ctx) {
     if (!ctx) return null;
     const s = ctx.season;
+    const rules = ctx.rules || postseasonRules();
 
     // Which teams made up a season's points.
     if (key === 'bestSeason' || key === 'worstSeason') {
@@ -117,7 +156,7 @@ function breakdownFor(key, ctx) {
     if (key === 'bestWeek') {
         const acc = {};
         (ctx.entry.scoreByTeam || []).forEach(st => {
-            const k = st.team || 'Unknown';
+            const k = teamName(s, st) || 'Unknown';
             acc[k] = round1((acc[k] || 0) + (st.score || 0));
         });
         const rows = Object.keys(acc).map(k => ({ label: k, value: acc[k] }))
@@ -128,9 +167,11 @@ function breakdownFor(key, ctx) {
     // Every bowl/CFP game, grouped by team — a run shows up as a game count.
     if (key === 'bestPostseason') {
         const acc = {};
-        (s.weeklyScore || []).filter(isPostseason).forEach(w => {
+        (s.weeklyScore || []).forEach(w => {
+            const wholeWeek = rules.weekIsPost(w);
             (w.scoreByTeam || []).forEach(st => {
-                const k = st.team || 'Unknown';
+                if (!wholeWeek && !rules.rowIsPost(st)) return;
+                const k = teamName(s, st) || 'Unknown';
                 const row = acc[k] || (acc[k] = { label: k, value: 0, games: 0 });
                 row.value = round1(row.value + (st.score || 0));
                 row.games++;
@@ -150,7 +191,7 @@ function breakdownFor(key, ctx) {
                 .filter(st => (ctx.teamId != null && Number(st.teamId) === Number(ctx.teamId)) || st.team === ctx.school)
                 .reduce((sum, st) => sum + (st.score || 0), 0);
             if ((w.scoreByTeam || []).some(st => (ctx.teamId != null && Number(st.teamId) === Number(ctx.teamId)) || st.team === ctx.school)) {
-                rows.push({ label: weekLabel(w), value: round1(pts) });
+                rows.push({ label: weekLabel(w, rules), value: round1(pts) });
             }
         });
         return rows.length ? { kind: 'weeks', rows } : null;
@@ -159,7 +200,9 @@ function breakdownFor(key, ctx) {
     return null;
 }
 
-function buildRecords(users, isFinished) {
+// `opts.sport` picks the postseason rules above; football is the default.
+function buildRecords(users, isFinished, opts) {
+    const rules = postseasonRules(opts && opts.sport);
     let bestSeason = null, worstSeason = null, bestWeek = null, bestTeamGame = null,
         bestTeamSeason = null, bestPostseason = null;
 
@@ -170,12 +213,12 @@ function buildRecords(users, isFinished) {
 
             const total = s.cumulativeScore;
             if (!bestSeason || total > bestSeason.value) {
-                bestSeason = { value: round1(total), season: s.season, holder: holder(u, s), _ctx: { season: s } };
+                bestSeason = { value: round1(total), season: s.season, holder: holder(u, s), _ctx: { season: s, rules } };
             }
             // Only counts a season the manager actually played — a 0 from an
             // entry created but never scored isn't a "worst season".
             if ((s.weeklyScore || []).length && (!worstSeason || total < worstSeason.value)) {
-                worstSeason = { value: round1(total), season: s.season, holder: holder(u, s), _ctx: { season: s } };
+                worstSeason = { value: round1(total), season: s.season, holder: holder(u, s), _ctx: { season: s, rules } };
             }
 
             // The week and single-game records are REGULAR SEASON only, on two
@@ -192,19 +235,26 @@ function buildRecords(users, isFinished) {
             // manager is measured against the same thing.
             let postTotal = 0, postGames = 0;
             (s.weeklyScore || []).forEach(w => {
-                if (isPostseason(w)) {
+                if (rules.weekIsPost(w)) {
                     postTotal += (w.score || 0);
                     postGames += (w.scoreByTeam || []).length;
                     return;
                 }
-                if ((w.score || 0) > 0 && (!bestWeek || w.score > bestWeek.value)) {
-                    bestWeek = { value: round1(w.score), season: s.season, detail: `Week ${w.week}`, holder: holder(u, s), _ctx: { season: s, entry: w } };
+                // Basketball: postseason games inside an ordinary week. They
+                // count toward the postseason record, and the week they sit in
+                // is no longer a pure regular-season week, so it can't hold
+                // "biggest week" — its total carries the bigger-scale games.
+                const postRows = (w.scoreByTeam || []).filter(rules.rowIsPost);
+                postRows.forEach(st => { postTotal += (st.score || 0); postGames++; });
+                if (!postRows.length && (w.score || 0) > 0 && (!bestWeek || w.score > bestWeek.value)) {
+                    bestWeek = { value: round1(w.score), season: s.season, detail: `Week ${w.week}`, holder: holder(u, s), _ctx: { season: s, entry: w, rules } };
                 }
                 (w.scoreByTeam || []).forEach(st => {
+                    if (rules.rowIsPost(st)) return;
                     if ((st.score || 0) > 0 && (!bestTeamGame || st.score > bestTeamGame.value)) {
                         bestTeamGame = {
                             value: round1(st.score), season: s.season,
-                            detail: `${st.team || 'A team'} · Week ${w.week}`, holder: holder(u, s)
+                            detail: `${teamName(s, st) || 'A team'} · Week ${w.week}`, holder: holder(u, s)
                         };
                     }
                 });
@@ -213,7 +263,7 @@ function buildRecords(users, isFinished) {
                 bestPostseason = {
                     value: round1(postTotal), season: s.season,
                     detail: `${postGames} game${postGames === 1 ? '' : 's'}`, holder: holder(u, s),
-                    _ctx: { season: s }
+                    _ctx: { season: s, rules }
                 };
             }
 
@@ -223,7 +273,7 @@ function buildRecords(users, isFinished) {
                     bestTeamSeason = {
                         value: row.points, season: s.season,
                         detail: row.school || `Team ${row.teamId}`, holder: holder(u, s),
-                        _ctx: { season: s, teamId: row.teamId, school: row.school }
+                        _ctx: { season: s, teamId: row.teamId, school: row.school, rules }
                     };
                 }
             });
@@ -330,4 +380,31 @@ function buildDraftHistory(draftsBySeason, usersById, isFinished) {
     });
 }
 
-module.exports = { buildRecords, buildDraftHistory, teamPointsFor, pointsForTeam, breakdownFor, isPostseason };
+// Which seasons are finished — crownable, record-eligible, draft-reviewable.
+// Per SPORT, because the two run on different calendars: basketball 2027 is
+// the 2026–27 season and is being played while football 2026 is.
+//
+//   football    any season before the active one, or one whose postseason
+//               bucket has been scored (it wraps before the YEAR flip).
+//   basketball  any season before the active one, or the active one once its
+//               SportSeason status is 'complete'. Basketball writes no
+//               postseason bucket, so football's second test can't apply.
+//
+// A basketball league before its sport has a season row (activeYear null)
+// has nothing finished — the normal state until April 2027.
+function seasonFinishedFor({ sport, activeYear, status, users }) {
+    if (sport === 'basketball') {
+        // Number(null) is 0, so a missing row compares below every real year.
+        const active = Number(activeYear);
+        return (yr) => Number(yr) < active || (Number(yr) === active && status === 'complete');
+    }
+    const postseasonScored = {};
+    (users || []).forEach(u => (u.seasons || []).forEach(s => {
+        if ((s.weeklyScore || []).some(w => w && w.season === 'postseason' && w.score != null)) {
+            postseasonScored[s.season] = true;
+        }
+    }));
+    return (yr) => Number(yr) < activeYear || !!postseasonScored[yr];
+}
+
+module.exports = { seasonFinishedFor, postseasonRules, teamName, buildRecords, buildDraftHistory, teamPointsFor, pointsForTeam, breakdownFor, isPostseason };

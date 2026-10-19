@@ -16,11 +16,17 @@
 //
 // ---- who sees it ----
 //
-// Admins only — the same answer requireAdmin gives the POSTs the buttons
-// call. NOT League Managers, which football's /admin lets in: a football
-// commissioner is not in on basketball, and basketball stays invisible to
-// everyone who is not (see modules/hoops-visibility.js). So a signed-in
-// non-Admin gets a plain 404, never a 403 — a 403 says the page exists.
+// The data tasks and preseason ratings: Admins only — the same answer
+// requireAdmin gives the POSTs the buttons call. They are platform-wide, not
+// one league's.
+//
+// The page itself also opens to a COMMISSIONER of a basketball league (#600),
+// who gets that league's League setup and nothing else — the split football's
+// /admin makes for a League Manager. A football commissioner is not in on
+// basketball by virtue of that, and basketball stays invisible to everyone
+// who is not (see modules/hoops-visibility.js). So anyone running no
+// basketball league gets a plain 404, never a 403 — a 403 says the page
+// exists.
 //
 // The gate is in THIS router, not the path list in server.js. That list gates
 // non-GETs only, and most routes here are GETs. The preseason POSTs below sit
@@ -49,7 +55,8 @@ const cbbd = require('../modules/cbbd-client');
 const roster = require('../modules/hoops-roster');
 const { effectiveRoles } = require('../modules/dev-role');
 const leagueCatalog = require('../modules/league-catalog');
-const { leagueCodeFor } = require('../modules/league-access');
+const { leagueCodeFor, canManageLeague, managedLeagues } = require('../modules/league-access');
+const { effectiveUser } = require('../modules/dev-role');
 const torvik = require('../modules/torvik-import');
 const audit = require('../modules/audit-log');
 // A namespace, read at call time, so a test can widen the default and see
@@ -137,26 +144,56 @@ function basketballAdminRedirect(viewed) {
     return viewed && seasons.sportForLeague(viewed) !== 'basketball' ? '/admin' : null;
 }
 
+// The league a NON-Admin manages on one sport's admin page (#600): the one
+// being viewed if they run it, else the first they run in that sport. null
+// when they run none. "Run" is canManageLeague's answer — the Auth0 flag's
+// league or a commissioner list — so the viewed league only ever CHOOSES
+// among leagues they already hold authority over; viewing grants nothing.
+function managedFor(req, viewed, sport) {
+    const mine = managedLeagues(req).filter(c => seasons.sportForLeague(c) === sport);
+    if (viewed && mine.includes(viewed)) return viewed;
+    return mine[0] || null;
+}
+
 // Where football's /admin sends a viewer instead of rendering, or null to
 // render. An Admin viewing a basketball league goes to that league's page —
 // otherwise /admin shows basketball managers and the basketball season inside
-// football's tools. A League Manager always manages their own (football)
-// league on /admin, whatever they view, and cannot open the basketball page.
+// football's tools. A commissioner goes there too when the basketball league
+// being viewed is one they run, or when basketball is all they run.
 // Here rather than inline in server.js so a test exercises the real rule.
-function footballAdminRedirect(roles, viewerSport) {
-    return (roles || []).includes('Admin') && viewerSport === 'basketball' ? '/hoops/admin' : null;
+function footballAdminRedirect(req, viewed) {
+    const viewedSport = viewed ? seasons.sportForLeague(viewed) : 'football';
+    if (isAdmin(req)) return viewedSport === 'basketball' ? '/hoops/admin' : null;
+    if (viewedSport === 'basketball' && canManageLeague(req, viewed)) return '/hoops/admin';
+    if (!managedFor(req, viewed, 'football') && managedFor(req, viewed, 'basketball')) return '/hoops/admin';
+    return null;
 }
 
-// The season football's /admin works in: the season of the league it
-// MANAGES, which is what its tools read and write. The same answer
-// ccManageLeagueCode gives the page (public/league.js): an Admin manages the
-// league they view (always football here — basketball is redirected above);
-// a League Manager manages their own, whatever they view. It used to be the
+// The league football's /admin MANAGES, which is what its tools read and
+// write, and its season. An Admin manages the league they view (always
+// football here — basketball is redirected above); anyone else the football
+// league managedFor picks, falling back to the Auth0 flag's. It used to be the
 // VIEWED league's season, so a League Manager viewing basketball got
 // basketball's 2027 while managing their football league.
-function footballAdminSeason(roles, viewed, effUser) {
-    const managed = (roles || []).includes('Admin') && viewed ? viewed : leagueCodeFor(effUser);
-    return seasons.seasonForLeague(managed);
+function footballManagedLeague(req, viewed) {
+    if (isAdmin(req) && viewed) return viewed;
+    return managedFor(req, viewed, 'football') || leagueCodeFor(effectiveUser(req));
+}
+
+function footballAdminSeason(req, viewed) {
+    return seasons.seasonForLeague(footballManagedLeague(req, viewed));
+}
+
+// The navbar's admin link: the admin page for the sport of the league being
+// viewed when the viewer may manage that league, else the page for a league
+// they do run. null for someone who runs nothing.
+function adminHref(req, viewed) {
+    const viewedSport = viewed ? seasons.sportForLeague(viewed) : 'football';
+    const pageFor = sport => (sport === 'basketball' ? '/hoops/admin' : '/admin');
+    if (isAdmin(req)) return pageFor(viewedSport);
+    if (viewed && canManageLeague(req, viewed)) return pageFor(viewedSport);
+    const mine = managedLeagues(req);
+    return mine.length ? pageFor(seasons.sportForLeague(mine[0])) : null;
 }
 
 // pageLocals builds what the navbar partial needs (user, userState). It lives
@@ -168,19 +205,31 @@ function build({ pageLocals = () => ({}) } = {}) {
     router.get('/', async (req, res, next) => {
         try {
             if (!(req.oidc && req.oidc.isAuthenticated())) return res.redirect('/login');
-            if (!isAdmin(req)) return next();
+            const admin = isAdmin(req);
             const locals = Object.assign({ user: null, userState: null, draftDefaults: '{}' }, pageLocals(req, res));
+            const viewed = locals.viewerLeagueCode;
+            // A commissioner of a basketball league gets League setup for it
+            // (#600) — never the data tasks below, which are platform-wide.
+            // Anyone running no basketball league: the same 404 as before.
+            if (!admin && !managedFor(req, viewed, 'basketball')) return next();
             // Each sport's admin page follows the league being viewed, both
             // ways: switch to a football league here and the reload lands on
             // football's /admin, as switching to basketball there lands here.
-            const elsewhere = basketballAdminRedirect(locals.viewerLeagueCode);
+            // For a commissioner, only a football league they run counts.
+            const elsewhere = admin ? basketballAdminRedirect(viewed)
+                : (viewed && seasons.sportForLeague(viewed) !== 'basketball' && canManageLeague(req, viewed) ? '/admin' : null);
             if (elsewhere) return res.redirect(elsewhere);
-            const league = await managedLeague(req, locals.viewerLeagueCode);
+            const league = admin ? await managedLeague(req, viewed) : managedFor(req, viewed, 'basketball');
             // The league's own season, which is what League setup's tools read
             // and write — not football's.
             const year = league ? seasons.seasonForLeague(league) : seasons.activeSeason('basketball');
             const named = league ? (await leagueCatalog.named(req)).find(l => l.code === league) : null;
             res.render('hoopsAdmin', Object.assign(locals, {
+                isAdmin: admin,
+                // Create league is open to League Managers (#600), so the
+                // link is too; an appointed commissioner without the role
+                // cannot create one and does not get it.
+                canCreateLeague: admin || effectiveRoles(req).includes('League Manager'),
                 manageLeague: league, manageLeagueName: (named && named.name) || league, year
             }));
         } catch (err) {
@@ -325,4 +374,4 @@ async function previewOf(season, rows, origin) {
     });
 }
 
-module.exports = { build, sourceLabel, status, windowsFor, managedLeague, footballAdminRedirect, basketballAdminRedirect, footballAdminSeason, HOOPS_JOBS };
+module.exports = { build, sourceLabel, status, windowsFor, managedLeague, managedFor, footballAdminRedirect, basketballAdminRedirect, footballManagedLeague, footballAdminSeason, adminHref, HOOPS_JOBS };

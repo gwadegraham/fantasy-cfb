@@ -1,7 +1,7 @@
 const Draft = require('../models/draft');
 const draftPool = require('./draft-pool');
 const { rosterEntryFor } = require('./roster-teams');
-const { sportForLeague } = require('./active-season');
+const { sportForLeague, commissionersOf } = require('./active-season');
 const engine = require('./draft-engine');
 const draftToken = require('./draft-token');
 const { internalFetch, failureMessage } = require('./internal-api');
@@ -15,12 +15,17 @@ function isCommissioner(user) {
 }
 
 // Commissioner control is scoped by league: an Admin controls any league's
-// draft; a League Manager only their own (the league is baked into their
-// signed draft token).
+// draft; a League Manager their own (the league is baked into their signed
+// draft token); and anyone on THIS league's commissioner list (#600).
+//
+// The list is checked live against the season cache, not carried in the
+// token: a token lives six hours, and a commissioner removed on draft night
+// must lose the controls on their next action, not after the token expires.
 function isCommissionerOf(user, league) {
     if (!user) return false;
     if (user.role === 'Admin') return true;
-    return user.role === 'League Manager' && user.league === league;
+    if (user.role === 'League Manager' && user.league === league) return true;
+    return !!user.userId && commissionersOf(league).includes(String(user.userId));
 }
 
 // The shape broadcast to clients — the draft plus a derived "on the clock".
@@ -268,3 +273,6 @@ module.exports.publicState = publicState;
 // the whole suite green — the same gap as the pool gate in #476, in this same
 // file, one PR later.
 module.exports.persistTeamsToUsers = persistTeamsToUsers;
+// Exported for its own test: the commissioner list (#600) is the one rule here
+// that is not on the token, so nothing else would notice it stop working.
+module.exports.isCommissionerOf = isCommissionerOf;

@@ -67,10 +67,14 @@ async function prime() {
     const mine = ++generation;
     const [sports, leagues] = await Promise.all([
         SportSeason.find({}, { sport: 1, season: 1, status: 1, _id: 0 }).lean(),
-        League.find({}, { code: 1, sport: 1, season: 1, _id: 0 }).lean()
+        League.find({}, { code: 1, sport: 1, season: 1, commissioners: 1, _id: 0 }).lean()
     ]);
 
-    const next = { sports: {}, leagues: {}, sportStatus: {}, leagueSport: {} };
+    // commissioners has no prototype: it is indexed by a league code from the
+    // URL, and `constructor` or `__proto__` on a plain {} is a function, not
+    // a list — which threw inside canManageLeague, before most handlers' try,
+    // and so took the dyno down (#600 review).
+    const next = { sports: {}, leagues: {}, sportStatus: {}, leagueSport: {}, commissioners: Object.create(null) };
     sports.forEach(s => {
         // Finiteness, not just presence. A row written by updateOne skips schema
         // validation, so one can exist with no `season` at all — Number(undefined)
@@ -88,6 +92,7 @@ async function prime() {
     });
     leagues.forEach(l => {
         next.leagueSport[l.code] = l.sport || DEFAULT_SPORT;
+        next.commissioners[l.code] = (l.commissioners || []).map(String);
         // A league with no season of its own follows its sport.
         const own = Number(l.season);
         if (l.season != null && Number.isFinite(own)) next.leagues[l.code] = own;
@@ -136,6 +141,28 @@ function seasonForLeague(code) {
 function sportForLeague(code) {
     if (!cache) return DEFAULT_SPORT;
     return cache.leagueSport[code] || DEFAULT_SPORT;
+}
+
+// The account ids that commission a league (#600), as strings. Cached here
+// rather than read per request because canManageLeague is synchronous and has
+// ~25 callers, several inside .filter() — an async version would make every
+// forgotten `await` a truthy Promise, i.e. a grant. The League documents are
+// already read by prime(), so this costs nothing extra.
+//
+// Unprimed, or a league with no list: empty, which canManageLeague reads as
+// "Admins (and the Auth0 flag) only". Fail soft, never a throw. Anything that
+// WRITES League.commissioners must call prime() after it; with one web dyno
+// that makes the change immediate, and the interval covers any other.
+function commissionersOf(code) {
+    const list = cache && Object.prototype.hasOwnProperty.call(cache.commissioners, code) ? cache.commissioners[code] : null;
+    return Array.isArray(list) ? list.slice() : [];
+}
+
+// Every league an account commissions, from the same cache.
+function leaguesCommissionedBy(accountId) {
+    if (!cache || !accountId) return [];
+    const id = String(accountId);
+    return Object.keys(cache.commissioners).filter(code => cache.commissioners[code].includes(id));
 }
 
 // Point a sport at a season, then refresh the cache. Upserts, so this is also
@@ -236,6 +263,7 @@ module.exports = {
     startRefresh, stopRefresh,
     activeSeason, sportStatus,
     seasonForLeague, sportForLeague,
+    commissionersOf, leaguesCommissionedBy,
     setActiveSeason,
     _reset
 };

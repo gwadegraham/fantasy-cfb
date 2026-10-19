@@ -1,9 +1,10 @@
 const express = require('express');
 const franchiseRepo = require('../modules/franchise-repo');
-const { activeSeason } = require('../modules/active-season');
+const { activeSeason, sportStatus, sportForLeague } = require('../modules/active-season');
+const { hydrateRosters } = require('../modules/roster-teams');
 const router = express.Router();
 const Draft = require('../models/draft');
-const { buildRecords, buildDraftHistory } = require('../modules/hall-of-fame');
+const { buildRecords, buildDraftHistory, seasonFinishedFor } = require('../modules/hall-of-fame');
 
 // Hall of Fame / league history aggregation. Walks every user's seasons and
 // derives, per league: the champion of each completed season, an all-time
@@ -12,26 +13,34 @@ const { buildRecords, buildDraftHistory } = require('../modules/hall-of-fame');
 // draftPosition and franchiseName already live on user.seasons.
 //
 // A season is "finished" (and thus crownable) once it is a PAST season relative
-// to the active season, or its postseason has been scored (bowls / CFP played).
-// This keeps the in-progress current season out of the Hall of Fame — otherwise
-// it would crown the live points leader the moment scoring begins.
+// to the active season of the LEAGUE'S SPORT, or it has visibly wrapped (see
+// seasonFinishedFor). This keeps the in-progress current season out of the
+// Hall of Fame — otherwise it would crown the live points leader the moment
+// scoring begins.
 router.get('/:league', async (req, res) => {
     try {
         const league = req.params.league;
         const users = await franchiseRepo.byLeague(league,
             { fields: ['firstName', 'lastName', 'avatarUrl', 'color', 'seasons'] });
 
-        // A season-year with a scored postseason entry has wrapped. Combined with
-        // "any past season", this crowns a season as soon as it truly finishes
-        // (even before the YEAR flip) and never before.
-        const activeYear = activeSeason('football');
-        const postseasonScored = {};
-        users.forEach(u => (u.seasons || []).forEach(s => {
-            if ((s.weeklyScore || []).some(w => w && w.season === 'postseason' && w.score != null)) {
-                postseasonScored[s.season] = true;
-            }
-        }));
-        const seasonFinished = (yr) => Number(yr) < activeYear || !!postseasonScored[yr];
+        // The sport comes from the league in the path — the one the page is
+        // viewing (ccLeagueCode). Basketball labels a season by its ENDING
+        // year and plays it while football's is live, so judging it against
+        // football's season misfiles both ways.
+        // The SPORT's season, not seasonForLeague(league): a league pinned to
+        // its own season is still judged by its sport's — as football was.
+        const sport = sportForLeague(league);
+        const activeYear = activeSeason(sport);
+        const seasonFinished = seasonFinishedFor({ sport, activeYear, status: sportStatus(sport), users });
+
+        // Basketball rosters are stored as teamRefs; the records book and the
+        // draft retrospective need the schools, so resolve each finished
+        // season's rosters (one query per season). Football's are whole copies.
+        if (sport === 'basketball') {
+            const years = new Set();
+            users.forEach(u => (u.seasons || []).forEach(s => { if (seasonFinished(s.season)) years.add(Number(s.season)); }));
+            for (const yr of years) await hydrateRosters(users, yr);
+        }
 
         const fullName = (u) => `${u.firstName || ''} ${u.lastName || ''}`.trim();
         const initials = (u) => (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase();
@@ -104,7 +113,7 @@ router.get('/:league', async (req, res) => {
         // derived from data already on file (see modules/hall-of-fame.js).
         // Gated by the same seasonFinished rule as the champions above, so the
         // in-progress season can't set a record or be second-guessed on its draft.
-        const records = buildRecords(users, seasonFinished);
+        const records = buildRecords(users, seasonFinished, { sport });
 
         const drafts = await Draft.find({ league }, { season: 1, picks: 1, _id: 0 }).lean();
         const draftsBySeason = {};
@@ -113,7 +122,9 @@ router.get('/:league', async (req, res) => {
         users.forEach(u => { usersById[String(u._id)] = u; });
         const draftHistory = buildDraftHistory(draftsBySeason, usersById, seasonFinished);
 
-        res.json({ league, seasons, managers, records, draftHistory });
+        // `sport` and `activeSeason` let the page label seasons ("2026–27")
+        // and say which season is still being played in its empty state.
+        res.json({ league, sport, activeSeason: activeYear, seasons, managers, records, draftHistory });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

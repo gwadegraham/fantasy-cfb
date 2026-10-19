@@ -393,7 +393,14 @@ function renderPool() {
 async function connectSocket() {
     try {
         const res = await fetch('/draft-token', { headers: { 'Accept': 'application/json' } });
-        const { token } = await res.json();
+        const { token, isAdmin, manages } = await res.json();
+        // The controls follow what the server says this person runs (#600):
+        // a League Manager of another league no longer sees buttons the socket
+        // would refuse, and a league's appointed commissioner does see them.
+        if (typeof isAdmin === 'boolean') {
+            isCommish = isAdmin || (Array.isArray(manages) && manages.includes(leagueCode));
+            renderAll();
+        }
         socket = io({ auth: { token } });
 
         // Fires on the initial connect AND every reconnect, so a dropped

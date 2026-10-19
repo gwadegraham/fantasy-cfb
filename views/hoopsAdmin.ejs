@@ -14,13 +14,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet"/>
     <script defer src="/sport-page.js"></script>
+    <% if (typeof isAdmin !== 'undefined' && isAdmin) { %>
+    <%# Platform-wide basketball data. A league's commissioner (#600) gets
+        League setup only, as a League Manager does on football's /admin. %>
     <script defer src="/hoopsAdmin.js"></script>
     <script defer src="/hoopsPreseason.js"></script>
+    <% } %>
     <% if (manageLeague) { %>
     <!-- League setup is football's admin code, pointed at this league. -->
     <script defer src="/admin.js"></script>
     <% } %>
-    <title>Basketball Admin · Campus Clash</title>
+    <title><%= (typeof isAdmin !== 'undefined' && isAdmin) ? 'Basketball Admin' : 'League Management' %> · Campus Clash</title>
     <%- include('partials/favicons') %>
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#101322" />
@@ -43,15 +47,21 @@
         window.APP_YEAR = "<%= year %>";
         window.DRAFT_DEFAULTS = <%- draftDefaults %>;
     </script>
-    <%# Every league, both sports, and Create league (#536). This page is
-        Admin-only already, so the link is unconditional. %>
+    <%# Every league, both sports, and Create league (#536) — for an Admin,
+        and for a League Manager, who may create one (#600). %>
+    <% if (typeof canCreateLeague !== 'undefined' && canCreateLeague) { %>
     <nav class="admin-leagues-link"><a href="/leagues"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Leagues</a></nav>
+    <% } %>
+    <% if (typeof isAdmin !== 'undefined' && isAdmin) { %>
     <main class="sp-page ha" id="hoops-admin">
         <div class="sp-loading">Loading…</div>
     </main>
     <%# Its own container: <main> is redrawn whole on every update, which
         would wipe a paste (#544). %>
     <section class="sp-page ha" id="hoops-preseason"></section>
+    <% } else { %>
+    <div class="header"><div class="header-title">League Management</div></div>
+    <% } %>
 
     <% if (manageLeague) { %>
     <div class="ha-league">

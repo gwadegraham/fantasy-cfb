@@ -144,23 +144,39 @@ describe('the page manages a basketball league', () => {
     });
 });
 
+// A request as the routes see it: Auth0 roles plus the inner metadata.
+function reqAs(roles, metadata) {
+    return {
+        oidc: { isAuthenticated: () => true, user: { user_metadata: { roles, metadata: metadata || {} } } },
+        headers: {}, get: () => undefined
+    };
+}
+
 describe("football's /admin sends an Admin viewing basketball to this page", () => {
+    const League = require('../models/league');
+    beforeEach(async () => {
+        await League.create([{ code: 'graham-league', name: 'The Polar Depressed', sport: 'football' },
+                             { code: 'hoops-league', name: 'Hardwood Heroes', sport: 'basketball' }]);
+        activeSeason._reset();
+        await activeSeason.prime();
+    });
     test('an Admin viewing basketball is redirected', () => {
-        expect(hoopsAdmin.footballAdminRedirect(['Admin'], 'basketball')).toBe('/hoops/admin');
+        expect(hoopsAdmin.footballAdminRedirect(reqAs(['Admin']), 'hoops-league')).toBe('/hoops/admin');
     });
     test('an Admin viewing football stays', () => {
-        expect(hoopsAdmin.footballAdminRedirect(['Admin'], 'football')).toBeNull();
+        expect(hoopsAdmin.footballAdminRedirect(reqAs(['Admin']), 'graham-league')).toBeNull();
     });
     // A League Manager manages their own football league on /admin, and the
-    // basketball page would 404 them anyway.
+    // basketball page would 404 them anyway — unless they run that league
+    // (#600, covered in Commissioners.spec.js).
     test('a League Manager stays, whatever they view', () => {
-        expect(hoopsAdmin.footballAdminRedirect(['League Manager'], 'basketball')).toBeNull();
+        expect(hoopsAdmin.footballAdminRedirect(reqAs(['League Manager'], { league: 'gg' }), 'hoops-league')).toBeNull();
     });
 });
 
 describe("football's /admin works in the season of the league it manages", () => {
     const League = require('../models/league');
-    const lm = { user_metadata: { metadata: { league: 'gg' } } };
+    const lm = { league: 'gg' };
     beforeEach(async () => {
         await League.create([{ code: 'graham-league', name: 'The Polar Depressed', sport: 'football' },
                              { code: 'hoops-league', name: 'Hardwood Heroes', sport: 'basketball' }]);
@@ -168,7 +184,7 @@ describe("football's /admin works in the season of the league it manages", () =>
         await activeSeason.prime();
     });
     test('a League Manager viewing basketball still gets football\'s season', () => {
-        expect(hoopsAdmin.footballAdminSeason(['League Manager'], 'hoops-league', lm)).toBe(2026);
+        expect(hoopsAdmin.footballAdminSeason(reqAs(['League Manager'], lm), 'hoops-league')).toBe(2026);
     });
     // The viewed league and the Admin's own Auth0 league must differ in
     // season, or reading the wrong one passes too.
@@ -177,8 +193,7 @@ describe("football's /admin works in the season of the league it manages", () =>
         await League.create({ code: 'claunts-league', name: 'Goofballers', sport: 'football' });
         activeSeason._reset();
         await activeSeason.prime();
-        const claunts = { user_metadata: { metadata: { league: 'claunts' } } };
-        expect(hoopsAdmin.footballAdminSeason(['Admin'], 'graham-league', claunts)).toBe(2025);
+        expect(hoopsAdmin.footballAdminSeason(reqAs(['Admin'], { league: 'claunts' }), 'graham-league')).toBe(2025);
     });
 });
 

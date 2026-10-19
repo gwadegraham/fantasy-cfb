@@ -276,7 +276,7 @@ describe('the paths that stay open to a blocked session', () => {
     const unlinked = { sub: 'auth0|new', email: 'ann@example.com', user_metadata: {} };
 
     test.each([
-        ['/season-preview'], ['/hardwood'], ['/favicon.ico'], ['/profile'],
+        ['/season-preview'], ['/hardwood'], ['/install'], ['/favicon.ico'], ['/profile'],
         ['/images/logo.png'], ['/invite/TOKEN'],
         ['/styles.css'], ['/app.js'], ['/fonts/x.woff2'], ['/data.json']
     ])('%s is served', async (path) => {

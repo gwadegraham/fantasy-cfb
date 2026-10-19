@@ -1,0 +1,301 @@
+<style>
+  /* Install guide: how to put Campus Clash on your home screen. One card per
+     platform behind a switcher; the visitor's own platform is picked for them. */
+  :root {
+    --ground:    #101322;
+    --ground-2:  #171b31;
+    --card:      #1a1f33;
+    --card-hi:   #232a44;
+    --line:      #2a2e42;
+    --text:      #f4f6fb;
+    --dim:       #a4a9c2;
+    --faint:     #858ca8;
+    --accent:    #ed5858;
+    --accent-glow: rgba(237, 88, 88, 0.17);
+    --gold:      #e0b341;
+    --green:     #5bd08d;
+    --green-soft: rgba(91, 208, 141, 0.12);
+    --display: "Arial Narrow", "Roboto Condensed", "Oswald", "Helvetica Neue", system-ui, sans-serif;
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color-scheme: dark;
+  }
+  /* Deliberately single-theme, like the app. */
+  * { box-sizing: border-box; }
+  body { background: var(--ground); color: var(--text); font-family: var(--body); font-size: 17px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px max(48px, env(safe-area-inset-bottom)); }
+  h1, h2 { text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+
+  .back { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--dim); text-decoration: none; font-weight: 600; font-size: 15px; }
+  .back:hover, .back:focus-visible { color: var(--text); }
+  .back svg { width: 18px; height: 18px; }
+
+  .hero { display: flex; gap: 18px; align-items: center; margin: 20px 0 28px; }
+  .hero img { width: 72px; height: 72px; border-radius: 16px; flex: none; box-shadow: 0 0 0 1px var(--line), 0 6px 24px rgba(0,0,0,0.4); }
+  .eyebrow { font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-family: var(--display); font-weight: 700; font-size: clamp(30px, 8vw, 42px); line-height: 1.05; margin-top: 4px; }
+  .lede { color: var(--dim); margin-bottom: 24px; }
+
+  .why { list-style: none; padding: 0; margin: 0 0 32px; display: grid; gap: 10px; }
+  .why li { display: flex; gap: 10px; align-items: baseline; color: var(--dim); }
+  .why li::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); transform: translateY(-2px); }
+  .why b { color: var(--text); font-weight: 600; }
+
+  .installed { display: none; padding: 14px 16px; border-radius: 10px; background: var(--green-soft); color: var(--green); font-weight: 600; margin-bottom: 24px; }
+  .is-installed .installed { display: block; }
+
+  .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--ground-2); margin-bottom: 16px; }
+  .tabs button { appearance: none; border: 0; background: transparent; color: var(--dim); font: 600 15px var(--body); min-height: 44px; border-radius: 9px; cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--card-hi); color: var(--text); }
+  .tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .panel { border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 20px 18px; }
+  .panel[hidden] { display: none; }
+  .panel h2 { font-family: var(--display); font-weight: 700; font-size: 22px; margin-bottom: 4px; }
+  .panel .sub { color: var(--faint); font-size: 15px; margin-bottom: 18px; }
+
+  ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 0; display: grid; gap: 16px; }
+  ol.steps li { counter-increment: step; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; align-items: start; }
+  ol.steps li::before { content: counter(step); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--accent-glow); color: var(--accent); font-family: var(--display); font-weight: 700; font-size: 17px; }
+  ol.steps p { padding-top: 3px; }
+  ol.steps b { font-weight: 600; }
+  ol.steps .hint { display: block; color: var(--faint); font-size: 15px; margin-top: 2px; }
+
+  /* An inline picture of the button to look for. */
+  .ico { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; background: var(--card-hi); border: 1px solid var(--line); vertical-align: -7px; margin: 0 2px; }
+  .ico svg { width: 16px; height: 16px; stroke: var(--text); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .note { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--faint); font-size: 15px; }
+  .note b { color: var(--dim); font-weight: 600; }
+
+  /* Shown only when the browser offers a one-tap install (Chrome, Edge). */
+  .one-tap { display: none; margin-bottom: 18px; }
+  .can-prompt .one-tap { display: block; }
+  .one-tap button { appearance: none; border: 0; width: 100%; min-height: 48px; border-radius: 10px; background: var(--accent); color: #fff; font: 700 17px var(--body); cursor: pointer; }
+  .one-tap button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .one-tap p { color: var(--faint); font-size: 14px; text-align: center; margin-top: 8px; }
+
+  /* Section labels: the picker is step one, the device steps are step two. */
+  .part { font-family: var(--display); font-weight: 700; font-size: 20px; margin: 0 0 12px; }
+  .part span { color: var(--accent); margin-right: 6px; }
+
+  /* Icon picker. Real radio inputs, visually hidden, so arrow keys move the choice. */
+  .picker { border: 0; padding: 0; margin: 0 0 12px; min-width: 0; }
+  .picker legend { padding: 0; font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); margin: 14px 0 8px; }
+  /* Five across even at 375px, so the Campus Clash row never strands one. */
+  .picker .row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+  .picker label { display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; color: var(--dim); }
+  .picker input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  /* The hairline gives the navy-plate icons an edge on this navy page. */
+  .picker img { width: 100%; max-width: 64px; aspect-ratio: 1; height: auto; border-radius: 23%; box-shadow: 0 0 0 1px var(--line); outline: 2px solid transparent; outline-offset: 3px; transition: outline-color .15s; }
+  .picker input:checked + img { outline-color: var(--accent); }
+  .picker input:checked ~ span { color: var(--text); font-weight: 600; }
+  .picker input:focus-visible + img { outline-color: var(--text); }
+  .pick-note { color: var(--faint); font-size: 15px; margin-bottom: 32px; }
+
+  .done { margin-top: 28px; text-align: center; color: var(--dim); font-size: 15px; }
+  .done a { color: var(--text); font-weight: 600; }
+</style>
+
+<main class="wrap" id="install">
+  <a class="back" href="/">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    Back to Campus Clash
+  </a>
+
+  <header class="hero">
+    <img src="/images/app-icon-192.png" alt="" width="72" height="72">
+    <div>
+      <div class="eyebrow">Get the app</div>
+      <h1>Put Campus Clash on your home screen</h1>
+    </div>
+  </header>
+
+  <p class="lede">No app store, no download. Your browser can add Campus Clash to your home screen so it opens like any other app. It takes about 30 seconds.</p>
+
+  <ul class="why">
+    <li><span><b>Game alerts.</b> Kickoffs, close finishes and final scores for your teams. On iPhone, alerts only work once the app is on your home screen.</span></li>
+    <li><span><b>Full screen.</b> No address bar or browser tabs.</span></li>
+    <li><span><b>One tap.</b> Opens straight to your standings.</span></li>
+  </ul>
+
+  <p class="installed" role="status">You're already using the installed app. You're all set.</p>
+
+  <h2 class="part"><span>1</span>Pick your icon</h2>
+  <div class="picker-wrap" data-icon-picker>
+    <fieldset class="picker">
+      <legend>Campus Clash</legend>
+      <div class="row">
+        <label><input type="radio" name="icon" value="classic" checked><img src="/images/app-icon-192.png" alt=""><span>Classic</span></label>
+        <label><input type="radio" name="icon" value="red"><img src="/images/app-icons/red-192.png" alt=""><span>Red</span></label>
+        <label><input type="radio" name="icon" value="cream"><img src="/images/app-icons/cream-192.png" alt=""><span>Cream</span></label>
+        <label><input type="radio" name="icon" value="gold"><img src="/images/app-icons/gold-192.png" alt=""><span>Gold</span></label>
+        <label><input type="radio" name="icon" value="violet"><img src="/images/app-icons/violet-192.png" alt=""><span>Violet</span></label>
+      </div>
+    </fieldset>
+    <fieldset class="picker">
+      <legend>Sports</legend>
+      <div class="row">
+        <label><input type="radio" name="icon" value="football"><img src="/images/app-icons/football-192.png" alt=""><span>Football</span></label>
+        <label><input type="radio" name="icon" value="hoops"><img src="/images/app-icons/hoops-192.png" alt=""><span>Hoops</span></label>
+      </div>
+    </fieldset>
+    <fieldset class="picker">
+      <legend>Mascots</legend>
+      <div class="row">
+        <label><input type="radio" name="icon" value="laces"><img src="/images/app-icons/laces-192.png" alt=""><span>Laces</span></label>
+        <label><input type="radio" name="icon" value="dribbles"><img src="/images/app-icons/dribbles-192.png" alt=""><span>Dribbles</span></label>
+      </div>
+    </fieldset>
+  </div>
+  <p class="pick-note">The icon is locked in when you add the app. To change it later, delete Campus Clash from your home screen, pick a new icon here, and add it again.</p>
+
+  <h2 class="part"><span>2</span>Add it to your device</h2>
+
+  <div class="tabs" role="tablist" aria-label="Your device">
+    <button role="tab" id="tab-ios" aria-controls="panel-ios" aria-selected="true">iPhone</button>
+    <button role="tab" id="tab-android" aria-controls="panel-android" aria-selected="false" tabindex="-1">Android</button>
+    <button role="tab" id="tab-desktop" aria-controls="panel-desktop" aria-selected="false" tabindex="-1">Computer</button>
+  </div>
+
+  <section class="panel" role="tabpanel" id="panel-ios" aria-labelledby="tab-ios">
+    <h2>iPhone &amp; iPad</h2>
+    <p class="sub">Use Safari. In Chrome on iPhone, Share is at the top right instead.</p>
+    <ol class="steps">
+      <li><p>Open <b>this page</b> in Safari.
+        <span class="hint">Install from here, not from the sign-in screen.</span></p></li>
+      <li><p>Tap the <b>Share</b> button
+        <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></span>.
+        <span class="hint">At the bottom of the screen. If you don't see it, tap <b>•••</b> first, then <b>Share</b>.</span></p></li>
+      <li><p>Scroll down and tap <b>Add to Home Screen</b>
+        <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg></span>.
+        <span class="hint">Not in the list? Tap <b>Edit Actions</b> at the bottom and add it.</span></p></li>
+      <li><p>Leave <b>Open as Web App</b> switched on, then tap <b>Add</b>.</p></li>
+      <li><p>Open Campus Clash from the new icon on your home screen and sign in.
+        <span class="hint">The app asks you to sign in once, even if Safari is already signed in. That's normal.</span></p></li>
+    </ol>
+    <p class="note"><b>Want game alerts?</b> Open the app from the icon, go to <b>My Team</b>, tap the pencil to edit your profile, and turn on <b>Game-day alerts</b>.</p>
+  </section>
+
+  <section class="panel" role="tabpanel" id="panel-android" aria-labelledby="tab-android" hidden>
+    <h2>Android</h2>
+    <p class="sub">Use Chrome.</p>
+    <div class="one-tap">
+      <button type="button" data-install>Install Campus Clash</button>
+      <p>Or do it by hand:</p>
+    </div>
+    <ol class="steps">
+      <li><p>Open <b>this page</b> in Chrome.
+        <span class="hint">Install from here, not from the sign-in screen.</span></p></li>
+      <li><p>Tap the <b>menu</b>
+        <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></span>
+        in the top-right corner.</p></li>
+      <li><p>Tap <b>Add to Home screen</b>, then <b>Install</b>.
+        <span class="hint">Some phones call it <b>Install app</b>.</span></p></li>
+      <li><p>Open Campus Clash from the new icon on your home screen.</p></li>
+    </ol>
+  </section>
+
+  <section class="panel" role="tabpanel" id="panel-desktop" aria-labelledby="tab-desktop" hidden>
+    <h2>Mac or PC</h2>
+    <p class="sub">Use Chrome, Edge or Safari.</p>
+    <div class="one-tap">
+      <button type="button" data-install>Install Campus Clash</button>
+      <p>Or do it by hand:</p>
+    </div>
+    <ol class="steps">
+      <li><p><b>Chrome or Edge:</b> click the install icon
+        <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 8v6M9 11l3 3 3-3M8 21h8"/></svg></span>
+        at the right end of the address bar, then <b>Install</b>.</p></li>
+      <li><p><b>Safari on a Mac:</b> choose <b>File</b>, then <b>Add to Dock</b>.</p></li>
+      <li><p>Campus Clash opens in its own window and shows up with your other apps.</p></li>
+    </ol>
+  </section>
+
+  <p class="done">Done? <a href="/">Go to Campus Clash</a></p>
+</main>
+
+<script>
+(function () {
+  var root = document.getElementById('install');
+  var tabs = Array.prototype.slice.call(root.querySelectorAll('[role="tab"]'));
+
+  function select(tab) {
+    tabs.forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    });
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { select(t); });
+    t.addEventListener('keydown', function (e) {
+      var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!d) return;
+      var next = tabs[(i + d + tabs.length) % tabs.length];
+      select(next); next.focus();
+    });
+  });
+
+  // Open on the visitor's own platform. iPadOS reports itself as a Mac, so a
+  // Mac with a touchscreen is an iPad.
+  var ua = navigator.userAgent;
+  var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  select(document.getElementById(ios ? 'tab-ios' : /Android/.test(ua) ? 'tab-android' : /Mobi/.test(ua) ? 'tab-ios' : 'tab-desktop'));
+
+  // Already opened from the home screen: say so. `standalone` is old Safari.
+  if (navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)) {
+    root.classList.add('is-installed');
+  }
+
+  // The icon picker. The choice goes in a cookie the server reads for the
+  // apple-touch-icon and /manifest.json on every page (modules/app-icon.js),
+  // and into this page's own links now, because iOS reads the link at the
+  // moment Add to Home Screen is tapped and Chrome refetches a changed manifest.
+  var COOKIE = 'cc_app_icon';
+  function iconSrc(id, px) {
+    return id === 'classic' ? '/images/app-icon-' + px + '.png' : '/images/app-icons/' + id + '-' + px + '.png';
+  }
+  var heroImg = root.querySelector('.hero img');
+  var radios = Array.prototype.slice.call(root.querySelectorAll('[data-icon-picker] input'));
+  function show(id) {
+    heroImg.src = iconSrc(id, 192);
+    var touch = document.querySelector('link[rel="apple-touch-icon"]');
+    if (touch) touch.href = iconSrc(id, 180);
+    var man = document.querySelector('link[rel="manifest"]');
+    if (man) man.href = '/manifest.json?icon=' + id;
+  }
+  var saved = (document.cookie.match(/(?:^|;\s*)cc_app_icon=([a-z]+)/) || [])[1];
+  radios.forEach(function (r) {
+    if (r.value === saved) { r.checked = true; show(saved); }
+    r.addEventListener('change', function () {
+      // 400 days is the longest a browser will keep a cookie.
+      document.cookie = COOKIE + '=' + r.value + '; Max-Age=34560000; Path=/; SameSite=Lax'
+        + (location.protocol === 'https:' ? '; Secure' : '');
+      show(r.value);
+    });
+  });
+
+  // Chrome and Edge hand us a one-tap install when the site qualifies. Safari
+  // never fires this, so the button stays hidden there.
+  var deferred = null;
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferred = e;
+    root.classList.add('can-prompt');
+  });
+  window.addEventListener('appinstalled', function () {
+    deferred = null;
+    root.classList.remove('can-prompt');
+    root.classList.add('is-installed');
+  });
+  root.querySelectorAll('[data-install]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (!deferred) return;
+      deferred.prompt();
+      deferred.userChoice.then(function () { deferred = null; root.classList.remove('can-prompt'); });
+    });
+  });
+})();
+</script>
