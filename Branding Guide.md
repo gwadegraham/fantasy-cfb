@@ -18,7 +18,7 @@
 
 The source of truth is the `--cc-*` token block at the top of `public/styles.css`; this table mirrors it. If they disagree, the CSS wins.
 
-**The accent follows the sport.** Football (Gridiron) uses the red above. Basketball (Hardwood) swaps it for `#F0833F` orange via `:root[data-sport="basketball"]`. Sport-neutral surfaces use the parent crest (the campusclash.io link preview today; the login and invite pages still show the red football crest until #319 moves them), whose accent is `#C9CEE6` (`--cc-muted-bright`).
+**The accent follows the sport.** Football (Gridiron) uses the red above. Basketball (Hardwood) swaps it for `#F0833F` orange via `:root[data-sport="basketball"]`. Sport-neutral surfaces (the campusclash.io link preview, login, invites) use the parent crest, whose accent is `#C9CEE6` (`--cc-muted-bright`). The login page is pasted into both Auth0 tenants by hand, so a change to `auth/login.html` is not live until someone re-pastes it.
 
 ---
 
