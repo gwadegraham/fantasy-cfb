@@ -3,7 +3,7 @@
 
     python3 design/tools/make_crest.py design/brand/campus-clash-badge.png \
         /tmp/crest-720.png 720
-    cwebp -q 88 -alpha_q 100 -m 6 /tmp/crest-720.png -o images/campus-clash-badge-720.webp
+    cwebp -q 88 -alpha_q 100 -m 6 /tmp/crest-720.png -o images/<name>-720.webp
 
 Two steps because this file stays dependency-free like the rest of design/tools,
 while the shipped asset wants WebP. The badge's grain defeats PNG -- 720px wide
