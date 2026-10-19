@@ -307,7 +307,7 @@ describe('page renders carry the viewed league’s season', () => {
     // (#518). Its season comes from that league — behaviour tested on
     // footballAdminSeason in HoopsAdmin.spec.js.
     test("admin uses the managed league's season, never football's outright", () => {
-        const m = /res\.render\('admin'[\s\S]{0,240}?\}\)/.exec(src);
+        const m = /res\.render\('admin'[\s\S]{0,900}?\}\);/.exec(src);
         expect(m).not.toBeNull();
         expect(m[0]).toContain('hoopsAdmin.footballAdminSeason(');
         expect(m[0]).not.toContain("activeSeason('football')");

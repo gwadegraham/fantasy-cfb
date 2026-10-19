@@ -29,6 +29,7 @@ const ACTIONS = {
     'league.rename': 'League',
     'league.create': 'League',
     'league.members': 'League',
+    'league.commissioners': 'League',
     'user.create': 'Manager',
     'user.invite': 'Invite',
     'captain.set': 'Captain',

@@ -27,7 +27,20 @@ const leagueSchema = new mongoose.Schema({
     // Stored but INERT: nothing reads it. The league switcher is still built
     // from the hardcoded scoring-defaults LEAGUES list, and the season cache
     // does not load it either. #313 is where it starts meaning something.
-    status: { type: String, enum: ['active', 'archived'], default: 'active' }
+    status: { type: String, enum: ['active', 'archived'], default: 'active' },
+
+    // Who runs this league (#600): ACCOUNT ids, never franchise ids — authority
+    // belongs to the person, and a franchise id matches nothing in the token
+    // or the session (see #313). Read through modules/league-access.js, which
+    // answers from the season cache, so a write here must re-prime it.
+    //
+    // Additive to the Auth0 'League Manager' flag, not a replacement: the two
+    // original football leagues still get their commissioner from the flag,
+    // and an empty list just means "Admins only" for any other league.
+    //
+    // No `ref`: nothing populates it, and a ref to a model the web process
+    // never registers 500s the moment someone does.
+    commissioners: { type: [mongoose.Schema.Types.ObjectId], default: [] }
 }, { timestamps: true });
 
 module.exports = mongoose.model('League', leagueSchema);

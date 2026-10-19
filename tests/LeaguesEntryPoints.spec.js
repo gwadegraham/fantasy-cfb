@@ -67,16 +67,26 @@ describe('the admin pages', () => {
         expect(body(admin(true))).toContain('<nav class="admin-leagues-link"><a href="/leagues">');
     });
 
-    test('and not for a League Manager', () => {
+    // #600: a League Manager may create a league, so they get the link; an
+    // appointed commissioner without the role (canCreateLeague false) not.
+    test('for a League Manager who may create one, and not for anyone who may not', () => {
+        const as = (canCreateLeague) => ejs.render(fs.readFileSync(ADMIN, 'utf8'), {
+            user: { userId: 'u1', firstName: 'Jeff', role: 'League Manager' },
+            userState: '{}', year: 2026, isAdmin: false, canCreateLeague, draftDefaults: '{}'
+        }, { filename: ADMIN });
+        expect(body(as(true))).toContain('<nav class="admin-leagues-link"><a href="/leagues">');
+        expect(body(as(false))).not.toContain('/leagues"');
         expect(body(admin(false))).not.toContain('/leagues"');
     });
 
-    test('/hoops/admin links to it (the page is Admin-only already)', () => {
-        const HOOPS_ADMIN = path.join(VIEWS, 'hoopsAdmin.ejs');
-        const html = ejs.render(fs.readFileSync(HOOPS_ADMIN, 'utf8'), {
-            user: { userId: 'u1', firstName: 'Garrett', role: 'Admin' }, userState: '{}', year: 2027,
-            draftDefaults: '{}', manageLeague: null, manageLeagueName: null
-        }, { filename: HOOPS_ADMIN });
-        expect(html).toContain('<nav class="admin-leagues-link"><a href="/leagues">');
+    const HOOPS_ADMIN = path.join(VIEWS, 'hoopsAdmin.ejs');
+    const hoops = (locals) => ejs.render(fs.readFileSync(HOOPS_ADMIN, 'utf8'), Object.assign({
+        user: { userId: 'u1', firstName: 'Garrett', role: 'Admin' }, userState: '{}', year: 2027,
+        draftDefaults: '{}', manageLeague: null, manageLeagueName: null
+    }, locals), { filename: HOOPS_ADMIN });
+
+    test('/hoops/admin links to it for whoever may create a league', () => {
+        expect(hoops({ isAdmin: true, canCreateLeague: true })).toContain('<nav class="admin-leagues-link"><a href="/leagues">');
+        expect(hoops({ isAdmin: false, canCreateLeague: false })).not.toContain('<nav class="admin-leagues-link">');
     });
 });

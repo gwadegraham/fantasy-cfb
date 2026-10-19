@@ -29,6 +29,12 @@
 .lg-chip.archived { color: var(--cc-muted); }
 .lg-actions { grid-area: actions; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .lg-actions:empty { display: none; }
+/* Who runs the league, and its editor (Admin only, #600). The editor takes
+   the row's full width under everything else. */
+.lg-commish { font-size: 13px; color: var(--cc-muted); margin-top: 2px; overflow-wrap: anywhere; }
+.lg-link { background: none; border: 0; padding: 0; color: var(--cc-interactive); font: 600 13px Poppins, sans-serif; cursor: pointer; }
+.lg-commish-edit { grid-column: 1 / -1; border-top: 1px solid var(--cc-border); padding-top: 8px; }
+.lg-commish-edit[hidden] { display: none; }
 @media (min-width: 640px) {
     .lg-row { grid-template-columns: 28px minmax(0, 1fr) auto auto; grid-template-areas: "icon main chip actions"; }
 }
