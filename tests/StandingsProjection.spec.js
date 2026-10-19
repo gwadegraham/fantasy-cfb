@@ -376,6 +376,8 @@ describe('simulateTitleOdds: the week under way and the tie bonus (both sports)'
                 { userId: 'c', postExpected: 7.5, byWeek: {} }
             ];
             expect(run(ms, eng, { h2hExact: true }).c).toBe(1);
+            // Without h2hExact the banked week is ignored: B wins it, 5 + 3 = 8 -> B.
+            expect(run(ms, eng).b).toBe(1);
         });
 
         test('a tie pays h2hTieBonus to each side — not half a win, not a whole one', () => {
@@ -396,6 +398,15 @@ describe('simulateTitleOdds: the week under way and the tie bonus (both sports)'
             ];
             expect(run(ms, eng).c).toBe(1);
             expect(run(ms, eng, { h2hExact: true }).c).toBe(1);
+            // And it is paid to BOTH sides: with C on s + 0.5, a tie paying 1
+            // each puts A and B level on top; paying nothing (or one side) does not.
+            //   right:        A = B = s + 1 > C -> A, B share
+            //   tie unpaid:   A = B = s     < C -> C
+            //   one side:     A = s + 1     > C -> A alone
+            ms[2].postExpected = s + 0.5;
+            const odds = run(ms, eng);
+            expect(odds.a).toBeCloseTo(0.5, 9);
+            expect(odds.b).toBeCloseTo(0.5, 9);
         });
     });
 });
