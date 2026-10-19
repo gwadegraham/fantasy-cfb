@@ -37,6 +37,12 @@ PENNANT_FROM = (515.5, 778.0)     # current centre, px
 PENNANT_TO = (512.0, 1178.0)      # target centre in the taper, px
 PENNANT_SCALE = 1.45
 PARENT_ACCENT = '#C9CEE6'         # --cc-muted-bright
+# The ESTD / 2023 letters sit on the pennant's plate; its side dashes sit
+# outside it. Cream letters on the lavender plate measure ~1.5:1 and smudge
+# at the invite page's ~150px, so the letters go navy (~12:1) and the dashes
+# stay cream. Sport crests are untouched: white on their red plate is fine.
+PLATE_BOX = (460, 740, 570, 815)
+PLATE_TEXT = '#101322'            # --cc-bg
 
 
 def bbox(d):
@@ -114,7 +120,15 @@ def build(src_svg):
         stats[cls] = (len(paths), dropped, len(pennant))
         body = ''.join(keep)
         if pennant:
+            text = []
+            if cls == 'cc-cream':
+                text = [p for p in pennant if contained(
+                    bbox(re.search(r'\bd="([^"]+)"', p).group(1)), PLATE_BOX)]
+                pennant = [p for p in pennant if p not in text]
             body += f'<g class="cc-pennant" transform="{pennant_tf}">' + ''.join(pennant) + '</g>'
+            if text:
+                body += (f'<g class="cc-pennant cc-pennant-text" transform="{pennant_tf}" '
+                         f'fill="{PLATE_TEXT}">' + ''.join(text) + '</g>')
         out.append(f'<g class="{cls}" transform="{tf}" fill="{fill}" stroke="none">{body}</g>')
     out.append('</svg>')
     return '\n'.join(out) + '\n', stats

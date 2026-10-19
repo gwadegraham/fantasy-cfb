@@ -30,15 +30,15 @@
             border-radius: var(--cc-r-lg);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
         }
-        <%# --brand-ground is the colour the keyline punches through CAMPUS, so it
-            has to match what the mark sits on — this card, not the page. %>
-        .invite-card .brand-title {
-            --brand-size: 2.2rem;
-            --brand-ground: var(--cc-surface);
-            margin: 0 0 1.75rem;
+        <%# The sport-neutral parent crest: an invite can be for either sport's
+            league, and the visitor isn't signed in, so no sport applies. It
+            carries the wordmark itself, so the CSS wordmark is not repeated. %>
+        .invite-crest {
+            display: block;
+            width: min(9.5rem, 42vw);
+            height: auto;
+            margin: 0 auto 1.75rem;
         }
-        <%# flex, not inline-flex: .brand-title above is an inline-grid, so an
-            inline eyebrow flows alongside the wordmark instead of under it. %>
         .invite-eyebrow {
             display: flex;
             align-items: center;
@@ -101,10 +101,8 @@
 
 <body>
     <main class="invite-card">
-        <div class="brand-title">
-            <div class="brand-campus">CAMPUS</div>
-            <div class="brand-clash">Clash</div>
-        </div>
+        <img class="invite-crest" src="/images/campus-clash-crest-parent-720.webp"
+             alt="Campus Clash" width="720" height="994">
 
         <% if (ok) { %>
             <p class="invite-eyebrow">You’re invited</p>
