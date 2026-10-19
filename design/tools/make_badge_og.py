@@ -2,11 +2,13 @@
 """Build a 1200x630 social share image from a tall crest (#321).
 
 The masters are the vector crests in design/brand/. Nothing in design/tools
-rasterizes SVG, so render one at 2x with headless Chrome first (transparent
-background, 1095x1437 CSS px -> 2190x2874), then fit it here:
+rasterizes SVG, so render one at 2x with headless Chrome first, on a
+transparent background at the SVG's own width/height (crest-hardwood.svg is
+1095x1437, crest-parent.svg 1024x1414 -- set --window-size to match), then fit
+it here:
 
-    echo "<style>html,body{margin:0;background:transparent}img{display:block;\
-      width:1095px;height:1437px}</style><img src='file://$PWD/design/brand/crest-hardwood.svg'>" \
+    echo "<style>html,body{margin:0;background:transparent}img{display:block}</style>\
+<img src='file://$PWD/design/brand/crest-hardwood.svg'>" \
         > /tmp/crest.html
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
         --allow-file-access-from-files --default-background-color=00000000 \
