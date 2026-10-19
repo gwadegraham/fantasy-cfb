@@ -125,11 +125,17 @@ describe('GET /history/:league for a football league', () => {
         const a = await Account.create({ firstName: 'Cal', lastName: 'Test', email: 'cal@example.invalid' });
         await Franchise.create({ accountId: a._id, league: FOOTBALL, seasons: [
             { season: 2025, cumulativeScore: 90, weeklyScore: [{ week: 1, score: 90, scoreByTeam: [] }] },
-            { season: 2026, cumulativeScore: 40, weeklyScore: [{ week: 1, score: 40, scoreByTeam: [] }] }
+            // 2026's postseason bucket is scored: football's rule crowns it
+            // before the season flips, basketball's (in-season → not done)
+            // would not. That is what tells the two rules apart here.
+            { season: 2026, cumulativeScore: 52, weeklyScore: [
+                { week: 1, score: 40, scoreByTeam: [] },
+                { week: 17, season: 'postseason', score: 12, scoreByTeam: [] }
+            ] }
         ] });
         const res = await request(app()).get('/history/' + FOOTBALL);
         expect(res.body.sport).toBe('football');
         expect(res.body.activeSeason).toBe(2026);
-        expect(res.body.seasons.map(s => s.season)).toEqual([2025]);
+        expect(res.body.seasons.map(s => s.season)).toEqual([2026, 2025]);
     });
 });

@@ -27,6 +27,8 @@ router.get('/:league', async (req, res) => {
         // viewing (ccLeagueCode). Basketball labels a season by its ENDING
         // year and plays it while football's is live, so judging it against
         // football's season misfiles both ways.
+        // The SPORT's season, not seasonForLeague(league): a league pinned to
+        // its own season is still judged by its sport's — as football was.
         const sport = sportForLeague(league);
         const activeYear = activeSeason(sport);
         const seasonFinished = seasonFinishedFor({ sport, activeYear, status: sportStatus(sport), users });
