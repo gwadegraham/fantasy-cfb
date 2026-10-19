@@ -11,6 +11,18 @@ lands at ~333KB, barely under the 1024px master -- where lossy WebP at q88 is
 ~82KB and visually identical on flat art. Only the .webp goes in images/; the
 PNG is a throwaway intermediate. (Lossless WebP is ~202KB, not worth 2.5x.)
 
+The vector crests (design/brand/crest-*.svg) need one step first, since this
+reads PNG: rasterize at the master's native 1024px with headless Chrome on a
+transparent background, then feed that PNG in as above. The parent crest went
+1024 -> 720 -> images/campus-clash-crest-parent-720.webp (~52KB) this way:
+
+    printf '<body style="margin:0"><img style="display:block" src="file://%s" \
+        width=1024 height=1414>' "$PWD/design/brand/crest-parent.svg" > /tmp/crest.html
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+        --disable-gpu --hide-scrollbars --allow-file-access-from-files \
+        --default-background-color=00000000 --window-size=1024,1414 \
+        --screenshot=/tmp/crest-1024.png file:///tmp/crest.html
+
 The login screen sits the crest on a panel that already carries a gradient
 wash, so unlike make_og.py this CANNOT flatten onto a background colour -- the
 alpha has to survive. That rules out remap.halve() too: it averages straight
