@@ -19,5 +19,6 @@
 <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon<%= _sfx %>-16.png" />
 <%# The home-screen icon is NOT per sport (#571). An installed app is one app,
     and iOS freezes this icon at Add to Home Screen, so a per-sport one would
-    show whichever league was open that day. One Campus Clash mark for both. %>
-<link rel="apple-touch-icon" sizes="180x180" href="/images/app-icon-180.png" />
+    show whichever league was open that day. One Campus Clash mark for both,
+    unless the visitor picked another on /install (modules/app-icon.js). %>
+<link rel="apple-touch-icon" sizes="180x180" href="<%= (typeof appIconTouch !== 'undefined' && appIconTouch) || '/images/app-icon-180.png' %>" />

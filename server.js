@@ -97,6 +97,10 @@ app.use((req, res, next) => {
     next();
 });
 
+// The home-screen icon picked on /install: the apple-touch-icon every view
+// links, and a per-visitor /manifest.json that shadows public/manifest.json.
+require('./modules/app-icon').mount(app);
+
 // Claim a commissioner invite. Must sit BETWEEN the auth router (so there is a
 // session to read) and the identity guard below — an invitee has no franchise
 // pointer yet, which is precisely what the guard 403s on, so binding has to

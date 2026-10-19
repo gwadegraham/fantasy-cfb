@@ -39,6 +39,13 @@ describe('the favicon partial', () => {
         expect(html).not.toContain('apple-touch-icon-hardwood');
     });
 
+    // ...unless the visitor picked one on /install (modules/app-icon.js).
+    test('a picked home-screen icon replaces the shared mark', () => {
+        const html = render({ viewerSport: 'basketball', appIconTouch: '/images/app-icons/hoops-180.png' });
+        expect(html).toContain('rel="apple-touch-icon" sizes="180x180" href="/images/app-icons/hoops-180.png"');
+        expect(html).not.toContain('app-icon-180.png');
+    });
+
     test('the manifest installs the shared mark, and every icon it names exists', () => {
         const manifest = require('../public/manifest.json');
         const srcs = manifest.icons.map(i => i.src);

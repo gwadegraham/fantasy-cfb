@@ -47,8 +47,12 @@ describe('/hardwood — the basketball launch page', () => {
         const fs = require('fs');
         Object.values(page.PAGES).forEach(p => {
             expect(fs.existsSync(path.join(ROOT, p.image))).toBe(true);
-            const icons = (p.icons || '').match(/href="([^"]+)"/g) || [];
-            icons.map(h => h.slice(6, -1)).forEach(href => expect(fs.existsSync(path.join(ROOT, href))).toBe(true));
+            const html = typeof p.icons === 'function' ? p.icons({}) : (p.icons || '');
+            const icons = html.match(/href="([^"]+)"/g) || [];
+            // /images is served from the repo root, everything else from public/.
+            icons.map(h => h.slice(6, -1)).forEach(href => expect(
+                fs.existsSync(path.join(ROOT, href)) || fs.existsSync(path.join(ROOT, 'public', href))
+            ).toBe(true));
         });
     });
 });
@@ -60,6 +64,35 @@ describe('/season-preview — the football page, unchanged by the move', () => {
         expect(res.text).toContain('<title>Campus Clash — The 2026 Season Is Loaded</title>');
         expect(res.text).toContain('content="https://campusclash.io/images/season-preview-og.png"');
         expect(res.text).not.toContain('favicon-hardwood');
+    });
+});
+
+describe('/install — the add-to-home-screen guide', () => {
+    test('answers with no session, with a way back to the app', async () => {
+        const res = await request(app).get('/install');
+        expect(res.status).toBe(200);
+        expect(res.text).toContain('<title>Install Campus Clash</title>');
+        expect(res.text).toContain('Add to Home Screen');
+        expect(res.text).toMatch(/<a class="back" href="\/">/);
+    });
+
+    // Without the manifest, Add to Home Screen from this page saves a
+    // bookmark to /install rather than installing the app.
+    test('carries the app manifest and home-screen icon', async () => {
+        const { text } = await request(app).get('/install');
+        expect(text).toContain('<link rel="manifest" href="/manifest.json">');
+        expect(text).toContain('href="/images/app-icon-180.png"');
+        expect(text).toContain('<meta name="apple-mobile-web-app-capable" content="yes">');
+    });
+
+    test('the home-screen icon follows the visitor\'s pick', async () => {
+        const { text } = await request(app).get('/install').set('Cookie', 'cc_app_icon=laces');
+        expect(text).toContain('<link rel="apple-touch-icon" sizes="180x180" href="/images/app-icons/laces-180.png">');
+    });
+
+    test('the other pages do not claim to be the app', async () => {
+        const { text } = await request(app).get('/hardwood');
+        expect(text).not.toContain('rel="manifest"');
     });
 });
 
