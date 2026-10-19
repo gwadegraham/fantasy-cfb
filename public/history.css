@@ -72,7 +72,9 @@
 }
 .hof-hist-head { color: var(--cc-muted); text-transform: uppercase; font-size: 0.64rem; letter-spacing: 0.04em; border-top: 1px solid var(--cc-border); padding-top: 0.6rem; }
 .hof-hist { border-top: 1px solid var(--cc-border); font-size: 0.82rem; color: var(--cc-text); }
-.hof-hist-season { font-weight: 700; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+.hof-hist-season { font-weight: 700; color: var(--cc-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Basketball seasons read "2026–27" (#562), wider than football's "2026". */
+.hof-basketball .hof-hist-head, .hof-basketball .hof-hist { grid-template-columns: 4.25rem 6.5rem 1fr auto; }
 .hof-hist-franchise { color: var(--cc-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hof-hist-score { text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -184,6 +186,7 @@
     .hof-stat { min-width: 2.8rem; }
     .hof-hist-head, .hof-hist { grid-template-columns: 3rem 1fr auto; }
     .hof-hist-franchise, .hof-hist-head span:nth-child(3) { display: none; }
+    .hof-basketball .hof-hist-head, .hof-basketball .hof-hist { grid-template-columns: 4rem 1fr auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

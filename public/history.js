@@ -30,12 +30,21 @@
         return ccLeagueCode();
     }
 
+    // The sport of the league being shown, from the API response. Football
+    // names a season by its starting year; basketball (CBBD) by its ending
+    // one, so 2027 is 2026–27 — the same label /leagues uses.
+    var sport = 'football';
+    function seasonLabel(s) {
+        if (s == null) return '';
+        return sport === 'basketball' ? (s - 1) + '–' + String(s).slice(-2) : String(s);
+    }
+
     function championsHtml(seasons) {
         if (!seasons.length) return '';
         var cards = seasons.map(function (s) {
             var c = s.champion;
             return '<div class="hof-champ">'
-                + '<div class="hof-champ-season">' + s.season + '</div>'
+                + '<div class="hof-champ-season">' + esc(seasonLabel(s.season)) + '</div>'
                 + '<div class="hof-champ-trophy">' + (window.ccIcon ? window.ccIcon('trophy', { size: 30 }) : '') + '</div>'
                 + avatar(c, 96)
                 + '<div class="hof-champ-name">' + esc(c.franchise || c.name) + '</div>'
@@ -47,6 +56,16 @@
             + '<h2 class="hof-h2">Champions</h2>'
             + '<div class="hof-champs">' + cards + '</div>'
             + '</section>';
+    }
+
+    function recordsNote() {
+        if (sport === 'basketball') {
+            return 'Week and single-game records cover the regular season. '
+                + 'Conference tournaments and March score on a much higher scale, so they get their own record — '
+                + 'and a week with any of those games in it doesn’t count as a regular-season week.';
+        }
+        return 'Week and single-game records cover the regular season. '
+            + 'Postseason games score on a much higher scale and all land in one bucket, so they get their own record.';
     }
 
     // --- Records book --------------------------------------------------------
@@ -62,7 +81,7 @@
                 +   '<span class="hof-rec-names"><b>' + esc(r.holder.franchise || r.holder.name) + '</b>'
                 +   (r.holder.franchise ? '<small>' + esc(r.holder.name) + '</small>' : '') + '</span>'
                 + '</div>'
-                + '<div class="hof-rec-when">' + esc(r.season + (r.detail ? ' · ' + r.detail : '')) + '</div>';
+                + '<div class="hof-rec-when">' + esc(seasonLabel(r.season) + (r.detail ? ' · ' + r.detail : '')) + '</div>';
 
             // Only a record with something left to reveal becomes a control —
             // "best single game" already states its whole fact in one line, so it
@@ -83,8 +102,7 @@
         }).join('');
         return '<section class="hof-section">'
             + '<h2 class="hof-h2">Record book</h2>'
-            + '<p class="hof-note">Week and single-game records cover the regular season. '
-            + 'Postseason games score on a much higher scale and all land in one bucket, so they get their own record.</p>'
+            + '<p class="hof-note">' + recordsNote() + '</p>'
             + '<div class="hof-recs">' + cards + '</div>'
             + '</section>';
     }
@@ -117,7 +135,7 @@
         if (!withPicks.length) return '';
         var blocks = withPicks.map(function (s) {
             return '<div class="hof-draft">'
-                + '<div class="hof-draft-head"><b>' + s.season + '</b>'
+                + '<div class="hof-draft-head"><b>' + esc(seasonLabel(s.season)) + '</b>'
                 +   '<span>' + s.picks + ' picks · ' + s.rounds + ' rounds</span></div>'
                 + draftPick(s.firstOverall, 'first')
                 + draftPick(s.steal, 'steal')
@@ -134,7 +152,7 @@
     function historyRows(m) {
         return m.history.map(function (h) {
             return '<div class="hof-hist">'
-                + '<span class="hof-hist-season">' + h.season + '</span>'
+                + '<span class="hof-hist-season">' + esc(seasonLabel(h.season)) + '</span>'
                 + '<span class="hof-hist-finish">' + (h.champion ? (window.ccIcon ? window.ccIcon('trophy', { size: 14 }) + ' ' : '') : '') + ordinal(h.rank) + ' of ' + h.of + '</span>'
                 + '<span class="hof-hist-franchise">' + esc(h.franchise || '—') + '</span>'
                 + '<span class="hof-hist-score">' + h.score + ' pts</span>'
@@ -162,8 +180,8 @@
                 + '<div class="hof-mgr-body">'
                 + '<div class="hof-mgr-summary">'
                 +   '<span>' + m.seasonsPlayed + (m.seasonsPlayed === 1 ? ' season' : ' seasons') + '</span>'
-                +   (m.bestSeason ? '<span>Best <b>' + m.bestSeason.score + '</b> (' + m.bestSeason.season + ')</span>' : '')
-                +   (m.worstSeason ? '<span>Worst <b>' + m.worstSeason.score + '</b> (' + m.worstSeason.season + ')</span>' : '')
+                +   (m.bestSeason ? '<span>Best <b>' + m.bestSeason.score + '</b> (' + esc(seasonLabel(m.bestSeason.season)) + ')</span>' : '')
+                +   (m.worstSeason ? '<span>Worst <b>' + m.worstSeason.score + '</b> (' + esc(seasonLabel(m.worstSeason.season)) + ')</span>' : '')
                 + '</div>'
                 + '<div class="hof-hist-head">'
                 + '<span>Season</span><span>Finish</span><span>Franchise</span><span>Points</span></div>'
@@ -176,9 +194,23 @@
             + '</section>';
     }
 
+    function emptyHtml(data) {
+        // Basketball's normal state until its first season wraps in April:
+        // name the season rather than a generic shrug. "Hasn't finished", not
+        // "being played" — this also shows in preseason, before a tip-off.
+        if (sport === 'basketball' && data.activeSeason != null) {
+            return '<p class="hof-empty">No completed seasons yet. The ' + esc(seasonLabel(data.activeSeason))
+                + ' season hasn’t finished yet — champions, records and the all-time board land here once it wraps in April.</p>';
+        }
+        return '<p class="hof-empty">No completed seasons yet — check back once a season wraps.</p>';
+    }
+
     function render(el, data, meId) {
+        sport = data.sport === 'basketball' ? 'basketball' : 'football';
+        // Hook for the wider season column (history.css).
+        el.classList.toggle('hof-basketball', sport === 'basketball');
         if (!data.managers || !data.managers.length) {
-            el.innerHTML = '<p class="hof-empty">No completed seasons yet — check back once a season wraps.</p>';
+            el.innerHTML = emptyHtml(data);
             return;
         }
         el.innerHTML = championsHtml(data.seasons)
