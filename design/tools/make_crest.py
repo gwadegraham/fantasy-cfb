@@ -16,11 +16,11 @@ reads PNG: rasterize at the master's native 1024px with headless Chrome on a
 transparent background, then feed that PNG in as above. The parent crest went
 1024 -> 720 -> images/campus-clash-crest-parent-720.webp (~52KB) this way:
 
-    printf '<body style="margin:0"><img style="display:block" src="file://%s" \
-        width=1024 height=1414>' "$PWD/design/brand/crest-parent.svg" > /tmp/crest.html
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
-        --disable-gpu --hide-scrollbars --allow-file-access-from-files \
-        --default-background-color=00000000 --window-size=1024,1414 \
+    printf '<body style="margin:0"><img style="display:block" width=1024 height=1414 src="file://%s">' \\
+        "$PWD/design/brand/crest-parent.svg" > /tmp/crest.html
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \\
+        --disable-gpu --hide-scrollbars --allow-file-access-from-files \\
+        --default-background-color=00000000 --window-size=1024,1414 \\
         --screenshot=/tmp/crest-1024.png file:///tmp/crest.html
 
 The login screen sits the crest on a panel that already carries a gradient
