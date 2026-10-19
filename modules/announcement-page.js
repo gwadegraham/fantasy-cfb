@@ -55,7 +55,7 @@ const PAGES = {
         title: 'Put Campus Clash on your home screen',
         desc: 'Add Campus Clash to your phone or computer like an app, '
             + 'and turn on game-day alerts. Takes about 30 seconds.',
-        image: '/images/campus-clash-og.png',
+        image: '/images/campus-clash-parent-og.png',
         imageType: 'image/png',
         imageAlt: 'Campus Clash',
         // A function of the request: the home-screen icon is whichever one the

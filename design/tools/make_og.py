@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Build the 1200x630 social share image from a horizontal lockup master.
 
-    python3 design/tools/make_og.py design/brand/<lockup>.png images/campus-clash-og.png
+    python3 design/tools/make_og.py design/brand/<lockup>.png images/<name>-og.png
+
+Nothing ships from this right now: the root card it used to build
+(campus-clash-og.png, the red football lockup) was replaced by the
+sport-neutral parent crest in #321, built by make_badge_og.py instead.
 
 The lockup arrives with its navy knocked out to transparency, so it is
 composited onto the page navy BEFORE downscaling -- resampling straight RGBA
