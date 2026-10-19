@@ -19,6 +19,7 @@ const audit = require('../modules/audit-log');
 const { pickLogo } = require('../public/logo.js');
 const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-update');
 const { canManageLeague } = require('../modules/league-access');
+const requireAdmin = require('../modules/require-admin');
 const { effectiveRoles } = require('../modules/dev-role');
 const { hasScoredGames } = require('../modules/season-status');
 const inviteToken = require('../modules/invite-token');
@@ -995,7 +996,14 @@ router.delete('/:id/invite-link', async (req, res) => {
 });
 
 //Updating One
-router.patch('/:id', getUser, async (req, res) => {
+//
+// Token or Admin only, on the ROUTE (#600). Its callers are the scoring jobs,
+// and it checks no league, so the path gate's commissioner check — which a
+// role-less commissioner of any league passes — must not be its only guard.
+// Here rather than a path test in server.js: Express matches routes without
+// regard to case, so `/USERS/:id` reached this handler past a case-sensitive
+// path check.
+router.patch('/:id', requireAdmin, getUser, async (req, res) => {
 
     var date = new Date();
     var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
@@ -1065,7 +1073,10 @@ router.patch('/:id', getUser, async (req, res) => {
 });
 
 //Updating new Season & Teams for One
-router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
+//
+// Token or Admin only, for the same reason as PATCH /:id above: the draft
+// room's persist step is the caller, and nothing here checks the league.
+router.patch('/draft/:id', requireAdmin, getUserNewSeason, async (req, res) => {
 
     var date = new Date();
     var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});

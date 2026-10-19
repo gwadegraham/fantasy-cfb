@@ -21,19 +21,6 @@ function safeEqual(a, b) {
 //      of something", exactly as the role always did.
 // Everything else gets 403. Used to protect admin/write endpoints so an
 // ordinary league member can't invoke them.
-// The two /users writes nobody's browser makes: PATCH /users/:id (the scoring
-// jobs' score writes) and PATCH /users/draft/:id (the draft room's persist
-// step). Neither checks WHICH league in its handler, so the role gate below
-// was their only guard — and once a role-less commissioner of any league
-// passes it (#600), it would let them rewrite scores and rosters anywhere.
-// Token or Admin only. Called by server.js's path gate for /users.
-function jobOnlyUsersWrite(req) {
-    if (req.method !== 'PATCH' || req.baseUrl !== '/users') return false;
-    const p = req.path || '';
-    if (/^\/me(\/|$)/.test(p)) return false;
-    return /^\/[^/]+\/?$/.test(p) || /^\/draft\/[^/]+\/?$/.test(p);
-}
-
 module.exports = function requireCommissioner(req, res, next) {
     const configured = process.env.INTERNAL_API_TOKEN;
     const provided = req.get('X-Internal-Token');
@@ -51,5 +38,3 @@ module.exports = function requireCommissioner(req, res, next) {
 
     return res.status(403).json({ message: 'Forbidden' });
 };
-
-module.exports.jobOnlyUsersWrite = jobOnlyUsersWrite;

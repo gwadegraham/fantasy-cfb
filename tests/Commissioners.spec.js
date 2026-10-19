@@ -151,26 +151,40 @@ describe('the write gate (requireCommissioner)', () => {
 });
 
 // The two /users writes only the jobs make. Their handlers check no league,
-// so a role-less commissioner passing the role gate could rewrite scores and
-// rosters in any league; server.js sends them to requireAdmin instead.
+// so a role-less commissioner passing the path gate's role check could
+// rewrite scores and rosters in any league. Guarded on the routes themselves:
+// a path test in server.js was beaten by upper-casing the URL, which Express
+// still routes (#602 review). Real requests, wired as server.js wires them.
 describe('job-only /users writes', () => {
-    const { jobOnlyUsersWrite } = requireCommissioner;
-    const r = (method, baseUrl, p) => ({ method, baseUrl, path: p });
-    test('PATCH /users/:id and /users/draft/:id are job-only', () => {
-        expect(jobOnlyUsersWrite(r('PATCH', '/users', '/64b000000000000000000001'))).toBe(true);
-        expect(jobOnlyUsersWrite(r('PATCH', '/users', '/draft/64b000000000000000000001'))).toBe(true);
+    const usersRouter = require('../routes/users');
+    function appAs(req) {
+        const a = express();
+        a.use(express.json());
+        a.use((r, res, next) => { Object.assign(r, { oidc: req.oidc, effUser: req.effUser }); next(); });
+        a.use('/users', (r, res, next) => (r.method === 'GET' ? next() : requireCommissioner(r, res, next)));
+        a.use('/users', usersRouter);
+        return a;
+    }
+    const ID = String(new mongoose.Types.ObjectId());
+    const paths = [`/users/${ID}`, `/USERS/${ID}`, `/Users/${ID}`, `/users/draft/${ID}`, `/users/DRAFT/${ID}`, `/USERS/Draft/${ID}`];
+
+    test.each(paths)('a role-less commissioner is refused PATCH %s', async (p) => {
+        await appoint(HOOPS, [JEFF]);
+        const res = await request(appAs(reqFor())).patch(p).send({ cumulativeScore: 9999 });
+        expect(res.status).toBe(403);
     });
-    test('the self-service and league-checked PATCHes are not', () => {
-        ['/me/profile', '/me/captain', '/me/push/prefs', '/64b0/captain', '/64b0/roster-team']
-            .forEach(p => expect(jobOnlyUsersWrite(r('PATCH', '/users', p))).toBe(false));
-        expect(jobOnlyUsersWrite(r('POST', '/users', '/64b0'))).toBe(false);
-        expect(jobOnlyUsersWrite(r('PATCH', '/draft', '/64b0'))).toBe(false);
+
+    test.each(paths)('so is a League Manager: PATCH %s', async (p) => {
+        const res = await request(appAs(reqFor({ roles: ['League Manager'] }))).patch(p).send({ cumulativeScore: 9999 });
+        expect(res.status).toBe(403);
     });
-    test('server.js routes them to requireAdmin, ahead of the commissioner gate', () => {
-        const src = require('fs').readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-        const at = src.indexOf('requireCommissioner.jobOnlyUsersWrite(req)) return requireAdmin(req, res, next)');
-        expect(at).toBeGreaterThan(-1);
-        expect(at).toBeLessThan(src.indexOf('return requireCommissioner(req, res, next);', at));
+
+    // The positive control: an Admin gets PAST the guard (to the handler's
+    // own not-found), so the 403s above are the guard and not a dead route.
+    test.each(paths)('an Admin reaches the handler: PATCH %s', async (p) => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const res = await request(appAs(reqFor({ roles: ['Admin'] }))).patch(p).send({ cumulativeScore: 1 });
+        expect(res.status).not.toBe(403);
     });
 });
 

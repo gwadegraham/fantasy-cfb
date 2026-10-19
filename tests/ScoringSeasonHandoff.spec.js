@@ -11,6 +11,11 @@
 // the real route against real Mongo with the server's own cache pointed at a
 // DIFFERENT season, which is exactly the skew being defended against.
 
+// The route is token-or-Admin (#600): its real caller is a job, so the
+// test calls it the way the job does.
+const TOKEN = 'test-internal-token';
+process.env.INTERNAL_API_TOKEN = TOKEN;
+
 const express = require('express');
 const request = require('supertest');
 const { useMongo, mirrorUsers } = require('./helpers/mongo');
@@ -56,7 +61,7 @@ const seasonEntry = async (year) => {
 };
 
 test('a write naming 2026 lands in 2026, even though this dyno says 2027', async () => {
-    const res = await request(app).patch(`/users/${userId}`)
+    const res = await request(app).patch(`/users/${userId}`).set('X-Internal-Token', TOKEN)
         .send({ cumulativeScore: 123, isUpdated: true, season: 2026 });
     expect(res.status).toBe(200);
 
@@ -67,7 +72,7 @@ test('a write naming 2026 lands in 2026, even though this dyno says 2027', async
 
 test('the same for weeklyScore, which is the bulk of a scoring pass', async () => {
     const week = [{ week: 1, score: 17, season: 'regular', scoreByTeam: [] }];
-    const res = await request(app).patch(`/users/${userId}`)
+    const res = await request(app).patch(`/users/${userId}`).set('X-Internal-Token', TOKEN)
         .send({ weeklyScore: week, isUpdated: true, season: 2026 });
     expect(res.status).toBe(200);
 
@@ -76,7 +81,7 @@ test('the same for weeklyScore, which is the bulk of a scoring pass', async () =
 });
 
 test('accepts the season as a string, as JSON round-trips sometimes make it', async () => {
-    const res = await request(app).patch(`/users/${userId}`)
+    const res = await request(app).patch(`/users/${userId}`).set('X-Internal-Token', TOKEN)
         .send({ cumulativeScore: 5, season: '2026' });
     expect(res.status).toBe(200);
     expect((await seasonEntry(2026)).cumulativeScore).toBe(5);
@@ -85,21 +90,21 @@ test('accepts the season as a string, as JSON round-trips sometimes make it', as
 test('falls back to this dyno\'s season when the caller names none', async () => {
     // Every pre-existing client (the admin UI) sends no season, and must keep
     // behaving exactly as it did.
-    const res = await request(app).patch(`/users/${userId}`).send({ cumulativeScore: 77 });
+    const res = await request(app).patch(`/users/${userId}`).set('X-Internal-Token', TOKEN).send({ cumulativeScore: 77 });
     expect(res.status).toBe(200);
     expect((await seasonEntry(2027)).cumulativeScore).toBe(77);
     expect((await seasonEntry(2026)).cumulativeScore).toBe(0);
 });
 
 test('ignores a junk season rather than writing nowhere', async () => {
-    const res = await request(app).patch(`/users/${userId}`)
+    const res = await request(app).patch(`/users/${userId}`).set('X-Internal-Token', TOKEN)
         .send({ cumulativeScore: 9, season: 'soon' });
     expect(res.status).toBe(200);
     expect((await seasonEntry(2027)).cumulativeScore).toBe(9);
 });
 
 test('404s naming a season the manager does not have, instead of writing elsewhere', async () => {
-    const res = await request(app).patch(`/users/${userId}`)
+    const res = await request(app).patch(`/users/${userId}`).set('X-Internal-Token', TOKEN)
         .send({ cumulativeScore: 1, season: 2024 });
     expect(res.status).toBe(404);
     expect(res.body.message).toMatch(/season 2024/);
