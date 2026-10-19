@@ -621,8 +621,8 @@ describe('who gets in', () => {
     // commissioner without the Auth0 role gets no page and cannot create.
     test('an appointed commissioner without the role cannot create a league', async () => {
         const code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code;
-        await League.updateOne({ code }, { $set: { commissioners: [bob._id] } });
-        await seasons.prime();
+        await as(ADMIN).post(`/leagues/admin/${code}/members`).send({ accountIds: [String(bob._id)] });
+        expect((await as(ADMIN).put(`/leagues/admin/${code}/commissioners`).send({ accountIds: [String(bob._id)] })).status).toBe(200);
         expect((await as(MEMBER()).get('/leagues').set('Accept', 'text/html')).status).toBe(404);
         // Passes the commissioner gate (they run a league), so the router answers.
         expect((await as(MEMBER()).post('/leagues/admin').send({ sport: 'football', name: 'Mine' })).status).toBe(404);
@@ -856,6 +856,19 @@ describe('a League Manager creates and runs their own league (#600)', () => {
         expect(res.headers.location).toBe('/hoops/admin');
     });
 
+    // If he cannot be added, the league is not left behind with a
+    // commissioner who is not in it.
+    test('when joining him to it fails, the league is taken back out', async () => {
+        jest.spyOn(repo, 'addFranchise').mockRejectedValueOnce(new Error('boom'));
+        const res = await create({ sport: 'basketball', name: 'Claunts Hoops' }, JEFF());
+        expect(res.status).toBe(500);
+        expect(await League.exists({ name: 'Claunts Hoops' })).toBeNull();
+        expect(seasons.leaguesCommissionedBy(jeff._id)).toEqual([]);
+        // And a retry works: the name was not left taken.
+        jest.restoreAllMocks();
+        expect((await create({ sport: 'basketball', name: 'Claunts Hoops' }, JEFF())).status).toBe(201);
+    });
+
     test('a League Manager with no linked account is refused rather than left with a league nobody runs', async () => {
         const res = await create({ sport: 'basketball', name: 'Orphan' }, { roles: ['League Manager'], email: 'x@example.com', league: 'cl' });
         expect(res.status).toBe(409);
@@ -893,6 +906,20 @@ describe('the Commissioners control (#600, Admin only)', () => {
         expect((await tryDraft()).status).toBe(403);
     });
 
+    // A commissioner who does not play in their league is not a thing the
+    // app has (#602): the only write refuses one.
+    test('someone with no team in the league cannot be made its commissioner', async () => {
+        const code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code;
+        await as(ADMIN).post(`/leagues/admin/${code}/members`).send({ accountIds: [String(ann._id)] });
+        const res = await as(ADMIN).put(`/leagues/admin/${code}/commissioners`)
+            .send({ accountIds: [String(ann._id), String(bob._id)] });
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/has to be in the league/);
+        expect((await League.findOne({ code }).lean()).commissioners).toEqual([]);
+        // Bob plays in Claunts, not here — a franchise elsewhere does not count.
+        expect(await Franchise.exists({ accountId: bob._id, league: 'claunts-league' })).not.toBeNull();
+    });
+
     test('an unknown account is refused, not stored', async () => {
         const code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code;
         const res = await as(ADMIN).put(`/leagues/admin/${code}/commissioners`)
@@ -903,6 +930,7 @@ describe('the Commissioners control (#600, Admin only)', () => {
 
     test('the Admin rows carry who runs each league', async () => {
         const code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code;
+        await as(ADMIN).post(`/leagues/admin/${code}/members`).send({ accountIds: [String(ann._id)] });
         await as(ADMIN).put(`/leagues/admin/${code}/commissioners`).send({ accountIds: [String(ann._id)] });
         const rows = (await as(ADMIN).get('/leagues/admin/rows')).body;
         expect(rows.find(r => r.code === code).commissioners).toEqual([{ _id: String(ann._id), name: 'Ann Lee' }]);

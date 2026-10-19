@@ -478,12 +478,8 @@
         return api('GET', '/leagues/admin/' + encodeURIComponent(code) + '/commissioners').then(function (data) {
             var on = {};
             (data.commissioners || []).forEach(function (c) { on[c._id] = true; });
-            // Members first; then anyone already on the list who is not
-            // playing, so saving never silently drops them.
+            // The league's members — a commissioner is always one.
             var people = (data.members || []).slice();
-            (data.commissioners || []).forEach(function (c) {
-                if (!people.some(function (p) { return p._id === c._id; })) people.push(c);
-            });
             box.innerHTML = people.length
                 ? '<form data-commish-form="' + esc(code) + '"><ul class="lg-pick">' + people.map(function (p) {
                     return '<li><label><input type="checkbox" value="' + esc(p._id) + '"' + (on[p._id] ? ' checked' : '') + '>'

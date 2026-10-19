@@ -403,6 +403,17 @@ function build({ pageLocals = () => ({}) } = {}) {
                     console.error(`league create: adding the creator failed: ${e && e.message}`);
                 }
             }
+            // A League Manager's league names them commissioner, and a
+            // commissioner must play in their league. If they could not be
+            // added, the league is taken back out rather than left with a
+            // commissioner who is not in it. Nobody else is in it yet — it
+            // was made a moment ago — so nothing is lost. An Admin's league
+            // has no list, so for them joining stays optional, as before.
+            if (commissioners.length && !creatorJoined) {
+                await League.deleteOne({ _id: doc._id });
+                await seasons.prime().catch(e => console.error(`league create: re-prime failed: ${e && e.message}`));
+                return res.status(500).json({ message: 'Could not create the league' });
+            }
             await audit.record(req, {
                 action: 'league.create', league: doc.code, season: String(season),
                 summary: `Created ${sport} league "${doc.name}"` + (creatorJoined ? ', and joined it' : ''),
@@ -471,9 +482,11 @@ function build({ pageLocals = () => ({}) } = {}) {
     // so every write re-primes it, or this dyno would go on answering from
     // the old list until the next interval.
     //
-    // Any account may be appointed, playing in the league or not; the page
-    // offers the league's members, which is the usual case. Removing the
-    // last commissioner is allowed: the league falls back to Admins only.
+    // Only someone with a team IN that league may be appointed: a
+    // commissioner who does not play in their league is not a thing this app
+    // has (Graham, #602). No route ever deletes a franchise, so checking here,
+    // at the only write, keeps it true. Removing the last commissioner is
+    // allowed: the league falls back to Admins only.
     router.get('/admin/:code/commissioners', async (req, res) => {
         if (!isAdmin(req)) return notFound(res);
         const code = req.params.code;
@@ -484,12 +497,14 @@ function build({ pageLocals = () => ({}) } = {}) {
             const memberIds = (await Franchise.find({ league: code, 'seasons.season': season }, { accountId: 1, _id: 0 }).lean())
                 .map(f => String(f.accountId));
             const ids = [...new Set(memberIds.concat((doc.commissioners || []).map(String)))];
+            // `members` is THIS season's; a commissioner who sat it out still
+            // has a franchise here, so they are offered too, and can be kept.
             const people = new Map((await Account.find({ _id: { $in: ids } }, { firstName: 1, lastName: 1 }).lean())
                 .map(a => [String(a._id), [a.firstName, a.lastName].filter(Boolean).join(' ')]));
             const person = id => ({ _id: id, name: people.get(id) || 'Unknown account' });
             return res.json({
                 commissioners: (doc.commissioners || []).map(String).map(person),
-                members: [...new Set(memberIds)].map(person).sort((a, b) => a.name.localeCompare(b.name))
+                members: ids.map(person).sort((a, b) => a.name.localeCompare(b.name))
             });
         } catch (err) {
             console.error(`league commissioners read: ${err && err.message}`);
@@ -513,6 +528,11 @@ function build({ pageLocals = () => ({}) } = {}) {
             // looks at the document later.
             const found = await Account.find({ _id: { $in: wanted } }, { firstName: 1, lastName: 1 }).lean();
             if (found.length !== wanted.length) return res.status(400).json({ message: 'Unknown account.' });
+            const members = new Set((await Franchise.distinct('accountId', { league: code, accountId: { $in: wanted } })).map(String));
+            const outside = wanted.filter(id => !members.has(id));
+            if (outside.length) {
+                return res.status(400).json({ message: 'A commissioner has to be in the league. Add them as a manager first.' });
+            }
             const before = (doc.commissioners || []).map(String);
             await League.updateOne({ code }, { $set: { commissioners: wanted } });
             // Saved either way; a failed re-prime is caught up by the
@@ -547,21 +567,17 @@ function build({ pageLocals = () => ({}) } = {}) {
     router.get('/admin/:code/open', async (req, res) => {
         const code = req.params.code;
         try {
-            // A League Manager opens only a league they run; viewing one is
-            // a second, separate check, and optional for them — a commissioner
-            // who does not play in it still lands on its admin page, which
-            // picks the league from what they run, not from what they view.
-            const admin = isAdmin(req);
-            if (!admin && !canManageLeague(req, code)) return res.status(404).send('Not found');
-            const viewable = await leagueSelection.maySelect(req, code);
-            if (admin && !viewable) return res.status(404).send('Not found');
+            // A League Manager opens only a league they run — which, a
+            // commissioner always being a member, they can also view.
+            if (!isAdmin(req) && !canManageLeague(req, code)) return res.status(404).send('Not found');
+            if (!await leagueSelection.maySelect(req, code)) return res.status(404).send('Not found');
             const doc = await League.findOne({ code }, { sport: 1, _id: 0 }).lean();
             const sport = (doc && doc.sport) || 'football';
             // A league made on another dyno a moment ago: without this the
             // admin page would read it as football and send a basketball
             // league to football's tools.
             if (seasons.sportForLeague(code) !== sport) await seasons.prime();
-            if (viewable) res.cookie(leagueSelection.COOKIE, code, leagueSelection.COOKIE_OPTS);
+            res.cookie(leagueSelection.COOKIE, code, leagueSelection.COOKIE_OPTS);
             return res.redirect(sport === 'basketball' ? '/hoops/admin' : '/admin');
         } catch (err) {
             console.error(`league open: ${err && err.message}`);
