@@ -69,6 +69,10 @@ describe('phaseOf', () => {
         });
     });
 
+    test('readiness alone (no season status) still places preseason', () => {
+        expect(phaseOf({ sport: 'football', readiness: readiness([check('schedule', 'missing')]) })).toBe('data');
+    });
+
     test('without the platform payload (a commissioner) preseason is "draft"', () => {
         expect(phaseOf({ sport: 'basketball', seasonStatus: 'preseason' })).toBe('draft');
         expect(phaseOf({ sport: 'football', seasonStatus: 'preseason' })).toBe('draft');
@@ -201,13 +205,16 @@ describe('football, in season', () => {
 
     test('Admin: unscored finals are a gap with a Score button', () => {
         const cb = build(Object.assign({ isAdmin: true }, base));
-        expect(byKey(cb, 'scores')).toMatchObject({ state: 'warn', fix: 'scores', label: 'Week 8: 3 finals not scored yet' });
+        // /scores/status counts every league, so the Admin row says so.
+        expect(byKey(cb, 'scores')).toMatchObject({ state: 'warn', fix: 'scores', label: '3 finals not scored yet',
+            detail: 'Every league · games loaded through Week 8' });
         expect(group(cb, 'platform').items.map(r => r.key)).toContain('scores');
     });
 
-    test('commissioner: the same finals are information, with when automation scores them', () => {
+    test('commissioner: no platform-wide count, just that a run is due and when', () => {
         const cb = build(Object.assign({ isAdmin: false }, base));
-        expect(byKey(cb, 'scores')).toMatchObject({ state: 'info', fix: null, auto: 'Auto · 23:00' });
+        expect(byKey(cb, 'scores')).toMatchObject({ state: 'info', fix: null, auto: 'Auto · 23:00', label: 'New results to score' });
+        expect(JSON.stringify(rows(cb))).not.toMatch(/\b3 finals?\b/);
         expect(group(cb, 'platform')).toBeUndefined();
         expect(group(cb, 'league').items.map(r => r.key)).toEqual(['scores', 'recap', 'draft', 'gameModes']);
     });
@@ -221,7 +228,7 @@ describe('football, in season', () => {
 
     test('unscored finals with no loaded week still name the count', () => {
         const cb = build(Object.assign({ isAdmin: true }, base, { status: { unscoredResults: 1 } }));
-        expect(byKey(cb, 'scores').label).toBe('1 final not scored yet');
+        expect(byKey(cb, 'scores')).toMatchObject({ label: '1 final not scored yet', detail: 'Every league' });
     });
 
     test('a stale CFP odds board is flagged past the threshold, and only for an Admin', () => {
@@ -242,7 +249,7 @@ describe('football, in season', () => {
 
     test('football never reports a basketball job, and healthy jobs collapse to one row', () => {
         const cb = build(Object.assign({ isAdmin: true }, base));
-        expect(byKey(cb, 'jobs')).toMatchObject({ state: 'ok', detail: '2 jobs, last runs all fine' });
+        expect(byKey(cb, 'jobs')).toMatchObject({ state: 'ok', label: 'No failed jobs', detail: '2 jobs, none failed on its last run' });
         expect(rows(cb).some(r => /hoops/.test(r.key))).toBe(false);
     });
 
@@ -328,7 +335,7 @@ describe('basketball', () => {
         const cb = build(Object.assign({}, base, { isAdmin: true, seasonStatus: 'in-season', jobs, draft: { status: 'complete', picks: [] } }));
         expect(cb.title).toBe('In season');
         expect(group(cb, 'platform').items.map(r => r.key)).toEqual(['hoops-refresh', 'jobs']);
-        expect(byKey(cb, 'hoops-refresh')).toMatchObject({ label: '1715 finals on file', detail: 'Latest 2026-10-06', auto: null });
+        expect(byKey(cb, 'hoops-refresh')).toMatchObject({ label: '1,715 finals on file', detail: 'Latest 2026-10-06', auto: null });
     });
 
     test('in season, commissioner: results say automation scores them', () => {
@@ -350,7 +357,7 @@ describe('the draft row', () => {
         [{ draftOrder: ['a', 'b'] }, 'warn', 'Draft date not set'],
         [{ draftOrder: ['a', 'b'], scheduledAt: daysAhead(1) }, 'ok', 'Draft scheduled tomorrow'],
         [{ draftOrder: ['a', 'b'], scheduledAt: NOW.toISOString() }, 'ok', 'Draft scheduled today'],
-        [{ draftOrder: ['a', 'b'], scheduledAt: daysAgo(2) }, 'warn', 'Draft scheduled date passed'],
+        [{ draftOrder: ['a', 'b'], scheduledAt: daysAgo(2) }, 'info', 'Draft date has passed'],
         [{ status: 'active', draftOrder: ['a', 'b'], picks: [{}], totalRounds: 5 }, 'info', 'Draft in progress'],
         [{ status: 'complete', picks: [{}] }, 'ok', 'Draft complete']
     ])('%j -> %s %s', (d, state, label) => {
@@ -367,6 +374,59 @@ describe('the draft row', () => {
     });
 });
 
+describe('review fixes', () => {
+    test('a football draft in progress is reported, not a gap, and offers no Fix (Configure Draft 409s)', () => {
+        const active = check('draft', 'partial', { required: false, actionLabel: 'Open', detail: 'In progress — 3 of 60 picks made' });
+        const cb = build({ sport: 'football', seasonStatus: 'preseason', league: 'graham-league', now: NOW,
+            readiness: readiness(readyPlatform, [active]) });
+        expect(byKey(cb, 'draft')).toMatchObject({ state: 'info', fix: null });
+        expect(cb.open).toBe(0);
+        expect(cb.summary).toBe('Nothing needs you');
+    });
+
+    test('draft days are calendar days, not elapsed hours', () => {
+        // 15:00 now, draft 10:00 tomorrow: 19 hours away, but tomorrow.
+        const now = new Date(2026, 9, 19, 15, 0);
+        const tomorrow = new Date(2026, 9, 20, 10, 0);
+        const earlierToday = new Date(2026, 9, 19, 14, 0);
+        const d = at => byKey(build({ sport: 'basketball', seasonStatus: 'preseason', now,
+            draft: { draftOrder: ['a', 'b'], scheduledAt: at } }), 'draft').label;
+        expect(d(tomorrow)).toBe('Draft scheduled tomorrow');
+        // An hour ago, still not started: today, not "date passed".
+        expect(d(earlierToday)).toBe('Draft scheduled today');
+    });
+
+    test('a commissioner given the real basketball payload still gets no platform rows', () => {
+        const cb = build({ sport: 'basketball', isAdmin: false, seasonStatus: 'preseason', now: NOW, hoops: hoopsFull,
+            jobs: [{ jobName: 'hoops-net', status: 'error', startedAt: daysAgo(0) }] });
+        expect(cb.groups.map(g => g.key)).not.toContain('platform');
+        const season = build({ sport: 'basketball', isAdmin: false, seasonStatus: 'in-season', now: NOW, hoops: hoopsFull,
+            jobs: [{ jobName: 'hoops-net', status: 'error', startedAt: daysAgo(0) }] });
+        expect(rows(season).some(r => /job/.test(r.key))).toBe(false);
+    });
+
+    test('a football commissioner never gets job or CFP rows, even when handed them', () => {
+        const cb = build({ sport: 'football', isAdmin: false, seasonStatus: 'in-season', now: NOW,
+            jobs: [{ jobName: 'daily-scores', status: 'error', startedAt: daysAgo(0) }],
+            cfpOdds: { makeCount: 0, champCount: 0 } });
+        expect(rows(cb).map(r => r.key)).toEqual([]);
+    });
+
+    test('never-run jobs (status null) are not counted as healthy runs', () => {
+        const cb = build({ sport: 'basketball', isAdmin: true, seasonStatus: 'in-season', now: NOW,
+            jobs: [{ jobName: 'hoops-scores', status: null }, { jobName: 'hoops-net', status: 'success', startedAt: daysAgo(0) }] });
+        expect(byKey(cb, 'jobs').detail).toBe('1 job, none failed on its last run');
+        const none = build({ sport: 'basketball', isAdmin: true, seasonStatus: 'in-season', now: NOW,
+            jobs: [{ jobName: 'hoops-scores', status: null }] });
+        expect(byKey(none, 'jobs')).toBeUndefined();
+    });
+
+    test('the H2H tie bonus is shown when set, as readiness shows it', () => {
+        const cb = build({ sport: 'basketball', seasonStatus: 'preseason', now: NOW, engagement: { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 1 } });
+        expect(byKey(cb, 'gameModes').label).toBe('H2H +3/+1 tie');
+    });
+});
+
 describe('edges', () => {
     test('the offseason has no list', () => {
         const cb = build({ sport: 'football', isAdmin: true, seasonStatus: 'complete', now: NOW, status: { unscoredResults: 2 } });
@@ -375,10 +435,13 @@ describe('edges', () => {
         expect(cb.next.text).toMatch(/new season/);
     });
 
-    test('no input at all still builds', () => {
+    test('nothing says where the season is: no phase, no list — never a guessed "draft"', () => {
         const cb = build();
         expect(cb.sport).toBe('football');
-        expect(cb.phase).toBe('draft');
+        expect(cb.phase).toBeNull();
+        expect(cb.groups).toEqual([]);
+        expect(cb.phases.every(p => p.state === 'next')).toBe(true);
+        expect(phaseOf({ sport: 'football', status: { unscoredResults: 3 } })).toBeNull();
     });
 
     test('the clock defaults to now', () => {

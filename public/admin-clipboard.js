@@ -75,7 +75,11 @@
         if (t == null) return NaN;
         return t instanceof Date ? t.getTime() : new Date(t).getTime();
     }
-    function daysBetween(from, to) { return Math.floor((ms(to) - ms(from)) / DAY); }
+    // Calendar days in the viewer's zone, not elapsed hours: a draft at 10:00
+    // tomorrow is "tomorrow" at 15:00 today, though only 19 hours away.
+    // Rounded, so a DST change (a 23- or 25-hour day) still counts as one.
+    function startOfDay(t) { var d = new Date(ms(t)); d.setHours(0, 0, 0, 0); return d.getTime(); }
+    function daysBetween(from, to) { return Math.round((startOfDay(to) - startOfDay(from)) / DAY); }
 
     // ---- phase ------------------------------------------------------------
 
@@ -95,10 +99,17 @@
 
     // The phase the league is in. Derived, never chosen: the stepper on the
     // page is read-only (a tap previews another phase's list; see build()).
+    // null when nothing says where the season is — no season status and no
+    // readiness payload — rather than guessing "draft".
+    //
+    // Preseason "data" needs the platform payload, which a commissioner never
+    // gets (/hoops/admin/status is Admin-only), so a basketball commissioner
+    // goes straight to "draft": the data gap is not theirs to close.
     function phaseOf(input) {
         var sport = input.sport === 'basketball' ? 'basketball' : 'football';
         var status = input.seasonStatus;
-        if (!status && input.readiness && input.readiness.seasonUnderway) status = 'in-season';
+        if (!status && input.readiness) status = input.readiness.seasonUnderway ? 'in-season' : 'preseason';
+        if (!status) return null;
         if (status === 'complete') return 'offseason';
         if (status === 'in-season') {
             // Basketball has no tournament signal on the client yet, so its
@@ -124,11 +135,14 @@
     // A readiness check (modules/season-readiness.js) as a row. Its keys are
     // already the tool keys READINESS_FIX in public/admin.js understands.
     function fromReadiness(c) {
+        // Only a REQUIRED gap is work. An optional row that is partial — a
+        // draft in progress (actionLabel 'Open') — is a state to report, and
+        // its tool cannot help: Configure Draft 409s while a draft is active.
         var state = c.status === 'ready' ? 'ok'
             : c.status === 'off' ? 'off'
             : c.noAction ? 'info'
-            : (c.required || c.status === 'partial') ? 'warn' : 'info';
-        var fix = state === 'ok' || c.noAction ? null : c.key;
+            : c.required ? 'warn' : 'info';
+        var fix = state === 'ok' || c.noAction || c.actionLabel === 'Open' ? null : c.key;
         return row(c.key, state, c.label, c.note || c.detail, fix);
     }
 
@@ -148,21 +162,25 @@
         var rounds = draft.totalRounds || 10;
         if (draft.status === 'complete') return row('draft', 'ok', 'Draft complete', plural(picks.length, 'pick'));
         if (draft.status === 'active' && picks.length) {
-            return row('draft', 'info', 'Draft in progress', picks.length + ' of ' + (order.length * rounds) + ' picks made', 'draft');
+            return row('draft', 'info', 'Draft in progress', picks.length + ' of ' + (order.length * rounds) + ' picks made');
         }
         var shape = plural(order.length, 'manager') + ' · ' + rounds + ' rounds' + (draft.poolSize ? ' · ' + draft.poolSize + ' pool' : '');
         if (order.length < 2) return row('draft', 'warn', 'Pick order not set', shape, 'draft');
         if (!draft.scheduledAt) return row('draft', 'warn', 'Draft date not set', shape, 'draft');
         var days = daysBetween(now, draft.scheduledAt);
-        var when = days > 1 ? 'in ' + days + ' days' : days === 1 ? 'tomorrow' : days === 0 ? 'today' : 'date passed';
-        return row('draft', days < 0 ? 'warn' : 'ok', 'Draft scheduled ' + when, shape, days < 0 ? 'draft' : null);
+        // A past date on a draft that never started is reported, not flagged:
+        // readiness calls any dated draft ready, and the commissioner may just
+        // be about to open the room.
+        if (days < 0) return row('draft', 'info', 'Draft date has passed', shape + ' · not started', 'draft');
+        var when = days > 1 ? 'in ' + days + ' days' : days === 1 ? 'tomorrow' : 'today';
+        return row('draft', 'ok', 'Draft scheduled ' + when, shape);
     }
 
     function modesRow(engagement) {
         var e = engagement || {};
         var modes = [];
         if (e.captainEnabled) modes.push('Captain ' + (e.captainMultiplier || 2) + '×');
-        if (e.h2hEnabled) modes.push('H2H +' + (e.h2hWinBonus != null ? e.h2hWinBonus : 3));
+        if (e.h2hEnabled) modes.push('H2H +' + (e.h2hWinBonus != null ? e.h2hWinBonus : 3) + (e.h2hTieBonus ? '/+' + e.h2hTieBonus + ' tie' : ''));
         return modes.length
             ? row('gameModes', 'ok', modes.join(' · '), 'Game modes this season')
             : row('gameModes', 'off', 'Classic scoring', 'No game modes this season');
@@ -171,7 +189,8 @@
     function latestJobs(jobs, test) {
         var latest = {};
         (jobs || []).forEach(function (j) {
-            if (!j || !j.jobName || !test(j.jobName)) return;
+            // /hoops/admin/status lists never-run jobs as { jobName, status: null }.
+            if (!j || !j.jobName || !j.status || !test(j.jobName)) return;
             var prev = latest[j.jobName];
             if (!prev || ms(j.startedAt) > ms(prev.startedAt)) latest[j.jobName] = j;
         });
@@ -185,7 +204,7 @@
         var mine = latestJobs(jobs, sport === 'basketball' ? hoops : function (n) { return !hoops(n); });
         if (!mine.length) return [];
         var failed = mine.filter(function (j) { return j.status === 'error'; });
-        if (!failed.length) return [row('jobs', 'ok', 'Automated jobs healthy', plural(mine.length, 'job') + ', last runs all fine')];
+        if (!failed.length) return [row('jobs', 'ok', 'No failed jobs', plural(mine.length, 'job') + ', none failed on its last run')];
         return failed.map(function (j) {
             var name = JOB_LABELS[j.jobName] || j.jobName;
             var scoring = /scores$/.test(j.jobName);
@@ -199,19 +218,19 @@
         return row('recap', 'ok', 'Recap alert sent', 'Latest Monday push');
     }
 
-    // Football scoring progress. An Admin can score by hand; anyone else is
-    // told when automation will.
+    // Football scoring progress. /scores/status counts EVERY league's
+    // franchises, so its numbers are platform-wide: an Admin sees them as
+    // such, and a commissioner gets no count that would read as their own
+    // league's — only that a scoring run is due, and when.
     function footballScoringRow(status, isAdmin) {
         if (!status) return null;
         var through = status.scoredThroughWeek;
         if (!status.unscoredResults) {
             return row('scores', 'ok', through ? 'Scored through Week ' + through : 'Nothing to score yet', 'Automation is current');
         }
-        var label = plural(status.unscoredResults, 'final') + ' not scored yet';
-        if (status.gamesLoadedThroughWeek) label = 'Week ' + status.gamesLoadedThroughWeek + ': ' + label;
-        return isAdmin
-            ? row('scores', 'warn', label, 'Completed results waiting on a scoring run', 'scores')
-            : row('scores', 'info', label, 'Scored automatically tonight', null, AUTO_SCORES.football);
+        if (!isAdmin) return row('scores', 'info', 'New results to score', 'Automatic scoring run tonight', null, AUTO_SCORES.football);
+        return row('scores', 'warn', plural(status.unscoredResults, 'final') + ' not scored yet',
+            'Every league' + (status.gamesLoadedThroughWeek ? ' · games loaded through Week ' + status.gamesLoadedThroughWeek : ''), 'scores');
     }
 
     function cfpOddsRow(odds, now) {
@@ -245,7 +264,8 @@
     function hoopsResultsRow(hoops, isAdmin) {
         if (!hoops || !hoops.onFile || !hoops.onFile.games) return null;
         var g = hoops.onFile.games;
-        return row('hoops-refresh', 'ok', plural(g.finals || 0, 'final') + ' on file',
+        var finals = g.finals || 0;
+        return row('hoops-refresh', 'ok', num(finals) + ' final' + (finals === 1 ? '' : 's') + ' on file',
             g.lastFinal ? 'Latest ' + new Date(g.lastFinal).toISOString().slice(0, 10) : 'None yet',
             null, isAdmin ? null : AUTO_SCORES.basketball);
     }
@@ -334,8 +354,16 @@
         var sport = input.sport === 'basketball' ? 'basketball' : 'football';
         var now = input.now != null ? input.now : Date.now();
         var current = phaseOf(input);
-        var shown = (opts && opts.phase) || current;
         var order = PHASES[sport].map(function (p) { return p.key; });
+        // Unknown: no list, no "now". The page leaves the Clipboard hidden.
+        if (!current) {
+            return {
+                sport: sport, phase: null, shown: null, preview: false,
+                phases: PHASES[sport].map(function (p) { return { key: p.key, label: p.label, state: 'next' }; }),
+                title: '', summary: 'Season status unavailable', open: 0, groups: [], next: null
+            };
+        }
+        var shown = (opts && opts.phase) || current;
         var at = order.indexOf(current);
 
         var lists = checklist(shown, input, now);
