@@ -9,7 +9,8 @@
 //      "Add a Player" did for someone already in the app.
 //   2. That manager, with the session they already had, can switch to the
 //      new league. The identity guard still lets them in.
-//   3. Nobody but an Admin can reach any of it, and a 404 is the answer
+//   3. Nobody but an Admin or a League Manager can reach any of it, a League
+//      Manager only for leagues they run (#600), and a 404 is the answer
 //      wherever a 403 would say the thing exists.
 //   4. Creating a basketball league tells nobody else it is there.
 //
@@ -560,35 +561,72 @@ describe('basketball stays invisible to everyone else', () => {
     });
 });
 
-describe('Admins only, everywhere', () => {
+describe('who gets in', () => {
     const MEMBER = () => ({ roles: [], accountId: bob._id, email: 'bob@example.com', league: 'cl' });
     const routes = (code) => [
-        ['GET', '/leagues/admin/rows'],
         ['GET', `/leagues/admin/candidates?league=${code}`],
-        ['POST', '/leagues/admin', { sport: 'football', name: 'Sneaky' }],
-        ['POST', `/leagues/admin/${code}/members`, { accountIds: [] }],
-        ['GET', `/leagues/admin/${code}/open`]
+        ['GET', `/leagues/admin/account?email=ann@example.com&league=${code}`],
+        ['POST', `/leagues/admin/${code}/members`, { accountIds: [String(ann._id)] }],
+        ['GET', `/leagues/admin/${code}/open`],
+        ['GET', `/leagues/admin/${code}/commissioners`],
+        ['PUT', `/leagues/admin/${code}/commissioners`, { accountIds: [String(LM.accountId)] }]
     ];
+    const call = (who, [method, url, body]) => {
+        const r = as(who)[method.toLowerCase()](url);
+        return body ? r.send(body) : r;
+    };
 
-    test.each([['a member', 'member'], ['a League Manager', 'lm']])('%s gets 404 or 403 on every route, and learns nothing', async (_, kind) => {
+    test('a member gets 404 or 403 on every route, and learns nothing', async () => {
         const code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code;
-        const who = kind === 'lm' ? LM : MEMBER();
-        for (const [method, url, body] of routes(code)) {
-            const r = method === 'GET' ? await as(who).get(url) : await as(who).post(url).send(body);
-            expect([403, 404]).toContain(r.status);
-            expect(r.text).not.toContain('Hardwood');
+        for (const r of [['GET', '/leagues/admin/rows'], ['POST', '/leagues/admin', { sport: 'football', name: 'Sneaky' }]].concat(routes(code))) {
+            const res = await call(MEMBER(), r);
+            expect([403, 404]).toContain(res.status);
+            expect(res.text).not.toContain('Hardwood');
         }
-        // A League Manager passes the commissioner gate, so the router's own
-        // answer is what they see — and it is a 404, not a 403.
-        if (kind === 'lm') expect((await as(LM).post('/leagues/admin').send({ sport: 'football', name: 'x' })).status).toBe(404);
         expect(await League.exists({ name: 'Sneaky' })).toBeNull();
-        expect(await League.exists({ name: 'x' })).toBeNull();
+        expect((await League.findOne({ code }).lean()).commissioners).toEqual([]);
     });
 
-    test.each([['a member', () => MEMBER()], ['a League Manager', () => LM]])('%s asking for the page gets a plain 404', async (_, who) => {
-        const res = await as(who()).get('/leagues').set('Accept', 'text/html');
+    // A League Manager may now open the page and create a league (#600), but
+    // a league someone ELSE runs is as invisible to them as before: a 404 on
+    // every route that names it, and no row.
+    test("a League Manager gets a 404 on every route for a league they don't run, and learns nothing", async () => {
+        const code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code;
+        for (const r of routes(code)) {
+            const res = await call(LM, r);
+            expect(res.status).toBe(404);
+            expect(res.text).not.toContain('Hardwood');
+        }
+        const list = await as(LM).get('/leagues/admin/rows');
+        expect(list.status).toBe(200);
+        expect(list.text).not.toContain('Hardwood');
+        expect(await Franchise.exists({ league: code, accountId: ann._id })).toBeNull();
+        expect((await League.findOne({ code }).lean()).commissioners).toEqual([]);
+    });
+
+    test('a member asking for the page gets a plain 404', async () => {
+        const res = await as(MEMBER()).get('/leagues').set('Accept', 'text/html');
         expect(res.status).toBe(404);
         expect(res.text).not.toContain('leagues-page');
+    });
+
+    test('a League Manager gets the page, without the Admin view', async () => {
+        const res = await as(LM).get('/leagues').set('Accept', 'text/html');
+        expect(res.status).toBe(200);
+        expect(res.text).toContain('id="leagues-page"');
+        expect(res.text).toContain('window.LEAGUES_IS_ADMIN = false');
+    });
+
+    // Running a league is not being trusted to start new ones: someone made a
+    // commissioner without the Auth0 role gets no page and cannot create.
+    test('an appointed commissioner without the role cannot create a league', async () => {
+        const code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code;
+        await League.updateOne({ code }, { $set: { commissioners: [bob._id] } });
+        await seasons.prime();
+        expect((await as(MEMBER()).get('/leagues').set('Accept', 'text/html')).status).toBe(404);
+        // Passes the commissioner gate (they run a league), so the router answers.
+        expect((await as(MEMBER()).post('/leagues/admin').send({ sport: 'football', name: 'Mine' })).status).toBe(404);
+        expect(await League.exists({ name: 'Mine' })).toBeNull();
     });
 
     test('signed out: the page goes to login, the API is not reachable', async () => {
@@ -711,5 +749,153 @@ describe('pure helpers', () => {
         expect(leagueAdmin.stateOf({ managers: 8 })).toBe('setup');
         expect(leagueAdmin.stateOf({ draftStatus: 'active', managers: 8 })).toBe('live');
         expect(leagueAdmin.stateOf({})).toBe('setup');
+    });
+});
+
+// #600: a League Manager creates a league and runs it. Jeff's case — the
+// commissioner of a football league starting a basketball one — end to end
+// through the real routes, so each step proves the previous one's write is
+// what the next one's permission check reads.
+describe('a League Manager creates and runs their own league (#600)', () => {
+    let jeff, cara;
+    // Jeff: League Manager of Claunts, by the Auth0 flag; plays in Claunts.
+    // Cara: plays in Claunts with him. Ann: Graham league only — not his.
+    const JEFF = () => ({ roles: ['League Manager'], accountId: jeff._id, email: 'jeff@example.com', league: 'cl' });
+    beforeEach(async () => {
+        jeff = await person('Jeff', 'claunts-league');
+        cara = await person('Cara', 'claunts-league');
+    });
+    const make = async () => {
+        const res = await create({ sport: 'basketball', name: 'Claunts Hoops' }, JEFF());
+        expect(res.status).toBe(201);
+        return res.body.code;
+    };
+
+    test('an Admin who creates one is not put on its list: the role already runs it', async () => {
+        const code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code;
+        expect((await League.findOne({ code }).lean()).commissioners).toEqual([]);
+    });
+
+    test('creating one makes him its commissioner, and he joins it', async () => {
+        const code = await make();
+        const doc = await League.findOne({ code }).lean();
+        expect(doc.commissioners.map(String)).toEqual([String(jeff._id)]);
+        expect(await Franchise.exists({ accountId: jeff._id, league: code, 'seasons.season': HOOPS })).not.toBeNull();
+        const row = await AuditLog.findOne({ action: 'league.create', league: code }).lean();
+        expect(row.meta.commissioners).toEqual([String(jeff._id)]);
+    });
+
+    test('his list shows the leagues he runs: his own, and the new one — not Graham league', async () => {
+        const code = await make();
+        const rows = (await as(JEFF()).get('/leagues/admin/rows')).body;
+        expect(rows.map(r => r.code).sort()).toEqual(['claunts-league', code].sort());
+        // The Commissioners control is the Admin's, and so is the data for it.
+        expect(rows.every(r => r.commissioners === undefined)).toBe(true);
+    });
+
+    test("step 2 offers only people he shares a league with, and refuses anyone else's id", async () => {
+        const code = await make();
+        const offered = (await as(JEFF()).get(`/leagues/admin/candidates?league=${code}`)).body;
+        expect(offered.map(c => c.firstName)).toEqual(['Bob', 'Cara']);
+        const out = (await as(JEFF()).post(`/leagues/admin/${code}/members`)
+            .send({ accountIds: [String(cara._id), String(ann._id)] })).body;
+        expect(out.added).toEqual([String(cara._id)]);
+        expect(out.refused).toEqual([String(ann._id)]);
+        expect(await Franchise.exists({ accountId: ann._id, league: code })).toBeNull();
+    });
+
+    test('the email lookup says someone outside his leagues HAS a login, never who', async () => {
+        const code = await make();
+        const res = await as(JEFF()).get(`/leagues/admin/account?email=ann@example.com&league=${code}`);
+        expect(res.body).toEqual({ found: true, outside: true });
+        expect(res.text).not.toContain('Ann');
+        expect(res.text).not.toContain(String(ann._id));
+        // Inside his leagues the lookup works as it does for an Admin.
+        const known = (await as(JEFF()).get(`/leagues/admin/account?email=cara@example.com&league=${code}`)).body;
+        expect(known).toMatchObject({ found: true, _id: String(cara._id), inLeague: false, joined: true });
+    });
+
+    // The point of the list: what he could not do before, he now can, for
+    // this league only. POST /draft and POST /users are canManageLeague-gated,
+    // so they read the cache the create re-primed.
+    test('he can set up its draft and add someone new — and still not touch Graham league', async () => {
+        const code = await make();
+        await as(JEFF()).post(`/leagues/admin/${code}/members`).send({ accountIds: [String(cara._id)] });
+        const draft = await as(JEFF()).post('/draft').send({
+            league: code, season: HOOPS, draftOrder: [String(jeff._id), String(cara._id)],
+            orderMethod: 'manual', snake: true, totalRounds: 10, poolSize: 120
+        });
+        expect(draft.status).toBeLessThan(300);
+        expect(await Draft.exists({ league: code, season: HOOPS })).not.toBeNull();
+
+        const added = await as(JEFF()).post('/users').send({
+            firstName: 'Dee', lastName: 'Lee', email: 'dee@example.com', league: code, seasons: [{ season: HOOPS }]
+        });
+        expect(added.status).toBeLessThan(300);
+
+        const elsewhere = await as(JEFF()).post('/users').send({
+            firstName: 'Eve', lastName: 'Lee', email: 'eve@example.com', league: 'graham-league', seasons: [{ season: FOOTBALL }]
+        });
+        expect(elsewhere.status).toBe(403);
+    });
+
+    test('opening it lands on the basketball admin page', async () => {
+        const code = await make();
+        const res = await as(JEFF()).get(`/leagues/admin/${code}/open`);
+        expect(res.status).toBe(302);
+        expect(res.headers.location).toBe('/hoops/admin');
+    });
+
+    test('a League Manager with no linked account is refused rather than left with a league nobody runs', async () => {
+        const res = await create({ sport: 'basketball', name: 'Orphan' }, { roles: ['League Manager'], email: 'x@example.com', league: 'cl' });
+        expect(res.status).toBe(409);
+        expect(await League.exists({ name: 'Orphan' })).toBeNull();
+    });
+});
+
+describe('the Commissioners control (#600, Admin only)', () => {
+    test('an Admin appoints a member; the change is live at once, and audited', async () => {
+        const code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code;
+        await as(ADMIN).post(`/leagues/admin/${code}/members`).send({ accountIds: [String(ann._id), String(bob._id)] });
+
+        const before = (await as(ADMIN).get(`/leagues/admin/${code}/commissioners`)).body;
+        expect(before.members.map(m => m.name)).toEqual(['Ann Lee', 'Bob Lee']);
+
+        const BOB = { roles: [], accountId: bob._id, email: 'bob@example.com', league: 'cl' };
+        const tryDraft = () => as(BOB).post('/draft').send({
+            league: code, season: HOOPS, draftOrder: [String(ann._id), String(bob._id)],
+            orderMethod: 'manual', snake: true, totalRounds: 10, poolSize: 120
+        });
+        expect((await tryDraft()).status).toBe(403);
+
+        const put = await as(ADMIN).put(`/leagues/admin/${code}/commissioners`).send({ accountIds: [String(bob._id)] });
+        expect(put.status).toBe(200);
+        expect(put.body.commissioners).toEqual([{ _id: String(bob._id), name: 'Bob Lee' }]);
+        // No re-prime by the test: the route's own is what makes it live.
+        expect((await tryDraft()).status).toBeLessThan(300);
+
+        const row = await AuditLog.findOne({ action: 'league.commissioners', league: code }).lean();
+        expect(row.summary).toContain('Bob Lee');
+        expect(row.meta.after).toEqual([String(bob._id)]);
+
+        // Emptied: back to Admins only, and Bob loses it at once.
+        await as(ADMIN).put(`/leagues/admin/${code}/commissioners`).send({ accountIds: [] });
+        expect((await tryDraft()).status).toBe(403);
+    });
+
+    test('an unknown account is refused, not stored', async () => {
+        const code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code;
+        const res = await as(ADMIN).put(`/leagues/admin/${code}/commissioners`)
+            .send({ accountIds: [String(new mongoose.Types.ObjectId())] });
+        expect(res.status).toBe(400);
+        expect((await League.findOne({ code }).lean()).commissioners).toEqual([]);
+    });
+
+    test('the Admin rows carry who runs each league', async () => {
+        const code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code;
+        await as(ADMIN).put(`/leagues/admin/${code}/commissioners`).send({ accountIds: [String(ann._id)] });
+        const rows = (await as(ADMIN).get('/leagues/admin/rows')).body;
+        expect(rows.find(r => r.code === code).commissioners).toEqual([{ _id: String(ann._id), name: 'Ann Lee' }]);
+        expect(rows.find(r => r.code === 'graham-league').commissioners).toEqual([]);
     });
 });

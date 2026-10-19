@@ -31,6 +31,10 @@
         // Each sport's active season (null when a sport has none yet, which
         // is when it cannot be picked) and its draft starting points.
         window.LEAGUE_SEASONS = <%- activeSeasons %>;
+        // An Admin also sees every league and its Commissioners control; a
+        // League Manager sees the leagues they run (#600). Display only —
+        // every route re-checks.
+        window.LEAGUES_IS_ADMIN = <%- (typeof isAdmin !== 'undefined' && isAdmin) ? 'true' : 'false' %>;
         window.DRAFT_DEFAULTS = <%- (typeof draftDefaults !== 'undefined' && draftDefaults) || '{}' %>;
     </script>
     <main class="sp-page lg" id="leagues-page">

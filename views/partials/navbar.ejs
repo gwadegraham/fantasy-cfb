@@ -106,11 +106,17 @@
     <div class="navbar-links" id="navbar-links">
         <ul>
             <% var _role = (user && user.role) || ''; %>
-            <% if (_role === 'Admin' || _role === 'League Manager') { %>
-            <%# An Admin viewing a basketball league goes to that sport's admin
-                page (#518). A League Manager manages their own football league
-                on /admin whatever they view, and cannot open the basketball one. %>
-            <% var _adminHref = (_role === 'Admin' && typeof viewerSport !== 'undefined' && viewerSport === 'basketball') ? '/hoops/admin' : '/admin'; %>
+            <%# adminHref comes from the server (routes/hoopsAdmin.js adminHref,
+                #600): the admin page for the sport of the league being viewed
+                when the viewer runs it, else the page for a league they do
+                run, and null for someone who runs nothing — which includes a
+                commissioner appointed without the Auth0 role. A page rendered
+                without the locals middleware falls back to the role. %>
+            <% var _adminHref = (typeof adminHref !== 'undefined') ? adminHref
+                : ((_role === 'Admin' || _role === 'League Manager')
+                    ? ((_role === 'Admin' && typeof viewerSport !== 'undefined' && viewerSport === 'basketball') ? '/hoops/admin' : '/admin')
+                    : null); %>
+            <% if (_adminHref) { %>
             <li><a admin-page href="<%= _adminHref %>"><%= _role === 'Admin' ? 'Admin' : 'League Management' %></a></li>
             <% } %>
             <%# The switcher, for anyone with more than one league to switch

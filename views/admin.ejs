@@ -33,6 +33,10 @@
         // status strip queries the season the league is actually playing rather
         // than the wall-clock year.
         window.APP_YEAR = "<%= year %>";
+        // The league this page manages, named by the server (#600) — the
+        // Auth0 flag the client used to read cannot name a league someone
+        // created or was appointed to.
+        window.ADMIN_LEAGUE = <%- JSON.stringify((typeof manageLeague !== 'undefined' && manageLeague) || null).replace(/</g, '\\u003c') %>;
         // Per-sport draft starting points (modules/draft-defaults.js), so
         // the settings form can pre-fill them where an admin can see and
         // change them.
@@ -44,9 +48,10 @@
             <%= isAdmin ? 'Admin' : 'League Management' %>
         </div>
     </div>
-    <%# Every league, both sports, and Create league (#536). Admins only:
-        a League Manager manages their own league here and nothing else. %>
-    <% if (isAdmin) { %>
+    <%# Every league, both sports, and Create league (#536). An Admin sees
+        them all; a League Manager the ones they run, and may create one
+        (#600). An appointed commissioner without the role cannot. %>
+    <% if (typeof canCreateLeague !== 'undefined' ? canCreateLeague : isAdmin) { %>
     <nav class="admin-leagues-link"><a href="/leagues"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Leagues</a></nav>
     <% } %>
 

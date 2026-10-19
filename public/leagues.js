@@ -1,5 +1,6 @@
-// The Leagues page (#536). Lists every league an Admin runs and walks
-// through Create league in three steps:
+// The Leagues page (#536). Lists every league an Admin runs — or, for a
+// League Manager, the leagues they run (#600) — and walks through Create
+// league in three steps:
 //
 //   1. sport and name        POST /leagues/admin
 //   2. who's in              POST /leagues/admin/:code/members (existing managers)
@@ -20,6 +21,7 @@
     var esc = window.ccSportPage.esc;
     var SEASONS = window.LEAGUE_SEASONS || {};
     var DEFAULTS = window.DRAFT_DEFAULTS || {};
+    var IS_ADMIN = !!window.LEAGUES_IS_ADMIN;
     var SPORTS = [
         { key: 'football', label: 'Football', icon: 'fa-football' },
         { key: 'basketball', label: 'Basketball', icon: 'fa-basketball' }
@@ -69,15 +71,31 @@
                 ? '<button type="button" class="lg-btn lg-ghost" data-continue="' + esc(l.code) + '">' + (l.state === 'ready' ? 'Edit setup' : 'Continue setup') + '</button>'
                 : '')
               + '<a class="lg-btn" data-manage href="' + esc(openHref(l.code)) + '">Manage</a>';
+        // Who runs it, and the control to change that: Admins only (#600).
+        // The rows only carry `commissioners` for an Admin.
+        var commish = '';
+        if (IS_ADMIN && l.commissioners) {
+            commish = '<div class="lg-commish" data-commish-line>'
+                + '<span>' + (l.commissioners.length
+                    ? 'Commissioner' + (l.commissioners.length === 1 ? '' : 's') + ': ' + esc(l.commissioners.map(function (c) { return c.name; }).join(', '))
+                    // Not "Admins only": the two original football leagues
+                    // still get their League Manager from the Auth0 flag,
+                    // which this list does not show.
+                    : 'No commissioners listed') + '</span>'
+                + ' <button type="button" class="lg-link" data-commish="' + esc(l.code) + '">Change</button>'
+                + '</div>';
+        }
         return '<li class="lg-row sp-card" data-league="' + esc(l.code) + '">'
             + '<i class="fa-solid ' + sp.icon + ' lg-sport" aria-hidden="true"></i>'
             + '<div class="lg-main">'
             + '<div class="lg-name">' + esc(l.name) + '</div>'
             + '<div class="lg-meta">' + esc(sp.label) + ' · ' + esc(seasonLabel(l.sport, l.season))
             + ' · ' + esc(plural(l.managers || 0, 'manager')) + '</div>'
+            + commish
             + '</div>'
             + '<span class="lg-chip ' + st.cls + '">' + st.label + '</span>'
             + '<div class="lg-actions">' + actions + '</div>'
+            + (commish ? '<div class="lg-commish-edit" data-commish-edit hidden></div>' : '')
             + '</li>';
     }
 
@@ -275,6 +293,11 @@
         // who already has one would get a second — a team nobody can log in
         // as. They join under the login they have instead.
         return api('GET', '/leagues/admin/account?email=' + encodeURIComponent(email) + '&league=' + code).then(function (found) {
+            if (found.found && found.outside) {
+                // Someone with a login who plays in none of your leagues. The
+                // server does not say who — an Admin can add them.
+                throw new Error('That email already has a Campus Clash login. Ask an admin to add them to this league.');
+            }
             if (found.found) {
                 var who = memberName(found);
                 if (found.inLeague) throw new Error(who + ' is already in this league');
@@ -444,6 +467,50 @@
         window.location.assign(openHref(league.code));
     }
 
+    // ---- commissioners (Admin) ----------------------------------------------
+
+    function openCommish(code, li) {
+        var box = li.querySelector('[data-commish-edit]');
+        if (!box) return;
+        if (!box.hidden) { box.hidden = true; return; }
+        box.hidden = false;
+        box.innerHTML = '<div class="sp-loading">Loading…</div>';
+        return api('GET', '/leagues/admin/' + encodeURIComponent(code) + '/commissioners').then(function (data) {
+            var on = {};
+            (data.commissioners || []).forEach(function (c) { on[c._id] = true; });
+            // Members first; then anyone already on the list who is not
+            // playing, so saving never silently drops them.
+            var people = (data.members || []).slice();
+            (data.commissioners || []).forEach(function (c) {
+                if (!people.some(function (p) { return p._id === c._id; })) people.push(c);
+            });
+            box.innerHTML = people.length
+                ? '<form data-commish-form="' + esc(code) + '"><ul class="lg-pick">' + people.map(function (p) {
+                    return '<li><label><input type="checkbox" value="' + esc(p._id) + '"' + (on[p._id] ? ' checked' : '') + '>'
+                        + '<span class="lg-who"><b>' + esc(p.name) + '</b></span></label></li>';
+                }).join('') + '</ul>'
+                    + '<p class="lg-hint">A commissioner gets this league\'s League setup, its draft-room controls, and nothing else. A League Manager set in Auth0 keeps their own league either way.</p>'
+                    + '<div class="lg-foot"><button type="submit" class="lg-btn lg-primary">Save</button></div></form>'
+                : '<div class="sp-empty">Nobody is in this league yet.</div>';
+        }).catch(function (e) {
+            box.innerHTML = '<div class="sp-error">' + esc(e.message) + '</div>';
+        });
+    }
+
+    function saveCommish(form) {
+        var code = form.getAttribute('data-commish-form');
+        var ids = Array.prototype.map.call(form.querySelectorAll('input[type="checkbox"]:checked'), function (i) { return i.value; });
+        var btn = form.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        return api('PUT', '/leagues/admin/' + encodeURIComponent(code) + '/commissioners', { accountIds: ids }).then(function () {
+            toast('success', 'Commissioners saved');
+            return loadList();
+        }).catch(function (e) {
+            btn.disabled = false;
+            toast('error', e.message);
+        });
+    }
+
     // ---- wiring --------------------------------------------------------------
 
     root.addEventListener('click', function (e) {
@@ -459,6 +526,7 @@
             members = []; invites = []; order = []; draft = null; picked = {};
             return startStep2();
         }
+        if (t.hasAttribute('data-commish')) return openCommish(t.getAttribute('data-commish'), t.closest('[data-league]'));
         if (t.hasAttribute('data-to-step3')) return continueFromStep2(t);
         if (t.hasAttribute('data-to-step2')) return startStep2();
         if (t.hasAttribute('data-randomize')) { order = shuffle(order); var list = root.querySelector('[data-order-list]'); if (list) list.innerHTML = renderOrder(); return; }
@@ -492,6 +560,7 @@
         if (f.hasAttribute('data-step1')) { e.preventDefault(); submitStep1(f); }
         else if (f.hasAttribute('data-new-person')) { e.preventDefault(); addNewPerson(f); }
         else if (f.hasAttribute('data-step3')) { e.preventDefault(); submitStep3(f); }
+        else if (f.hasAttribute('data-commish-form')) { e.preventDefault(); saveCommish(f); }
     });
 
     loadList();
