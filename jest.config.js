@@ -37,6 +37,7 @@ module.exports = {
         "*-job.js",
         "public/draft-pool-view.js",
         "public/season-of.js",
+        "public/admin-clipboard.js",
         "public/standings-insights.js",
         "public/standings.js",
         "public/weekByWeek.js",
@@ -516,6 +517,16 @@ module.exports = {
             branches: 90,
             functions: 100,
             lines: 94
+        },
+        // The admin Clipboard's phase and checklist rules. The phase picks
+        // the whole list and the role split decides who sees a button, so
+        // both are pinned here; the one uncovered line is the UMD browser
+        // branch, unreachable under CJS.
+        "./public/admin-clipboard.js": {
+            statements: 97,
+            branches: 96,
+            functions: 100,
+            lines: 98
         },
         "./modules/scoring-detectors.js": {
             statements: 95,
