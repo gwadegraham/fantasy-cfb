@@ -196,7 +196,9 @@
             + (state.callsLeft != null ? ' <span class="ha-calls">' + n(state.callsLeft) + ' API calls left</span>' : '')
             + '</div></header>'
             + TASKS.map(card).join('')
-            + jobsStrip(d.jobs || []);
+            // The page's shared Automated jobs list (public/admin-clipboard-view.js)
+            // replaces this one wherever it is on the page.
+            + (document.querySelector('[admin-jobs]') ? '' : jobsStrip(d.jobs || []));
     }
 
     function getJson(url) {

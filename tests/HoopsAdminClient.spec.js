@@ -188,6 +188,15 @@ test('Results shows the nightly job, which does the same refresh', async () => {
     expect(document.querySelector('.ha-jobs').textContent).toContain('no runs yet');
 });
 
+test("on a page with the shared Automated jobs list, its own list is not drawn twice", async () => {
+    document.body.innerHTML = '<section admin-jobs></section><main id="hoops-admin"></main>';
+    global.fetch = jest.fn(url => (url === '/hoops/admin/status' ? json(status()) : json({ remainingCalls: 1 })));
+    (0, eval)(SRC);
+    await flush();
+    expect(document.querySelectorAll('[data-task]').length).toBe(4);
+    expect(document.querySelector('.ha-jobs')).toBeNull();
+});
+
 test('says nothing about football: no link to its admin page', async () => {
     await render(status());
     expect(document.querySelector('a[href="/admin"]')).toBeNull();

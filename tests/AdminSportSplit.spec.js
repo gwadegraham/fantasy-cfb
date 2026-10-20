@@ -22,7 +22,7 @@ function loadAdmin({ sport, routes }) {
     window.ccManageLeagueCode = () => 'graham-league';
     window.APP_YEAR = '2026';
     if (sport) window.ADMIN_SPORT = sport; else delete window.ADMIN_SPORT;
-    document.body.innerHTML = '<div admin-status hidden></div><table><tbody user-table-body></tbody></table>';
+    document.body.innerHTML = '<table><tbody user-table-body></tbody></table>';
     global.fetch = jest.fn((url) => {
         const body = Object.keys(routes || {}).find(k => String(url).indexOf(k) === 0);
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body ? routes[body] : []) });
@@ -34,22 +34,9 @@ const urls = () => global.fetch.mock.calls.map(c => String(c[0]));
 
 afterEach(() => { delete window.ADMIN_SPORT; delete window.ccManageLeagueCode; });
 
-test("football's status strip shows football's jobs and none of basketball's", async () => {
-    const at = new Date().toISOString();
-    loadAdmin({ routes: {
-        '/scores/status/': { upToDate: true, scoredThroughWeek: 3, gamesLoadedThroughWeek: 3, unscoredResults: 0 },
-        '/games/info': { remainingCalls: 100 },
-        '/job-runs': [
-            { jobName: 'daily-scores', status: 'success', startedAt: at },
-            { jobName: 'hoops-scores', status: 'success', startedAt: at },
-            { jobName: 'hoops-live', status: 'error', startedAt: at }
-        ]
-    } });
-    await loadAdminStatus();
-    const strip = document.querySelector('[admin-status]');
-    expect(strip.textContent).toContain('Daily');
-    expect(strip.textContent).not.toMatch(/hoops|basketball/i);
-});
+// Football's status strip retired with the Clipboard (#609); "football's page
+// shows no basketball job" is now pinned on the shared jobs list in
+// tests/AdminClipboardView.spec.js.
 
 test("the basketball page does not fetch football's team list", async () => {
     loadAdmin({ sport: 'basketball', routes: { '/profile': {} } });

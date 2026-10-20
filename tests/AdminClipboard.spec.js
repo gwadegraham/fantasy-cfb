@@ -249,7 +249,8 @@ describe('football, in season', () => {
 
     test('football never reports a basketball job, and healthy jobs collapse to one row', () => {
         const cb = build(Object.assign({ isAdmin: true }, base));
-        expect(byKey(cb, 'jobs')).toMatchObject({ state: 'ok', label: 'No failed jobs', detail: '2 jobs, none failed on its last run' });
+        // 9 football jobs scheduled; daily-scores and recap-notice have run.
+        expect(byKey(cb, 'jobs')).toMatchObject({ state: 'ok', label: 'Jobs running fine', detail: '2 of 9 have run · 7 no runs yet' });
         expect(rows(cb).some(r => /hoops/.test(r.key))).toBe(false);
     });
 
@@ -263,7 +264,8 @@ describe('football, in season', () => {
         ]);
         const cb = build(Object.assign({}, base, { isAdmin: true, jobs }));
         expect(byKey(cb, 'job:sunday-scores')).toMatchObject({ state: 'warn', label: 'Sunday scores failed', detail: 'H12 timeout', fix: 'scores' });
-        expect(byKey(cb, 'job:mystery-job')).toMatchObject({ label: 'mystery-job failed', detail: 'Last run errored', fix: null });
+        // Not on the schedule: ignored, the list is the schedule.
+        expect(byKey(cb, 'job:mystery-job')).toBeUndefined();
         expect(byKey(cb, 'job:enrichment')).toBeUndefined();
         expect(byKey(cb, 'jobs')).toBeUndefined();
     });
@@ -334,7 +336,10 @@ describe('basketball', () => {
         ];
         const cb = build(Object.assign({}, base, { isAdmin: true, seasonStatus: 'in-season', jobs, draft: { status: 'complete', picks: [] } }));
         expect(cb.title).toBe('In season');
+        // hoops-scores is quiet by design (no JobRun on idle nights), so never
+        // having run is not a fault: only daily-scores carries a stale check.
         expect(group(cb, 'platform').items.map(r => r.key)).toEqual(['hoops-refresh', 'jobs']);
+        expect(byKey(cb, 'jobs')).toMatchObject({ state: 'ok', detail: '1 of 8 have run · 7 no runs yet' });
         expect(byKey(cb, 'hoops-refresh')).toMatchObject({ label: '1,715 finals on file', detail: 'Latest 2026-10-06', auto: null });
     });
 
@@ -373,6 +378,76 @@ describe('basketball preseason ratings', () => {
     test('no payload, no row', () => {
         expect(byKey(build(base), 'hoops-preseason')).toBeUndefined();
         expect(byKey(build(Object.assign({ preseason: { season: null } }, base)), 'hoops-preseason')).toBeUndefined();
+    });
+});
+
+describe('jobList: the same job list for both sports', () => {
+    const { jobList, JOBS } = require('../public/admin-clipboard');
+    const run = (name, status, hoursAgo, extra) => Object.assign({ jobName: name, status, startedAt: new Date(NOW.getTime() - hoursAgo * 36e5).toISOString() }, extra);
+
+    test('one entry per scheduled job, in schedule order, never-run included', () => {
+        const fb = jobList('football', [], { now: NOW });
+        expect(fb.map(j => j.name)).toEqual(JOBS.football.map(j => j.name));
+        expect(fb.every(j => j.state === 'off' && j.status === null)).toBe(true);
+        expect(jobList('basketball', null, { now: NOW })).toHaveLength(8);
+    });
+
+    test('states: failed warns, running is info, success and skipped are ok', () => {
+        const list = jobList('football', [
+            run('daily-scores', 'error', 2, { message: 'H12' }), run('saturday-scores', 'running', 0),
+            run('sunday-scores', 'skipped', 30), run('enrichment', 'success', 100)
+        ], { now: NOW });
+        const by = n => list.find(j => j.name === n);
+        expect(by('daily-scores')).toMatchObject({ state: 'warn', message: 'H12' });
+        expect(by('saturday-scores').state).toBe('info');
+        expect(by('sunday-scores').state).toBe('ok');
+        expect(by('enrichment').state).toBe('ok');
+    });
+
+    test('a nightly scoring job is overdue past 36 hours, only in season', () => {
+        const late = [run('daily-scores', 'success', 37)];
+        expect(jobList('football', late, { now: NOW, inSeason: true })[0]).toMatchObject({ state: 'warn', overdue: true });
+        expect(jobList('football', [run('daily-scores', 'success', 35)], { now: NOW, inSeason: true })[0].state).toBe('ok');
+        expect(jobList('football', late, { now: NOW, inSeason: false })[0].state).toBe('ok');
+        // Weekly / event-driven jobs never go overdue.
+        expect(jobList('football', [run('enrichment', 'success', 24 * 20)], { now: NOW, inSeason: true })
+            .find(j => j.name === 'enrichment').state).toBe('ok');
+    });
+
+    test('only daily-scores goes overdue; hoops-scores is quiet by design and never does', () => {
+        expect(JOBS.football.filter(j => j.stale).map(j => j.name)).toEqual(['daily-scores']);
+        expect(JOBS.basketball.filter(j => j.stale)).toEqual([]);
+        expect(jobList('basketball', [], { now: NOW, inSeason: true }).find(j => j.name === 'hoops-scores').state).toBe('off');
+    });
+
+    test('each sport lists only its own jobs', () => {
+        const runs = [run('hoops-scores', 'error', 1), run('daily-scores', 'error', 1)];
+        expect(jobList('football', runs, { now: NOW }).some(j => /^hoops-/.test(j.name))).toBe(false);
+        expect(jobList('basketball', runs, { now: NOW }).find(j => j.name === 'hoops-scores').state).toBe('warn');
+        expect(jobList('basketball', runs, { now: NOW }).some(j => j.name === 'daily-scores')).toBe(false);
+    });
+
+    test('defaults: no options means now and not in season', () => {
+        const list = jobList('football', [run('daily-scores', 'success', 100)]);
+        expect(list[0]).toMatchObject({ state: 'ok', overdue: false });
+    });
+
+    test('every job has run: no "no runs yet" tail', () => {
+        const all = JOBS.basketball.map(j => run(j.name, 'success', 1));
+        const cb = build({ sport: 'basketball', isAdmin: true, seasonStatus: 'in-season', now: NOW, jobs: all });
+        expect(byKey(cb, 'jobs').detail).toBe('8 of 8 have run');
+    });
+
+    test('a nightly job never run in season: "has not run", with its schedule', () => {
+        const cb = build({ sport: 'football', isAdmin: true, seasonStatus: 'in-season', now: NOW, jobs: [] });
+        expect(byKey(cb, 'job:daily-scores')).toMatchObject({ state: 'warn', label: 'Daily scores has not run', detail: 'Nightly 23:00' });
+    });
+
+    test('the Clipboard row for an overdue job says when it last ran', () => {
+        const cb = build({ sport: 'football', isAdmin: true, seasonStatus: 'in-season', now: NOW,
+            jobs: [run('daily-scores', 'success', 50)] });
+        expect(byKey(cb, 'job:daily-scores')).toMatchObject({ state: 'warn', label: 'Daily scores is overdue',
+            detail: 'Last ran 50 hours ago · Nightly 23:00', fix: 'jobs' });
     });
 });
 
@@ -440,13 +515,11 @@ describe('review fixes', () => {
         expect(rows(cb).map(r => r.key)).toEqual([]);
     });
 
-    test('never-run jobs (status null) are not counted as healthy runs', () => {
+    test('never-run jobs are counted as such, not as healthy runs', () => {
         const cb = build({ sport: 'basketball', isAdmin: true, seasonStatus: 'in-season', now: NOW,
-            jobs: [{ jobName: 'hoops-scores', status: null }, { jobName: 'hoops-net', status: 'success', startedAt: daysAgo(0) }] });
-        expect(byKey(cb, 'jobs').detail).toBe('1 job, none failed on its last run');
-        const none = build({ sport: 'basketball', isAdmin: true, seasonStatus: 'in-season', now: NOW,
-            jobs: [{ jobName: 'hoops-scores', status: null }] });
-        expect(byKey(none, 'jobs')).toBeUndefined();
+            jobs: [{ jobName: 'hoops-scores', status: 'success', startedAt: daysAgo(0.5) },
+                { jobName: 'hoops-net', status: null }] });
+        expect(byKey(cb, 'jobs')).toMatchObject({ label: 'Jobs running fine', detail: '1 of 8 have run · 7 no runs yet' });
     });
 
     test('the H2H tie bonus is shown when set, as readiness shows it', () => {

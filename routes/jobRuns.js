@@ -5,7 +5,8 @@ const { latestPerJob } = require('../modules/job-runs-util');
 // A namespace, so a test can stand in for the viewer.
 const hoopsVisibility = require('../modules/hoops-visibility');
 
-// Latest run per job — powers the admin status strip's "last run / outcome".
+// Latest run per job — powers the admin pages' "Automated jobs" list and the
+// Clipboard's jobs row (public/admin-clipboard-view.js).
 //
 // Grouped in the DB, NOT by pulling the N newest rows and reducing them here.
 // That was the old shape (`limit: 200` then latestPerJob) and it quietly hid
@@ -29,9 +30,9 @@ router.get('/', async (req, res) => {
         // that invariant, so a future change to the query above cannot start
         // serving duplicates without this catching it.
         // Basketball's jobs (hoops-*) only to someone who may know basketball
-        // exists. This GET is open to every signed-in member and football's
-        // admin strip reads it, so a job name alone gave the league away to
-        // a League Manager (#518). The basketball admin page reads its own.
+        // exists. This GET is open to every signed-in member and both admin
+        // pages read it, so a job name alone gave the league away to a
+        // League Manager (#518).
         const seesHoops = await hoopsVisibility.seesBasketball(req);
         const rows = seesHoops ? runs : runs.filter(r => !/^hoops-/.test(r.jobName || ''));
         res.json(latestPerJob(rows));

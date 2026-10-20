@@ -86,6 +86,30 @@
 .cb-toolbox .ha-top h1 { display: none; }
 .cb-toolbox > .ha-league { padding-bottom: 8px; }
 
+/* ---- Automated jobs: the same list on both sports' pages ---- */
+.cb-jobs { max-width: 848px; margin: 0 auto 18px; padding: 12px 14px 4px; box-sizing: border-box;
+    background: var(--cc-surface); border: 1px solid var(--cc-border); border-radius: var(--cc-r-lg); }
+.cb-jobs:focus-visible { outline: 2px solid var(--cc-info); outline-offset: 2px; }
+.cb-jobs.cb-jobs-attn { border-color: rgba(224, 179, 65, .55); }
+.cb-jobs-h { font: 600 10.5px Poppins, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--cc-muted-2);
+    margin: 0 0 4px; display: flex; gap: 8px; align-items: baseline; }
+.cb-jobs-h span { margin-left: auto; letter-spacing: 0; text-transform: none; font-size: 11px; color: var(--cc-success); }
+.cb-jobs-attn .cb-jobs-h span { color: var(--cc-amber); font-weight: 600; }
+.cb-jobs-list { list-style: none; margin: 0; padding: 0; }
+.cb-job { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px dashed var(--cc-border); font-size: 13px; }
+.cb-job:first-child { border-top: 0; }
+.cb-job-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--cc-surface-3); }
+.cb-job-ok .cb-job-dot { background: var(--cc-success); }
+.cb-job-warn .cb-job-dot { background: var(--cc-amber); box-shadow: 0 0 0 3px rgba(224, 179, 65, .2); }
+.cb-job-info .cb-job-dot { background: var(--cc-info); }
+.cb-job-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cb-job-name b { font-weight: 500; color: var(--cc-text); }
+.cb-job-off .cb-job-name b { color: var(--cc-muted); }
+.cb-job-name small, .cb-job-last small { font-size: 10.5px; color: var(--cc-muted-2); overflow-wrap: anywhere; }
+.cb-job-last { text-align: right; font-size: 11.5px; color: var(--cc-muted); display: flex; flex-direction: column; max-width: 45%; }
+.cb-job-warn .cb-job-last { color: var(--cc-amber); font-weight: 600; }
+.cb-job-none { padding: 10px 0; font-size: 12px; color: var(--cc-muted-2); }
+
 @media (min-width: 720px) {
     .cb { grid-template-columns: 120px 1fr; gap: 18px; }
     .cb-phases { flex-direction: column; justify-content: flex-start; padding: 2px 0 0; align-self: start; }

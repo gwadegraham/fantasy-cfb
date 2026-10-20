@@ -239,31 +239,6 @@ async function getUserProfile() {
     });
 }
 
-// Read-only "current state" strip: shows how far scoring/games have progressed
-// and, when completed results are still unscored, flags it and points at the
-// Update Scores tool. All derived server-side from existing data.
-async function loadAdminStatus() {
-    var el = document.querySelector('[admin-status]');
-    if (!el) return;
-    var year = window.APP_YEAR || new Date().getFullYear();
-    try {
-        var res = await fetch(`/scores/status/${year}`, { headers: { 'Accept': 'application/json' } });
-        if (!res.ok) return;
-        var s = await res.json();
-        var api = null;
-        try {
-            var apiRes = await fetch('/games/info', { headers: { 'Accept': 'application/json' } });
-            if (apiRes.ok) { var a = await apiRes.json(); api = a && a.remainingCalls; }
-        } catch (e) { /* API count is optional */ }
-        var jobs = [];
-        try {
-            var jobsRes = await fetch('/job-runs', { headers: { 'Accept': 'application/json' } });
-            if (jobsRes.ok) { jobs = footballJobs(await jobsRes.json()); }
-        } catch (e) { /* job history is optional */ }
-        renderAdminStatus(el, s, api, year, jobs);
-    } catch (e) { /* leave the strip hidden on error */ }
-}
-
 // Human-friendly "how long ago" for a timestamp.
 function timeAgo(iso) {
     if (!iso) return '';
@@ -275,95 +250,6 @@ function timeAgo(iso) {
     var hrs = Math.round(mins / 60);
     if (hrs < 24) return hrs + 'h ago';
     return Math.round(hrs / 24) + 'd ago';
-}
-
-// Every jobName in modules/scheduler.js JOB_SCHEDULES (plus the opt-in live
-// poller) needs an entry here AND in `order` below. A job missing from this map
-// still renders, under its raw jobName; one missing from `order` sorts to
-// indexOf -1 and jumps ahead of the scoring jobs.
-var JOB_LABELS = {
-    'daily-scores': 'Daily', 'saturday-scores': 'Saturday', 'sunday-scores': 'Sunday',
-    'live-scores': 'Live', 'enrichment': 'Schedule / SP+ / media',
-    'season-stats': 'Team stats', 'player-season-leaders': 'Player stats',
-    'captain-reminder': 'Captain alerts', 'recap-notice': 'Recap alerts'
-};
-
-// Basketball's jobs (hoops-*) are on the basketball admin page (#518), not
-// here. This strip is shown to League Managers too, and basketball stays
-// invisible to anyone not in on it — a job name is enough to give it away.
-function footballJobs(jobs) {
-    return (jobs || []).filter(function (j) { return !/^hoops-/.test(j && j.jobName); });
-}
-
-function renderAdminStatus(el, s, api, year, jobs) {
-    var behind = !s.upToDate;
-    var items = [
-        ['Scored through', (s.scoredThroughWeek ? 'Week ' + s.scoredThroughWeek : '—'), behind ? 'a' : 'g'],
-        ['Games loaded', (s.gamesLoadedThroughWeek ? 'Week ' + s.gamesLoadedThroughWeek : '—'), 'g']
-    ];
-    if (api != null) items.push(['CFBD calls left', Number(api).toLocaleString(), null]);
-
-    var rows = items.map(function (it) {
-        var dot = it[2] ? '<span class="dot ' + it[2] + '"></span>' : '';
-        return '<div class="ss-item"><small>' + it[0] + '</small><b>' + dot + it[1] + '</b></div>';
-    }).join('');
-
-    var note = behind
-        ? '<i class="fa-solid fa-bolt"></i><span>' + s.unscoredResults + ' completed result' + (s.unscoredResults === 1 ? '' : 's') +
-          ' not scored yet. <a data-fix-scores>Force update scores</a></span>'
-        : '<i class="fa-solid fa-bolt"></i><span>Everything’s current through Week ' + (s.scoredThroughWeek || 0) +
-          '. Automation is keeping scores up to date — nothing to do here.</span>';
-
-    // Automated-job last-run summary (green success, red error, amber running).
-    var jobsBlock = '';
-    if (jobs && jobs.length) {
-        // Any job missing from this list sorts to indexOf -1, i.e. AHEAD of the
-        // scoring jobs — so a new job name has to be added here, not just to
-        // JOB_LABELS, or it silently jumps the queue.
-        var order = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores',
-                     'enrichment', 'season-stats', 'player-season-leaders',
-                     'captain-reminder', 'recap-notice'];
-        // Collapse to the latest run per job — the live poller writes a run every
-        // few minutes on game days, so showing raw history would bury the others.
-        var latest = {};
-        jobs.forEach(function (j) {
-            var prev = latest[j.jobName];
-            if (!prev || new Date(j.startedAt) > new Date(prev.startedAt)) latest[j.jobName] = j;
-        });
-        var sorted = Object.keys(latest).map(function (k) { return latest[k]; })
-            .sort(function (a, b) { return order.indexOf(a.jobName) - order.indexOf(b.jobName); });
-        var jobItems = sorted.map(function (j) {
-            // 'skipped' is its own outcome, not a quiet success: a live poller
-            // tick that found an update already in flight started and finished
-            // without doing anything. Rendering it as "ran" would claim work
-            // that never happened.
-            var dot = j.status === 'success' ? 'g'
-                : (j.status === 'error' ? 'r' : (j.status === 'skipped' ? 'b' : 'a'));
-            var label = JOB_LABELS[j.jobName] || j.jobName;
-            var when = timeAgo(j.finishedAt || j.startedAt);
-            var outcome = j.status === 'error' ? 'failed'
-                : (j.status === 'running' ? 'running'
-                : (j.status === 'skipped' ? 'skipped' : 'ran'));
-            return '<div class="ss-job"><span class="dot ' + dot + '"></span><b>' + label + '</b>' +
-                '<span class="ss-job-meta">' + outcome + (when ? ' · ' + when : '') + '</span></div>';
-        }).join('');
-        jobsBlock = '<div class="ss-jobs"><small>Automated jobs</small><div class="ss-jobs-row">' + jobItems + '</div></div>';
-    }
-
-    el.className = 'admin-status ' + (behind ? 'warn' : 'ok');
-    el.innerHTML = '<div class="ss-head"><i class="fa-solid fa-circle-info"></i> Current state · ' + year + ' season</div>' +
-        '<div class="ss-row">' + rows + '</div>' +
-        '<div class="ss-note">' + note + '</div>' +
-        jobsBlock;
-    el.hidden = false;
-
-    var tool = document.querySelector('[scores-tool]');
-    if (tool) tool.classList.toggle('attn', behind);
-
-    var fix = el.querySelector('[data-fix-scores]');
-    if (fix) fix.addEventListener('click', function () {
-        openTool('scores-container', displayScoresContainer);
-    });
 }
 
 // --- Activity (commissioner audit trail) ------------------------------------
@@ -611,21 +497,18 @@ async function applyRosterCorrection(btn, userId, fromTeamId, toTeamId) {
     }
 }
 
-// --- Preseason readiness ----------------------------------------------------
-// Each season-flip data load that can fail silently, checked against what's
-// actually on file. See modules/season-readiness.js for why each one matters.
+// --- Shared helpers ---------------------------------------------------------
 
 // League display names are commissioner-editable, so they're escaped before
-// they're interpolated into innerHTML below.
+// they're interpolated into innerHTML.
 function escapeHtml(value) {
     return String(value == null ? '' : value)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// Open one tool card and bring it into view: the readiness panel's Fix
-// buttons, the status strip's "Force update scores", and the Clipboard
-// (public/admin-clipboard-view.js) all land here. The cards sit inside the
+// Open one tool card and bring it into view: the Clipboard's fix buttons
+// (public/admin-clipboard-view.js) land here. The cards sit inside the
 // Toolbox drawer, which is closed by default — so the drawer opens FIRST:
 // toggleSub measures scrollHeight, and a card inside a closed <details>
 // measures 0 and would open to nothing. Returns false when the tool is not
@@ -648,112 +531,6 @@ function openTool(attr, opener) {
     return true;
 }
 
-// Check key -> [container attribute, opener] for the admin tool that fixes it.
-// The openers are function declarations defined further down this file, so they
-// hoist and are already bound by the time this literal is evaluated.
-// See readinessRow() for when the affordance is actually rendered.
-var READINESS_FIX = {
-    schedule: ['schedule-container', displayScheduleContainer],
-    enrichment: ['enrichment-container', displayEnrichmentContainer],
-    spPlus: ['enrichment-container', displayEnrichmentContainer],
-    expectedWins: ['expected-wins-container', displayExpectedWinsContainer],
-    cfpOdds: ['cfp-odds-container', displayCfpOddsContainer],
-    roster: ['season-roster-container', displaySeasonRosterContainer],
-    draft: ['draft-config-container', displayDraftConfigContainer],
-    gameModes: ['engagement-container', displayEngagementContainer]
-};
-
-// 'off' is a legitimate resting state (a classic league runs no game modes), so
-// it reads as neutral rather than as a problem.
-function readinessDot(c) {
-    if (c.status === 'ready') return 'g';
-    if (c.status === 'off') return 'b';
-    if (c.status === 'partial') return 'a';
-    return c.required ? 'r' : 'a';
-}
-
-function readinessRow(c) {
-    var needsAttention = c.required && c.status !== 'ready';
-    // No action on a settled row: the panel's job is to point at what's
-    // outstanding, and a control on every line flattens that signal. The tools
-    // themselves are listed directly below if someone wants to re-run one.
-    // Also suppressed when the target tool isn't on the page — a League Manager
-    // doesn't get the platform-wide tools, so they see state without a dead button.
-    // `noAction` is for a row whose gap the commissioner genuinely cannot close
-    // — enrichment waiting on a CFBD dataset that isn't published yet. A button
-    // there reads as "re-run this" and re-running changes nothing.
-    var target = !c.noAction && c.status !== 'ready' && READINESS_FIX[c.key];
-    var canOpen = target && document.querySelector('[' + target[0] + ']');
-    // The button navigates — it opens the tool and scrolls to it, it doesn't run
-    // anything — so a real gap says "Fix" (where you go to fix it) and an
-    // optional row that's merely switched off says "Set up". A check can override
-    // when neither fits: an in-progress draft is neither broken nor unconfigured.
-    var actionLabel = c.actionLabel || (c.required ? 'Fix' : 'Set up');
-    var action = canOpen
-        ? '<button type="button" class="rd-fix" data-rd-fix="' + escapeHtml(c.key) + '">'
-            + escapeHtml(actionLabel) + ' →</button>'
-        : '<span></span>';
-    var showWhy = needsAttention && c.whyItMatters;
-    return '<div class="rd-row' + (needsAttention ? ' attn' : '') + '">'
-        + '<span class="dot ' + readinessDot(c) + '"></span>'
-        + '<span class="rd-label">' + escapeHtml(c.label) + '</span>'
-        + '<span class="rd-detail">' + escapeHtml(c.detail || '') + '</span>'
-        + action
-        + (showWhy ? '<p class="rd-why">' + escapeHtml(c.whyItMatters) + '</p>' : '')
-        // Never print the same sentence twice when a check sets both.
-        + (c.note && c.note !== c.whyItMatters ? '<p class="rd-note">' + escapeHtml(c.note) + '</p>' : '')
-        + '</div>';
-}
-
-function renderReadiness(el, r) {
-    var outstanding = (r.blocking || []).length;
-    var head = r.ready
-        ? '<span class="rd-state ok">Ready to draft</span>'
-        : '<span class="rd-state warn">' + outstanding + ' step' + (outstanding === 1 ? '' : 's') + ' outstanding</span>';
-
-    var leagueBlocks = (r.leagues || []).map(function (l) {
-        return '<div class="rd-group"><small>' + escapeHtml(l.name) + '</small>'
-            + l.checks.map(readinessRow).join('') + '</div>';
-    }).join('');
-
-    el.className = 'readiness ' + (r.ready ? 'ok' : 'warn');
-    el.innerHTML = '<div class="ss-head"><i class="fa-solid fa-clipboard-check"></i> Season readiness · ' + escapeHtml(r.season) + '</div>'
-        + '<div class="rd-summary">' + head
-        + '<span class="rd-sub">These loads fail quietly — stale or partial data instead of an error. Worth confirming before draft night.</span></div>'
-        + '<div class="rd-group"><small>Platform data</small>' + (r.platform || []).map(readinessRow).join('') + '</div>'
-        + leagueBlocks;
-    el.hidden = false;
-
-    el.querySelectorAll('[data-rd-fix]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var target = READINESS_FIX[btn.getAttribute('data-rd-fix')];
-            if (target) openTool(target[0], target[1]);
-        });
-    });
-}
-
-// Preseason only — the panel retires itself once the season is underway rather
-// than becoming permanent furniture, since the roster/draft checks are moot by
-// then and the in-season status strip above covers what matters.
-//
-// The season-underway flag comes from the payload itself (a completed game with
-// points), so this stands alone: it doesn't ride on the status strip's fetch,
-// and it can't be hidden by a bare weeklyScore row — the nightly job writes an
-// empty Week 1 entry for everyone as soon as a season roster exists, which reads
-// as "scored through Week 1" in early August with no football played.
-async function loadReadiness() {
-    var el = document.querySelector('[season-readiness]');
-    if (!el) return;
-    var year = window.APP_YEAR || new Date().getFullYear();
-    try {
-        var res = await fetch('/scores/readiness/' + year, { headers: { 'Accept': 'application/json' } });
-        if (!res.ok) return;
-        var r = await res.json();
-        if (r.seasonUnderway) return;
-        renderReadiness(el, r);
-    } catch (e) { /* leave the panel hidden on error */ }
-}
-
 window.onload = async function() {
     // Hamburger toggle is owned by the navbar partial (views/partials/navbar.ejs).
     detectMobile();
@@ -764,8 +541,6 @@ window.onload = async function() {
     setSeasonOptions();
     setSeasonTypeOptions();
     setWeekOptions();
-    loadAdminStatus();
-    loadReadiness();
 };
 
 // A rename only reaches the rest of the page on the next render, since the
