@@ -489,6 +489,18 @@ describe('the Automated jobs list: the same on both sports', () => {
         expect(jobRows()).toHaveLength(9);
     });
 
+    test('a code error mid-load still clears "Loading…"', async () => {
+        page(['scores']);
+        document.querySelector('[admin-jobs-list]').innerHTML = '<li>Loading…</li>';
+        global.fetch = jest.fn(() => json({}));
+        window.ADMIN_IS_ADMIN = true; window.APP_YEAR = '2026';
+        window.ccManageLeagueCode = () => { throw new Error('boom'); };
+        window.ccLeague = { name: () => { throw new Error('boom'); } };
+        window.ccCurrentWeek = { state: () => { throw new Error('boom'); } };
+        (0, eval)(MODEL); (0, eval)(VIEW); await flush();
+        expect(document.querySelector('[admin-jobs-list]').textContent).toBe('Could not read the job history.');
+    });
+
     test('job history unreadable: says so instead of an empty list', async () => {
         await boot({ routes: { '/job-runs': () => json({}, 500) } });
         expect(document.querySelector('[admin-jobs-list]').textContent).toBe('Could not read the job history.');
@@ -519,7 +531,9 @@ describe('the Automated jobs list: the same on both sports', () => {
         window.ccManageLeagueCode = () => 'hoops-league';
         (0, eval)(MODEL); (0, eval)(VIEW); await flush();
         expect(jobRows()).toHaveLength(8);
-        expect(jobRows()[0].textContent).toContain('Scores'); // nightly, never run, in season: first
+        // Same markup; the one that ran (NCAA NET) lists ahead of never-run ones.
+        expect(jobRows()[0].textContent).toContain('NCAA NET');
+        expect(document.querySelector('[admin-jobs-count]').textContent).toBe('All clear');
         window.ADMIN_SPORT = undefined;
     });
 });

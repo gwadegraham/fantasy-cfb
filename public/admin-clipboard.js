@@ -62,10 +62,11 @@
     //
     //   when    the schedule, in words
     //   stale   hours after which a job that should run every night is
-    //           overdue IN SEASON. Only the nightly scoring jobs carry one:
-    //           the others are weekly, event-driven, or write a run only when
-    //           they did something (captain alerts, the live pollers), so
-    //           their silence is not a fault.
+    //           overdue IN SEASON. Only football's daily-scores carries one:
+    //           it is the one job that writes a run every night, whatever it
+    //           found (modules/score-job.js). Every other job is weekly,
+    //           event-driven, or writes a run only when it did something.
+    //           Its silence is not a fault.
     var JOBS = {
         football: [
             { name: 'daily-scores', label: 'Daily scores', when: 'Nightly 23:00', stale: 36 },
@@ -79,7 +80,11 @@
             { name: 'recap-notice', label: 'Recap alerts', when: 'Mondays 07:05' }
         ],
         basketball: [
-            { name: 'hoops-scores', label: 'Scores', when: 'Nightly 23:30', stale: 36 },
+            // No stale check: unlike football's daily-scores (which writes a
+            // run every night, "nothing to score" included), hoops-scores
+            // writes NO JobRun on its quiet paths — no league, preseason, or
+            // after the last week closes — so silence is not a fault.
+            { name: 'hoops-scores', label: 'Scores', when: 'Nightly 23:30' },
             { name: 'hoops-live', label: 'Live scores', when: 'During games · logs on finals' },
             { name: 'hoops-stats', label: 'Stats + box scores', when: 'Daily 05:00' },
             { name: 'hoops-media', label: 'TV listings', when: 'Mondays 06:00' },
@@ -162,7 +167,7 @@
     }
 
     // A readiness check (modules/season-readiness.js) as a row. Its keys are
-    // already the tool keys READINESS_FIX in public/admin.js understands.
+    // already the tool keys the Clipboard's FIX map (public/admin-clipboard-view.js) understands.
     function fromReadiness(c) {
         // Only a REQUIRED gap is work. An optional row that is partial — a
         // draft in progress (actionLabel 'Open') — is a state to report, and

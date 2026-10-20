@@ -189,7 +189,7 @@
 
     function render(cb) {
         // No phase means nothing said where the season is: stay hidden and
-        // leave the page to the panels below rather than guess.
+        // leave the page to the Toolbox below rather than guess.
         if (!cb.phase) { root.hidden = true; return; }
         var current = cb.phases.filter(function (p) { return p.state === 'now'; })[0];
         var steps = cb.phases.map(function (p) {
@@ -348,10 +348,16 @@
     }
 
     function load() {
-        return gather().then(function (got) {
+        // Through a promise, so a throw INSIDE gather lands in the catch too.
+        return Promise.resolve().then(gather).then(function (got) {
             input = got;
             draw(null);
-        }).catch(function () { /* leave the Clipboard hidden */ });
+        }).catch(function () {
+            // Leave the Clipboard hidden, but never leave the jobs list on
+            // "Loading…": it says it could not read the history.
+            input = null;
+            renderJobs(null);
+        });
     }
 
     initToolbox();
