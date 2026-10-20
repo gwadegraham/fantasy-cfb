@@ -13,7 +13,8 @@
 
     var sport = window.ADMIN_SPORT === 'basketball' ? 'basketball' : 'football';
     var isAdmin = !!window.ADMIN_IS_ADMIN;
-    var TOOLBOX_KEY = 'ccAdminToolboxOpen';
+    // Per sport: opening football's drawer should not open basketball's.
+    var TOOLBOX_KEY = 'ccAdminToolboxOpen' + (sport === 'basketball' ? ':basketball' : '');
 
     // Model fix key -> [container attribute, opener's global name, present].
     // Openers are named, not referenced: they are admin.js's function
@@ -242,7 +243,18 @@
     function openFix(key) {
         var t = FIX[key];
         if (!t) return;
-        if (typeof window.openTool === 'function') window.openTool(t[0], t[1] ? window[t[1]] : null);
+        var opened = typeof window.openTool === 'function' && window.openTool(t[0], t[1] ? window[t[1]] : null);
+        if (opened || !t[2]) return;
+        // The card is not there (hoopsAdmin.js has not drawn it yet, or drew
+        // its error state): open the drawer on the area it lives in, so the
+        // tap is never silent.
+        var area = document.querySelector(t[2]);
+        if (!area) return;
+        var drawer = area.closest('details');
+        if (drawer && !drawer.open) drawer.open = true;
+        area.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (!area.hasAttribute('tabindex')) area.setAttribute('tabindex', '-1');
+        area.focus({ preventScroll: true });
     }
 
     root.addEventListener('click', function (e) {

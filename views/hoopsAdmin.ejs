@@ -65,7 +65,7 @@
     <%# With a league to manage: the Clipboard on top, the league's roster,
         then every tool in one Toolbox drawer — the same frame as football's
         /admin (#606/#607). %>
-    <div class="header"><div class="header-title"><%= _admin ? 'Basketball Admin' : 'League Management' %></div></div>
+    <div class="header"><div class="header-title" role="heading" aria-level="1"><%= _admin ? 'Basketball Admin' : 'League Management' %></div></div>
     <section class="cb-wrap" admin-clipboard hidden aria-label="Season checklist"></section>
     <div class="ha-league ha-league-top">
         <h2 class="ha-league-h"><%= manageLeagueName %> <small><%= year %></small></h2>

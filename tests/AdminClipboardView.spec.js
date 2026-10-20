@@ -292,7 +292,7 @@ describe('the page markup', () => {
         const classes = [...rules.matchAll(/\.([a-z][\w-]*)/g)].map(m => m[1]);
         const bare = ['row', 'col', 'card', 'lead', 'table', 'container', 'btn', 'badge', 'nav'];
         expect(classes.filter(c => bare.includes(c))).toEqual([]);
-        expect(classes.filter(c => !c.startsWith('cb') && !['admin-group', 'is-shown', 'is-preview'].includes(c))).toEqual([]);
+        expect(classes.filter(c => !c.startsWith('cb') && !['admin-group', 'is-shown', 'is-preview', 'ha-top', 'ha-league'].includes(c))).toEqual([]);
     });
 });
 
@@ -366,6 +366,27 @@ describe('basketball (/hoops/admin)', () => {
         expect(window.openTool).toHaveBeenCalledWith('data-task="schedule"', null);
     });
 
+    test('with the REAL openTool and no cards drawn yet, Import still opens the drawer on the data area', async () => {
+        const root = await bootHoops();
+        const ADMIN = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
+        window.openTool = new Function(ADMIN.match(/function openTool\(attr, opener\) \{[\s\S]*?\n\}/)[0] + '; return openTool;')();
+        Element.prototype.scrollIntoView = jest.fn();
+        const box = document.querySelector('[admin-toolbox]');
+        expect(box.open).toBe(false);
+        item(root, 'No schedule on file').querySelector('[data-cb-fix]').click();
+        expect(box.open).toBe(true);
+        expect(document.activeElement.id).toBe('hoops-admin');
+    });
+
+    test('the drawer setting is per sport', async () => {
+        window.localStorage.setItem('ccAdminToolboxOpen', '1');
+        await bootHoops();
+        expect(document.querySelector('[admin-toolbox]').open).toBe(false);
+        window.localStorage.setItem('ccAdminToolboxOpen:basketball', '1');
+        await bootHoops();
+        expect(document.querySelector('[admin-toolbox]').open).toBe(true);
+    });
+
     test('a commissioner gets the league rows only, and goes straight to draft prep', async () => {
         const root = await bootHoops({ admin: false });
         expect(root.querySelectorAll('.cb-grp').length).toBe(1);
@@ -409,6 +430,18 @@ describe('the basketball page markup', () => {
         const block = EJS.slice(EJS.indexOf('<% if (manageLeague) { %>'), EJS.indexOf('<title>'));
         expect(block.indexOf('/admin.js')).toBeGreaterThan(-1);
         expect(block.indexOf('/admin-clipboard-view.js')).toBeGreaterThan(block.indexOf('/admin.js'));
+    });
+
+    test('an Admin with no basketball league keeps the data tasks open: no drawer, no Clipboard', () => {
+        const noLeague = EJS.slice(EJS.indexOf('<% } else if (_admin) { %>'), EJS.indexOf('</body>'));
+        expect(noLeague).toMatch(/id="hoops-admin"/);
+        expect(noLeague).not.toMatch(/admin-toolbox|admin-clipboard/);
+    });
+
+    test('one page title: hoopsAdmin.js\'s own heading is hidden inside the drawer', () => {
+        const CSS = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin-clipboard.css'), 'utf8');
+        expect(CSS).toMatch(/\.cb-toolbox \.ha-top h1 \{ display: none; \}/);
+        expect(EJS).toMatch(/role="heading" aria-level="1"><%= _admin \? 'Basketball Admin'/);
     });
 
     test('the role is the server\'s answer', () => {
