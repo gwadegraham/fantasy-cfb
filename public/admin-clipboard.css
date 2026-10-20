@@ -80,6 +80,11 @@
 .cb-toolbox-caret { font-size: 11px; transition: transform .2s; }
 .cb-toolbox[open] > summary .cb-toolbox-caret { transform: rotate(180deg); }
 .cb-toolbox .admin-group { padding: 0; }
+/* Basketball: the page title sits above the Clipboard, so hoopsAdmin.js's
+   own "Basketball admin" heading would repeat it inside the drawer. The
+   season line and calls-left chip under it stay. */
+.cb-toolbox .ha-top h1 { display: none; }
+.cb-toolbox > .ha-league { padding-bottom: 8px; }
 
 @media (min-width: 720px) {
     .cb { grid-template-columns: 120px 1fr; gap: 18px; }

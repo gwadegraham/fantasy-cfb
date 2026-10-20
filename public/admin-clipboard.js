@@ -18,6 +18,8 @@
 //   jobs          GET /job-runs                  latest run per job
 //   cfpOdds       GET /teams/:season/cfp-odds/status
 //   hoops         GET /hoops/admin/status        basketball, Admins only
+//   preseason     GET /hoops/admin/preseason     basketball ratings, Admins only
+//   members       GET /users/league/:league/roster  players[].inSeason, counted
 //   draft         GET /draft/:league/:season
 //   engagement    GET /scoring-config/:league    .engagement
 //
@@ -261,6 +263,19 @@
         ];
     }
 
+    // The preseason ratings (Torvik import, #544) order the basketball draft
+    // pool until NET is published. Two sources side by side means a partial
+    // import left an old set behind.
+    function preseasonRow(pre, now) {
+        if (!pre || !pre.current) return null;
+        var c = pre.current;
+        if (!c.ranked) return row('hoops-preseason', 'warn', 'No preseason ratings', 'They order the draft pool until NET is out', 'hoops-preseason');
+        if (c.sources > 1) return row('hoops-preseason', 'warn', 'Two rating imports on file', 'Re-import to replace the older set', 'hoops-preseason');
+        var age = c.importedAt ? daysBetween(c.importedAt, now) : null;
+        return row('hoops-preseason', 'ok', num(c.ranked) + ' teams ranked',
+            age == null ? 'Preseason ratings' : 'Imported ' + (age === 0 ? 'today' : plural(age, 'day') + ' ago'));
+    }
+
     function hoopsResultsRow(hoops, isAdmin) {
         if (!hoops || !hoops.onFile || !hoops.onFile.games) return null;
         var g = hoops.onFile.games;
@@ -291,7 +306,7 @@
                 if (!league.length) league = compact([input.draft !== undefined ? draftRow(input.draft, now) : null,
                     input.engagement !== undefined ? modesRow(input.engagement) : null]);
             } else {
-                if (isAdmin) platform = hoopsDataRows(input.hoops);
+                if (isAdmin) platform = compact(hoopsDataRows(input.hoops).concat([preseasonRow(input.preseason, now)]));
                 league = compact([
                     input.members != null ? (input.members >= 2
                         ? row('roster', 'ok', plural(input.members, 'manager'), 'On this season\'s roster')

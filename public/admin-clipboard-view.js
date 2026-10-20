@@ -13,12 +13,23 @@
 
     var sport = window.ADMIN_SPORT === 'basketball' ? 'basketball' : 'football';
     var isAdmin = !!window.ADMIN_IS_ADMIN;
-    var TOOLBOX_KEY = 'ccAdminToolboxOpen';
+    // Per sport: opening football's drawer should not open basketball's.
+    var TOOLBOX_KEY = 'ccAdminToolboxOpen' + (sport === 'basketball' ? ':basketball' : '');
 
-    // Model fix key -> [container attribute, opener's global name]. Openers
-    // are named, not referenced: they are admin.js's function declarations,
-    // looked up at click time so load order never matters.
+    // Model fix key -> [container attribute, opener's global name, present].
+    // Openers are named, not referenced: they are admin.js's function
+    // declarations, looked up at click time so load order never matters.
+    //
+    // Basketball's data tasks are cards public/hoopsAdmin.js draws after its
+    // own fetch, so they may not exist yet when the Clipboard renders; their
+    // `present` selector is the container that is there from the start (and
+    // only on an Admin's page). They have no opener: the cards are never
+    // collapsed.
     var FIX = {
+        'hoops-ingest': ['data-task="ingest"', null, '#hoops-admin'],
+        'hoops-schedule': ['data-task="schedule"', null, '#hoops-admin'],
+        'hoops-roster': ['data-task="roster"', null, '#hoops-admin'],
+        'hoops-preseason': ['id="hoops-preseason"', null, '#hoops-preseason'],
         scores: ['scores-container', 'displayScoresContainer'],
         schedule: ['schedule-container', 'displayScheduleContainer'],
         enrichment: ['enrichment-container', 'displayEnrichmentContainer'],
@@ -31,7 +42,8 @@
     };
     var FIX_LABEL = {
         scores: 'Score now', cfpOdds: 'Paste board', draft: 'Set up', roster: 'Add',
-        gameModes: 'Set up'
+        gameModes: 'Set up', 'hoops-ingest': 'Import', 'hoops-schedule': 'Import',
+        'hoops-roster': 'Import', 'hoops-preseason': 'Import'
     };
 
     function esc(v) {
@@ -58,6 +70,47 @@
     }
 
     function gather() {
+        return sport === 'basketball' ? gatherBasketball() : gatherFootball();
+    }
+
+    // Basketball: no readiness or scoring-status endpoints (both football's).
+    // The platform reads (/hoops/admin/status, /preseason) 404 for anyone but
+    // an Admin, so a commissioner never asks. No week either: ccCurrentWeek
+    // follows the VIEWED league, which on this page may be football.
+    function gatherBasketball() {
+        var season = window.APP_YEAR || String(new Date().getFullYear());
+        var league = leagueCode();
+        var enc = encodeURIComponent;
+        return Promise.all([
+            getJSON('/seasons/basketball'),
+            isAdmin ? getJSON('/hoops/admin/status') : Promise.resolve(null),
+            isAdmin ? getJSON('/hoops/admin/preseason') : Promise.resolve(null),
+            isAdmin ? getJSON('/job-runs') : Promise.resolve(null),
+            league ? getJSON('/draft/' + enc(league) + '/' + enc(season)) : Promise.resolve(null),
+            league ? getJSON('/scoring-config/' + enc(league) + '?season=' + enc(season)) : Promise.resolve(null),
+            league ? getJSON('/users/league/' + enc(league) + '/roster') : Promise.resolve(null)
+        ]).then(function (r) {
+            var hoops = bodyOr(r[1], null);
+            var cfg = bodyOr(r[5], undefined);
+            var roster = bodyOr(r[6], null);
+            return {
+                sport: sport,
+                isAdmin: isAdmin,
+                league: league,
+                leagueName: leagueName(league),
+                seasonStatus: (bodyOr(r[0], {}) || {}).status || (hoops && hoops.seasonStatus) || null,
+                hoops: hoops,
+                preseason: bodyOr(r[2], null),
+                jobs: bodyOr(r[3], null),
+                draft: r[4] && r[4].ok ? r[4].body : undefined,
+                engagement: cfg === undefined ? undefined : ((cfg && cfg.engagement) || null),
+                members: roster && Array.isArray(roster.players)
+                    ? roster.players.filter(function (p) { return p && p.inSeason; }).length : null
+            };
+        });
+    }
+
+    function gatherFootball() {
         var season = window.APP_YEAR || String(new Date().getFullYear());
         var league = leagueCode();
         var enc = encodeURIComponent;
@@ -109,7 +162,7 @@
 
     function toolOnPage(key) {
         var t = FIX[key];
-        return !!(t && document.querySelector('[' + t[0] + ']'));
+        return !!(t && document.querySelector(t[2] || '[' + t[0] + ']'));
     }
 
     function itemHtml(r) {
@@ -190,7 +243,18 @@
     function openFix(key) {
         var t = FIX[key];
         if (!t) return;
-        if (typeof window.openTool === 'function') window.openTool(t[0], window[t[1]]);
+        var opened = typeof window.openTool === 'function' && window.openTool(t[0], t[1] ? window[t[1]] : null);
+        if (opened || !t[2]) return;
+        // The card is not there (hoopsAdmin.js has not drawn it yet, or drew
+        // its error state): open the drawer on the area it lives in, so the
+        // tap is never silent.
+        var area = document.querySelector(t[2]);
+        if (!area) return;
+        var drawer = area.closest('details');
+        if (drawer && !drawer.open) drawer.open = true;
+        area.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (!area.hasAttribute('tabindex')) area.setAttribute('tabindex', '-1');
+        area.focus({ preventScroll: true });
     }
 
     root.addEventListener('click', function (e) {
@@ -210,13 +274,19 @@
         var box = document.querySelector('[admin-toolbox]');
         if (!box) return;
         var meta = box.querySelector('[admin-toolbox-meta]');
-        if (meta) {
-            var tools = box.querySelectorAll('.function-container').length;
-            var names = Array.prototype.map.call(box.querySelectorAll('.group-head h2'), function (h) {
-                return h.textContent.split(/\s+[—·]\s+/)[0].trim();
+        // Counted again whenever the drawer's contents change: basketball's
+        // data-task cards are drawn by hoopsAdmin.js after its own fetch.
+        function count() {
+            if (!meta) return;
+            var tools = box.querySelectorAll('.function-container, .ha-task').length;
+            var names = Array.prototype.map.call(box.querySelectorAll('[data-toolbox-group], .group-head h2'), function (h) {
+                return (h.getAttribute('data-toolbox-group') || h.textContent.split(/\s+[—·]\s+/)[0]).trim();
             });
-            meta.textContent = tools + ' tool' + (tools === 1 ? '' : 's') + (names.length ? ' · ' + names.join(', ') : '');
+            var text = tools + ' tool' + (tools === 1 ? '' : 's') + (names.length ? ' · ' + names.join(', ') : '');
+            if (meta.textContent !== text) meta.textContent = text;
         }
+        count();
+        if (window.MutationObserver) new MutationObserver(count).observe(box, { childList: true, subtree: true });
         try { if (window.localStorage.getItem(TOOLBOX_KEY) === '1') box.open = true; } catch (e) { /* convenience */ }
         box.addEventListener('toggle', function () {
             try { window.localStorage.setItem(TOOLBOX_KEY, box.open ? '1' : '0'); } catch (e) { /* convenience */ }

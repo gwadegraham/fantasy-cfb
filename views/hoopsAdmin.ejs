@@ -8,6 +8,7 @@
     <link href="/sport-page.css" rel="stylesheet">
     <link href="/admin.css" rel="stylesheet">
     <link href="/hoopsAdmin.css" rel="stylesheet">
+    <link href="/admin-clipboard.css" rel="stylesheet">
     <script src="/haptic.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,6 +24,10 @@
     <% if (manageLeague) { %>
     <!-- League setup is football's admin code, pointed at this league. -->
     <script defer src="/admin.js"></script>
+    <%# The Clipboard rides on admin.js (openTool, the setup openers), so it
+        is here only when League setup is. %>
+    <script defer src="/admin-clipboard.js"></script>
+    <script defer src="/admin-clipboard-view.js"></script>
     <% } %>
     <title><%= (typeof isAdmin !== 'undefined' && isAdmin) ? 'Basketball Admin' : 'League Management' %> · Campus Clash</title>
     <%- include('partials/favicons') %>
@@ -46,25 +51,23 @@
         window.ADMIN_LEAGUE = <%- JSON.stringify(manageLeague || null).replace(/</g, '\\u003c') %>;
         window.APP_YEAR = "<%= year %>";
         window.DRAFT_DEFAULTS = <%- draftDefaults %>;
+        // The Clipboard's role split: the basketball data rows and tasks are
+        // an Admin's alone (/hoops/admin/status 404s for anyone else).
+        window.ADMIN_IS_ADMIN = <%= (typeof isAdmin !== 'undefined' && isAdmin) ? 'true' : 'false' %>;
     </script>
     <%# Every league, both sports, and Create league (#536) — for an Admin,
         and for a League Manager, who may create one (#600). %>
     <% if (typeof canCreateLeague !== 'undefined' && canCreateLeague) { %>
     <nav class="admin-leagues-link"><a href="/leagues"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Leagues</a></nav>
     <% } %>
-    <% if (typeof isAdmin !== 'undefined' && isAdmin) { %>
-    <main class="sp-page ha" id="hoops-admin">
-        <div class="sp-loading">Loading…</div>
-    </main>
-    <%# Its own container: <main> is redrawn whole on every update, which
-        would wipe a paste (#544). %>
-    <section class="sp-page ha" id="hoops-preseason"></section>
-    <% } else { %>
-    <div class="header"><div class="header-title">League Management</div></div>
-    <% } %>
-
+    <% var _admin = typeof isAdmin !== 'undefined' && isAdmin; %>
     <% if (manageLeague) { %>
-    <div class="ha-league">
+    <%# With a league to manage: the Clipboard on top, the league's roster,
+        then every tool in one Toolbox drawer — the same frame as football's
+        /admin (#606/#607). %>
+    <div class="header"><div class="header-title" role="heading" aria-level="1"><%= _admin ? 'Basketball Admin' : 'League Management' %></div></div>
+    <section class="cb-wrap" admin-clipboard hidden aria-label="Season checklist"></section>
+    <div class="ha-league ha-league-top">
         <h2 class="ha-league-h"><%= manageLeagueName %> <small><%= year %></small></h2>
         <div class="get-users-container" get-users-container>
             <div class="table-wrapper">
@@ -74,8 +77,28 @@
                 </table>
             </div>
         </div>
-        <%- include('partials/admin-league-setup', { sport: 'basketball' }) %>
     </div>
+    <details class="cb-toolbox" admin-toolbox>
+        <summary><i class="fa-solid fa-toolbox" aria-hidden="true"></i><span class="cb-toolbox-name">Toolbox</span><span class="cb-toolbox-meta" admin-toolbox-meta></span><i class="fa-solid fa-chevron-down cb-toolbox-caret" aria-hidden="true"></i></summary>
+        <% if (_admin) { %>
+        <main class="sp-page ha" id="hoops-admin" data-toolbox-group="Basketball data">
+            <div class="sp-loading">Loading…</div>
+        </main>
+        <%# Its own container: <main> is redrawn whole on every update, which
+            would wipe a paste (#544). %>
+        <section class="sp-page ha" id="hoops-preseason" data-toolbox-group="Preseason ratings"></section>
+        <% } %>
+        <div class="ha-league">
+            <%- include('partials/admin-league-setup', { sport: 'basketball' }) %>
+        </div>
+    </details>
+    <% } else if (_admin) { %>
+    <%# An Admin with no basketball league yet: the data tasks only, open —
+        there is no checklist to put above a drawer. %>
+    <main class="sp-page ha" id="hoops-admin">
+        <div class="sp-loading">Loading…</div>
+    </main>
+    <section class="sp-page ha" id="hoops-preseason"></section>
     <% } %>
 </body>
 </html>
