@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { easternDay } = require('../modules/hoops-calendar');
-const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule } = require('../modules/scheduler');
+const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, HOOPS_LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule } = require('../modules/scheduler');
 
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
@@ -170,43 +170,31 @@ describe('scheduler config', () => {
 // an unlabelled job renders under its raw jobName, and one missing from `order`
 // sorts to indexOf -1 and jumps ahead of the scoring jobs. Neither failure is
 // visible from the server side, so assert it against the file itself.
-describe('admin job strip covers every scheduled job', () => {
-    const adminSrc = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
-
-    // The jobs the scheduler can register: the always-on set plus the opt-in
-    // live poller. Basketball's (hoops-*) are shown on the basketball admin
-    // page instead (#518) — football's strip is visible to League Managers —
-    // so they are checked against that page's list below.
-    const all = JOB_SCHEDULES.map(s => s.job).concat(LIVE_POLL_SCHEDULE.job);
-    const scheduled = all.filter(j => !/^hoops-/.test(j));
+describe('the admin job list covers every scheduled job', () => {
+    // Both admin pages draw their "Automated jobs" list from the Clipboard
+    // model's JOBS (public/admin-clipboard.js). A scheduled job missing there
+    // never shows on either page — so a job that needs attention would be
+    // invisible. Asserted against the schedule itself.
+    const { JOBS } = require('../public/admin-clipboard');
+    const all = JOB_SCHEDULES.map(s => s.job).concat(LIVE_POLL_SCHEDULE.job, HOOPS_LIVE_POLL_SCHEDULE.job);
+    const football = all.filter(j => !/^hoops-/.test(j));
     const basketball = all.filter(j => /^hoops-/.test(j));
 
-    it('every basketball job is on the basketball admin page', () => {
-        const { HOOPS_JOBS } = require('../routes/hoopsAdmin');
+    it('lists every football job on the football page', () => {
+        const listed = JOBS.football.map(j => j.name);
+        expect(football.filter(j => !listed.includes(j))).toEqual([]);
+        expect(listed.filter(j => /^hoops-/.test(j))).toEqual([]);
+    });
+
+    it('lists every basketball job on the basketball page', () => {
+        const listed = JOBS.basketball.map(j => j.name);
         expect(basketball.length).toBeGreaterThan(0);
-        expect(basketball.filter(j => !HOOPS_JOBS.includes(j))).toEqual([]);
+        expect(basketball.filter(j => !listed.includes(j))).toEqual([]);
+        expect(listed.filter(j => !/^hoops-/.test(j))).toEqual([]);
     });
 
-    it("and none is labelled on football's strip", () => {
-        expect(literal('JOB_LABELS')).not.toMatch(/hoops-/);
-    });
-
-    function literal(name) {
-        const m = adminSrc.match(new RegExp('var ' + name + '\\s*=\\s*([\\s\\S]*?);'));
-        expect(m).not.toBeNull();
-        return m[1];
-    }
-
-    it('labels every scheduled job', () => {
-        const labels = literal('JOB_LABELS');
-        const unlabelled = scheduled.filter(j => !labels.includes(`'${j}'`));
-        expect(unlabelled).toEqual([]);
-    });
-
-    it('gives every scheduled job a sort position', () => {
-        const order = adminSrc.match(/var order = \[([\s\S]*?)\];/);
-        expect(order).not.toBeNull();
-        const unordered = scheduled.filter(j => !order[1].includes(`'${j}'`));
-        expect(unordered).toEqual([]);
+    it('agrees with the basketball status route', () => {
+        const { HOOPS_JOBS } = require('../routes/hoopsAdmin');
+        expect(JOBS.basketball.map(j => j.name).sort()).toEqual([...HOOPS_JOBS].sort());
     });
 });

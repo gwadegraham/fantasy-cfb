@@ -26,6 +26,7 @@
     // only on an Admin's page). They have no opener: the cards are never
     // collapsed.
     var FIX = {
+        jobs: ['admin-jobs', null],
         'hoops-ingest': ['data-task="ingest"', null, '#hoops-admin'],
         'hoops-schedule': ['data-task="schedule"', null, '#hoops-admin'],
         'hoops-roster': ['data-task="roster"', null, '#hoops-admin'],
@@ -43,7 +44,7 @@
     var FIX_LABEL = {
         scores: 'Score now', cfpOdds: 'Paste board', draft: 'Set up', roster: 'Add',
         gameModes: 'Set up', 'hoops-ingest': 'Import', 'hoops-schedule': 'Import',
-        'hoops-roster': 'Import', 'hoops-preseason': 'Import'
+        'hoops-roster': 'Import', 'hoops-preseason': 'Import', jobs: 'View jobs'
     };
 
     function esc(v) {
@@ -85,7 +86,10 @@
             getJSON('/seasons/basketball'),
             isAdmin ? getJSON('/hoops/admin/status') : Promise.resolve(null),
             isAdmin ? getJSON('/hoops/admin/preseason') : Promise.resolve(null),
-            isAdmin ? getJSON('/job-runs') : Promise.resolve(null),
+            // Everyone: the Automated jobs list is on every admin page.
+            // /job-runs shows hoops-* jobs only to someone who sees basketball,
+            // which a basketball league's commissioner does.
+            getJSON('/job-runs'),
             league ? getJSON('/draft/' + enc(league) + '/' + enc(season)) : Promise.resolve(null),
             league ? getJSON('/scoring-config/' + enc(league) + '?season=' + enc(season)) : Promise.resolve(null),
             league ? getJSON('/users/league/' + enc(league) + '/roster') : Promise.resolve(null)
@@ -229,11 +233,56 @@
 
     var input = null;
 
+    // ---- the Automated jobs list (in the Toolbox, both sports) ----------
+    // The same list on football's and basketball's page: every scheduled job,
+    // including never-run ones, the ones that need you first.
+    var JOB_WORD = { error: 'Failed', running: 'Running', skipped: 'Nothing to do', success: 'Ran' };
+    var STATE_ORDER = { warn: 0, info: 1, ok: 2, off: 3 };
+
+    function ago(iso) {
+        var mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+        if (!isFinite(mins)) return '';
+        if (mins < 1) return 'just now';
+        if (mins < 60) return mins + 'm ago';
+        var hrs = Math.round(mins / 60);
+        return hrs < 48 ? hrs + 'h ago' : Math.round(hrs / 24) + 'd ago';
+    }
+
+    function renderJobs(phase) {
+        var el = document.querySelector('[admin-jobs]');
+        if (!el) return;
+        var list = el.querySelector('[admin-jobs-list]');
+        if (!input || input.jobs == null) {
+            list.innerHTML = '<li class="cb-job-none">Could not read the job history.</li>';
+            return;
+        }
+        var jobs = model.jobList(sport, input.jobs, { inSeason: phase === 'season' || phase === 'postseason' })
+            .map(function (j, i) { j.i = i; return j; })
+            .sort(function (a, b) { return (STATE_ORDER[a.state] - STATE_ORDER[b.state]) || (a.i - b.i); });
+        list.innerHTML = jobs.map(function (j) {
+            var word = j.overdue && j.status !== 'error' ? (j.at ? 'Overdue' : 'Has not run') : (JOB_WORD[j.status] || 'No runs yet');
+            var last = word + (j.at ? ' · ' + ago(j.at) : '');
+            return '<li class="cb-job cb-job-' + esc(j.state) + '">'
+                + '<span class="cb-job-dot" aria-hidden="true"></span>'
+                + '<span class="cb-job-name"><b>' + esc(j.label) + '</b><small>' + esc(j.when) + '</small></span>'
+                + '<span class="cb-job-last">' + esc(last)
+                + (j.status === 'error' && j.message ? '<small>' + esc(j.message) + '</small>' : '') + '</span></li>';
+        }).join('');
+        var bad = jobs.filter(function (j) { return j.state === 'warn'; }).length;
+        var head = el.querySelector('[admin-jobs-count]');
+        if (head) head.textContent = bad ? bad + ' need' + (bad === 1 ? 's' : '') + ' you' : 'All clear';
+        el.classList.toggle('cb-jobs-attn', bad > 0);
+    }
+
     // Redrawing replaces the stepper, so the button a keyboard user just
     // pressed is gone; put focus back on its replacement (or on Back's
     // target) instead of letting it fall to <body>.
     function draw(phase, focusPhase) {
-        render(model.build(input, phase ? { phase: phase } : null));
+        var cb = model.build(input, phase ? { phase: phase } : null);
+        render(cb);
+        // The jobs list follows the CURRENT phase (cb.phase), never the one
+        // being previewed (cb.shown): overdue only counts in season.
+        renderJobs(cb.phase);
         if (focusPhase) {
             var again = root.querySelector('.cb-ph[data-cb-phase="' + focusPhase + '"]');
             if (again) again.focus();
@@ -244,6 +293,11 @@
         var t = FIX[key];
         if (!t) return;
         var opened = typeof window.openTool === 'function' && window.openTool(t[0], t[1] ? window[t[1]] : null);
+        // A section with no button of its own (the jobs list) takes focus itself.
+        if (opened && !t[1]) {
+            var target = document.querySelector('[' + t[0] + ']');
+            if (target && target.hasAttribute('tabindex') && !target.contains(document.activeElement)) target.focus({ preventScroll: true });
+        }
         if (opened || !t[2]) return;
         // The card is not there (hoopsAdmin.js has not drawn it yet, or drew
         // its error state): open the drawer on the area it lives in, so the
@@ -297,7 +351,7 @@
         return gather().then(function (got) {
             input = got;
             draw(null);
-        }).catch(function () { /* leave the Clipboard hidden; the old panels still stand */ });
+        }).catch(function () { /* leave the Clipboard hidden */ });
     }
 
     initToolbox();

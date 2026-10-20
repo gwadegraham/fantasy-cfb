@@ -80,6 +80,12 @@
     </div>
     <details class="cb-toolbox" admin-toolbox>
         <summary><i class="fa-solid fa-toolbox" aria-hidden="true"></i><span class="cb-toolbox-name">Toolbox</span><span class="cb-toolbox-meta" admin-toolbox-meta></span><i class="fa-solid fa-chevron-down cb-toolbox-caret" aria-hidden="true"></i></summary>
+        <%# Automated jobs: the same list on both sports' pages, filled by
+            public/admin-clipboard-view.js from the Clipboard model's JOBS. %>
+        <section class="cb-jobs" admin-jobs data-toolbox-group="Automated jobs" tabindex="-1" aria-labelledby="cb-jobs-h">
+            <h3 class="cb-jobs-h" id="cb-jobs-h">Automated jobs <span admin-jobs-count></span></h3>
+            <ul class="cb-jobs-list" admin-jobs-list><li class="cb-job-none">Loading…</li></ul>
+        </section>
         <% if (_admin) { %>
         <main class="sp-page ha" id="hoops-admin" data-toolbox-group="Basketball data">
             <div class="sp-loading">Loading…</div>

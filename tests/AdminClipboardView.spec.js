@@ -24,6 +24,7 @@ function page(tools) {
         <section class="cb-wrap" admin-clipboard hidden></section>
         <details class="cb-toolbox" admin-toolbox>
             <summary><span admin-toolbox-meta></span></summary>
+            <section admin-jobs tabindex="-1"><h3>Automated jobs <span admin-jobs-count></span></h3><ul admin-jobs-list></ul></section>
             ${tools.includes('scores') ? `<section class="admin-group"><div class="group-head"><h2>Scoring — force a run</h2></div>${card('scores-container')}${card('expected-wins-container')}</section>` : ''}
             <section class="admin-group"><div class="group-head"><h2>League setup</h2></div>
                 ${tools.includes('draft') ? card('draft-config-container') : ''}${card('engagement-container')}</section>
@@ -235,10 +236,6 @@ describe('openTool (public/admin.js)', () => {
         expect(opener).not.toHaveBeenCalled();
     });
 
-    test('the readiness Fix and the status strip both route through it', () => {
-        expect(ADMIN).toMatch(/if \(target\) openTool\(target\[0\], target\[1\]\);/);
-        expect(ADMIN).toMatch(/openTool\('scores-container', displayScoresContainer\);/);
-    });
 });
 
 describe('the Toolbox drawer', () => {
@@ -315,6 +312,7 @@ describe('basketball (/hoops/admin)', () => {
             <section class="cb-wrap" admin-clipboard hidden></section>
             <details class="cb-toolbox" admin-toolbox>
                 <summary><span admin-toolbox-meta></span></summary>
+                <section admin-jobs data-toolbox-group="Automated jobs" tabindex="-1"><h3><span admin-jobs-count></span></h3><ul admin-jobs-list></ul></section>
                 ${admin ? '<main id="hoops-admin" data-toolbox-group="Basketball data"></main><section id="hoops-preseason" data-toolbox-group="Preseason ratings"></section>' : ''}
                 <section class="admin-group"><div class="group-head"><h2>League setup</h2></div>
                     <div class="function-container"><div class="sub-container" draft-config-container></div></div></section>
@@ -347,7 +345,7 @@ describe('basketball (/hoops/admin)', () => {
 
     test('a commissioner: no Admin-only reads (they 404), but the league reads happen', async () => {
         await bootHoops({ admin: false });
-        expect(calls.filter(u => /^\/hoops\/admin|^\/job-runs/.test(u))).toEqual([]);
+        expect(calls.filter(u => /^\/hoops\/admin/.test(u))).toEqual([]);
         expect(calls).toEqual(expect.arrayContaining(['/seasons/basketball', '/draft/hoops-league/2027', '/users/league/hoops-league/roster']));
     });
 
@@ -402,10 +400,10 @@ describe('basketball (/hoops/admin)', () => {
     test('the drawer recounts when hoopsAdmin.js draws its task cards', async () => {
         await bootHoops();
         const meta = document.querySelector('[admin-toolbox-meta]');
-        expect(meta.textContent).toBe('1 tool · Basketball data, Preseason ratings, League setup');
+        expect(meta.textContent).toBe('1 tool · Automated jobs, Basketball data, Preseason ratings, League setup');
         document.getElementById('hoops-admin').innerHTML = '<section class="ha-task"></section><section class="ha-task"></section>';
         await flush();
-        expect(meta.textContent).toBe('3 tools · Basketball data, Preseason ratings, League setup');
+        expect(meta.textContent).toBe('3 tools · Automated jobs, Basketball data, Preseason ratings, League setup');
     });
 });
 
@@ -446,5 +444,102 @@ describe('the basketball page markup', () => {
 
     test('the role is the server\'s answer', () => {
         expect(EJS).toMatch(/window\.ADMIN_IS_ADMIN = <%= \(typeof isAdmin !== 'undefined' && isAdmin\) \? 'true' : 'false' %>/);
+    });
+});
+
+describe('the Automated jobs list: the same on both sports', () => {
+    const jobRows = () => Array.from(document.querySelectorAll('[admin-jobs-list] .cb-job'));
+    const names = () => jobRows().map(li => li.querySelector('b').textContent);
+
+    test('football lists every scheduled football job, never-run included, and no basketball job', async () => {
+        await boot({ routes: { '/job-runs': () => json([
+            { jobName: 'daily-scores', status: 'success', startedAt: new Date().toISOString() },
+            { jobName: 'hoops-scores', status: 'error', startedAt: new Date().toISOString() }
+        ]) } });
+        expect(jobRows()).toHaveLength(9);
+        expect(names()).not.toContain('Scores');
+        expect(document.querySelector('[admin-jobs-list]').textContent).toContain('No runs yet');
+        expect(document.querySelector('[admin-jobs-count]').textContent).toBe('All clear');
+    });
+
+    test('a failed job goes to the top, amber, with its message; the header counts it', async () => {
+        await boot({ routes: { '/job-runs': () => json([
+            { jobName: 'daily-scores', status: 'success', startedAt: new Date().toISOString() },
+            { jobName: 'enrichment', status: 'error', startedAt: new Date().toISOString(), message: 'CFBD 500' }
+        ]) } });
+        const first = jobRows()[0];
+        expect(first.classList.contains('cb-job-warn')).toBe(true);
+        expect(first.textContent).toContain('Schedule / SP+ / media');
+        expect(first.textContent).toContain('Failed');
+        expect(first.textContent).toContain('CFBD 500');
+        expect(document.querySelector('[admin-jobs-count]').textContent).toBe('1 needs you');
+        expect(document.querySelector('[admin-jobs]').classList.contains('cb-jobs-attn')).toBe(true);
+    });
+
+    test('a nightly scoring job that has not run in season is flagged on the list too', async () => {
+        await boot({ routes: { '/job-runs': () => json([]) } });
+        const first = jobRows()[0];
+        expect(first.textContent).toContain('Daily scores');
+        expect(first.textContent).toContain('Has not run');
+    });
+
+    test('a League Manager sees the list too, as they saw the old strip', async () => {
+        await boot({ admin: false, tools: ['draft'] });
+        expect(calls).toContain('/job-runs');
+        expect(jobRows()).toHaveLength(9);
+    });
+
+    test('job history unreadable: says so instead of an empty list', async () => {
+        await boot({ routes: { '/job-runs': () => json({}, 500) } });
+        expect(document.querySelector('[admin-jobs-list]').textContent).toBe('Could not read the job history.');
+    });
+
+    test('the Clipboard\'s job row opens the list', async () => {
+        const root = await boot({ routes: { '/job-runs': () => json([]) } });
+        item(root, 'Daily scores has not run').querySelector('[data-cb-fix]').click();
+        expect(window.openTool).toHaveBeenCalledWith('admin-jobs', null);
+    });
+
+    test('a previewed phase does not redraw the list', async () => {
+        const root = await boot({ routes: { '/job-runs': () => json([]) } });
+        const before = document.querySelector('[admin-jobs-list]').innerHTML;
+        root.querySelector('[data-cb-phase="draft"]').click();
+        expect(document.querySelector('[admin-jobs-list]').innerHTML).toBe(before);
+    });
+
+    test('basketball lists its 8 jobs in the same markup', async () => {
+        document.body.innerHTML = `<section admin-clipboard hidden></section>
+            <section admin-jobs><h3><span admin-jobs-count></span></h3><ul admin-jobs-list></ul></section>`;
+        calls = [];
+        global.fetch = jest.fn(url => { calls.push(url);
+            if (url === '/seasons/basketball') return json({ status: 'in-season' });
+            if (url === '/job-runs') return json([{ jobName: 'hoops-net', status: 'success', startedAt: new Date().toISOString() }]);
+            return json(null); });
+        window.ADMIN_IS_ADMIN = true; window.ADMIN_SPORT = 'basketball'; window.APP_YEAR = '2027';
+        window.ccManageLeagueCode = () => 'hoops-league';
+        (0, eval)(MODEL); (0, eval)(VIEW); await flush();
+        expect(jobRows()).toHaveLength(8);
+        expect(jobRows()[0].textContent).toContain('Scores'); // nightly, never run, in season: first
+        window.ADMIN_SPORT = undefined;
+    });
+});
+
+describe('the retired panels', () => {
+    const ADMIN = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
+    const EJS = fs.readFileSync(path.join(__dirname, '..', 'views', 'admin.ejs'), 'utf8');
+    const HOOPS_EJS = fs.readFileSync(path.join(__dirname, '..', 'views', 'hoopsAdmin.ejs'), 'utf8');
+
+    test('the status strip and readiness panel are gone from football\'s page', () => {
+        expect(EJS).not.toMatch(/admin-status|season-readiness/);
+        expect(ADMIN).not.toMatch(/function (loadAdminStatus|renderAdminStatus|loadReadiness|renderReadiness)\b/);
+    });
+
+    test('both pages carry the same jobs section, inside the Toolbox', () => {
+        [EJS, HOOPS_EJS].forEach(src => {
+            const open = src.indexOf('admin-toolbox>');
+            const jobs = src.indexOf('admin-jobs data-toolbox-group="Automated jobs"');
+            expect(jobs).toBeGreaterThan(open);
+            expect(jobs).toBeLessThan(src.indexOf('</details>'));
+        });
     });
 });

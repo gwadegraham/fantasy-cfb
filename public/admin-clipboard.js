@@ -54,18 +54,45 @@
         ]
     };
 
-    // Same names the football status strip uses (public/admin.js JOB_LABELS),
-    // plus basketball's. A job missing here still shows, under its raw name.
-    var JOB_LABELS = {
-        'daily-scores': 'Daily scores', 'saturday-scores': 'Saturday scores',
-        'sunday-scores': 'Sunday scores', 'live-scores': 'Live scores',
-        'enrichment': 'Schedule / SP+ / media', 'season-stats': 'Team stats',
-        'player-season-leaders': 'Player stats', 'captain-reminder': 'Captain alerts',
-        'recap-notice': 'Recap alerts',
-        'hoops-scores': 'Basketball scores', 'hoops-live': 'Basketball live',
-        'hoops-stats': 'Basketball stats', 'hoops-media': 'Basketball media',
-        'hoops-ratings': 'Basketball ratings', 'hoops-net': 'NCAA NET'
+    // Every job the scheduler runs, per sport, in the order the admin page
+    // lists them (modules/scheduler.js JOB_SCHEDULES + the two live pollers;
+    // tests/Scheduler.spec.js fails if one is missing here). Both sports'
+    // admin pages draw the same list from this, so a job that needs you looks
+    // the same on either.
+    //
+    //   when    the schedule, in words
+    //   stale   hours after which a job that should run every night is
+    //           overdue IN SEASON. Only the nightly scoring jobs carry one:
+    //           the others are weekly, event-driven, or write a run only when
+    //           they did something (captain alerts, the live pollers), so
+    //           their silence is not a fault.
+    var JOBS = {
+        football: [
+            { name: 'daily-scores', label: 'Daily scores', when: 'Nightly 23:00', stale: 36 },
+            { name: 'saturday-scores', label: 'Saturday scores', when: 'Saturdays, 4 runs' },
+            { name: 'sunday-scores', label: 'Sunday scores', when: 'Sundays 03:00 + 06:00' },
+            { name: 'live-scores', label: 'Live scores', when: 'During games · logs on changes' },
+            { name: 'enrichment', label: 'Schedule / SP+ / media', when: 'Tuesdays 05:30' },
+            { name: 'season-stats', label: 'Team stats', when: 'Tuesdays 06:00' },
+            { name: 'player-season-leaders', label: 'Player stats', when: 'Tuesdays 06:30' },
+            { name: 'captain-reminder', label: 'Captain alerts', when: 'Every 30 min · logs when it sends' },
+            { name: 'recap-notice', label: 'Recap alerts', when: 'Mondays 07:05' }
+        ],
+        basketball: [
+            { name: 'hoops-scores', label: 'Scores', when: 'Nightly 23:30', stale: 36 },
+            { name: 'hoops-live', label: 'Live scores', when: 'During games · logs on finals' },
+            { name: 'hoops-stats', label: 'Stats + box scores', when: 'Daily 05:00' },
+            { name: 'hoops-media', label: 'TV listings', when: 'Mondays 06:00' },
+            { name: 'hoops-ratings', label: 'Ratings', when: 'Daily 06:15 + 22:15' },
+            { name: 'hoops-net', label: 'NCAA NET', when: 'Daily 11:30, from mid-November' },
+            { name: 'hoops-styles', label: 'Style tags', when: 'Daily 07:00' },
+            { name: 'hoops-turnover', label: 'Portal + recruits', when: 'Daily 07:10, preseason' }
+        ]
     };
+    var JOB_LABELS = {};
+    Object.keys(JOBS).forEach(function (sport) {
+        JOBS[sport].forEach(function (j) { JOB_LABELS[j.name] = j.label; });
+    });
 
     // When automation will score what is outstanding, for a viewer who cannot
     // run scoring by hand (modules/scheduler.js).
@@ -199,19 +226,58 @@
         return Object.keys(latest).sort().map(function (k) { return latest[k]; });
     }
 
-    // One row per failed job, else one row saying they are healthy. A job
-    // that has never run is not a failure — preseason, most have not.
-    function jobRows(jobs, sport) {
-        var hoops = function (n) { return /^hoops-/.test(n); };
-        var mine = latestJobs(jobs, sport === 'basketball' ? hoops : function (n) { return !hoops(n); });
-        if (!mine.length) return [];
-        var failed = mine.filter(function (j) { return j.status === 'error'; });
-        if (!failed.length) return [row('jobs', 'ok', 'No failed jobs', plural(mine.length, 'job') + ', none failed on its last run')];
-        return failed.map(function (j) {
-            var name = JOB_LABELS[j.jobName] || j.jobName;
-            var scoring = /scores$/.test(j.jobName);
-            return row('job:' + j.jobName, 'warn', name + ' failed', j.message || 'Last run errored', scoring ? 'scores' : null);
+    // The automated jobs, one entry per scheduled job — including those with
+    // no run on file, which a list built from the runs alone would leave out.
+    //
+    //   state  warn  failed on its last run, or a nightly job overdue in season
+    //          info  running right now
+    //          ok    last run succeeded (or skipped: nothing to do)
+    //          off   no run on file, and none expected yet
+    //   status the last run's own status, null when there is none
+    //   at     when that run started
+    //
+    // Unrecognised job names in the runs are ignored: the list is the schedule.
+    function jobList(sport, runs, opts) {
+        var o = opts || {};
+        var now = o.now != null ? o.now : Date.now();
+        var specs = JOBS[sport === 'basketball' ? 'basketball' : 'football'];
+        var mine = {};
+        latestJobs(runs, function (n) { return specs.some(function (s) { return s.name === n; }); })
+            .forEach(function (j) { mine[j.jobName] = j; });
+        return specs.map(function (spec) {
+            var run = mine[spec.name] || null;
+            var at = run ? run.startedAt : null;
+            var hours = at ? (ms(now) - ms(at)) / 3600000 : null;
+            var overdue = !!(o.inSeason && spec.stale && (hours == null || hours > spec.stale));
+            var state = run && run.status === 'error' ? 'warn'
+                : overdue ? 'warn'
+                : run && run.status === 'running' ? 'info'
+                : run ? 'ok' : 'off';
+            return { name: spec.name, label: spec.label, when: spec.when, state: state,
+                status: run ? run.status : null, at: at, overdue: overdue, message: (run && run.message) || '' };
         });
+    }
+
+    // The Clipboard's view of the same list: a row per job that needs you,
+    // else one row saying how many have run and how many have not yet.
+    function jobRows(jobs, sport, now, inSeason) {
+        if (!jobs) return [];
+        var list = jobList(sport, jobs, { now: now, inSeason: inSeason });
+        var bad = list.filter(function (j) { return j.state === 'warn'; });
+        if (bad.length) {
+            return bad.map(function (j) {
+                var scoring = /scores$/.test(j.name);
+                if (j.status === 'error') {
+                    return row('job:' + j.name, 'warn', j.label + ' failed', j.message || 'Last run errored', scoring ? 'scores' : 'jobs');
+                }
+                return row('job:' + j.name, 'warn', j.label + (j.at ? ' is overdue' : ' has not run'),
+                    j.at ? 'Last ran ' + plural(Math.floor((ms(now) - ms(j.at)) / 3600000), 'hour') + ' ago · ' + j.when : j.when, 'jobs');
+            });
+        }
+        var ran = list.filter(function (j) { return j.status; }).length;
+        var never = list.length - ran;
+        return [row('jobs', 'ok', 'Jobs running fine',
+            ran + ' of ' + list.length + ' have run' + (never ? ' · ' + never + ' no runs yet' : ''), 'jobs')];
     }
 
     function recapRow(jobs) {
@@ -322,13 +388,13 @@
         if (sport === 'football') {
             var scoring = footballScoringRow(input.status, isAdmin);
             if (isAdmin) {
-                platform = compact([scoring].concat(jobRows(input.jobs, 'football'), [cfpOddsRow(input.cfpOdds, now)]));
+                platform = compact([scoring].concat(jobRows(input.jobs, 'football', now, true), [cfpOddsRow(input.cfpOdds, now)]));
             } else {
                 league.push(scoring);
             }
             league = league.concat([recapRow(input.jobs)]);
         } else {
-            if (isAdmin) platform = compact([hoopsResultsRow(input.hoops, true)].concat(jobRows(input.jobs, 'basketball')));
+            if (isAdmin) platform = compact([hoopsResultsRow(input.hoops, true)].concat(jobRows(input.jobs, 'basketball', now, true)));
             else league.push(hoopsResultsRow(input.hoops, false));
         }
         if (input.draft !== undefined) league.push(draftRow(input.draft, now));
@@ -413,5 +479,5 @@
         };
     }
 
-    return { build: build, phaseOf: phaseOf, JOB_LABELS: JOB_LABELS, PHASES: PHASES, ODDS_STALE_DAYS: ODDS_STALE_DAYS };
+    return { build: build, phaseOf: phaseOf, jobList: jobList, JOBS: JOBS, JOB_LABELS: JOB_LABELS, PHASES: PHASES, ODDS_STALE_DAYS: ODDS_STALE_DAYS };
 }));

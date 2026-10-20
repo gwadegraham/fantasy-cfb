@@ -327,7 +327,7 @@
     background-color: var(--cc-accent);
 }
 
-/* ---------- Admin console redesign: groups, status strip ---------- */
+/* ---------- Admin console: tool groups ---------- */
 .admin-group {
     width: 100%;
     max-width: 1100px;
@@ -371,53 +371,6 @@
     padding: 5px 0.5em 0;
 }
 .job-tag i { font-size: 0.75rem; }
-
-/* Read-only "current state" summary at the top of the console. */
-.admin-status {
-    width: auto;
-    max-width: 1100px;
-    /* Side gutters so the card doesn't run into the device edges on mobile;
-       centers via auto margins once there's room (see media query below). */
-    margin: 0 16px 1.75em;
-    background: #141A2E;
-    border: 1px solid var(--cc-border);
-    border-radius: 12px;
-    padding: 14px 16px;
-    color: var(--cc-text);
-}
-@media (min-width: 1132px) {
-    .admin-status { margin-left: auto; margin-right: auto; }
-}
-.admin-status[hidden] { display: none; }
-.admin-status .ss-head {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.13em;
-    color: var(--cc-muted-2); margin-bottom: 11px;
-}
-.admin-status .ss-row { display: flex; flex-wrap: wrap; gap: 20px; }
-.admin-status .ss-item { display: flex; flex-direction: column; gap: 2px; }
-.admin-status .ss-item small { color: var(--cc-muted-2); font-size: 0.68rem; }
-.admin-status .ss-item b { font-weight: 500; font-size: 1rem; display: flex; align-items: center; gap: 7px; }
-.admin-status .dot { width: 7px; height: 7px; border-radius: 50%; }
-.admin-status .dot.g { background: var(--cc-success); }
-.admin-status .dot.b { background: var(--cc-info); }
-.admin-status .dot.a { background: var(--cc-amber); }
-.admin-status .dot.r { background: var(--cc-accent); }
-
-/* Automated-jobs last-run summary. */
-.ss-jobs { margin-top: 12px; padding-top: 11px; border-top: 1px solid #222741; }
-.ss-jobs > small { color: var(--cc-muted-2); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; }
-.ss-jobs-row { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 8px; }
-.ss-job { display: flex; align-items: center; gap: 7px; font-size: 0.82rem; }
-.ss-job b { font-weight: 500; }
-.ss-job-meta { color: var(--cc-muted-2); }
-.admin-status .ss-note {
-    margin-top: 12px; padding-top: 11px; border-top: 1px solid #222741;
-    font-size: 0.82rem; display: flex; gap: 8px; align-items: flex-start; color: var(--cc-muted-bright);
-}
-.admin-status.ok .ss-note { color: var(--cc-success); }
-.admin-status.warn .ss-note { color: var(--cc-amber); }
-.admin-status .ss-note a { color: inherit; font-weight: 500; text-decoration: underline; cursor: pointer; }
 
 /* --- Activity (commissioner audit trail) ------------------------------------
    Deliberately dense: one line per change, so 25 entries read as a log rather
@@ -529,90 +482,6 @@
     .rc-pick select { max-width: none; width: 100%; }
     .rc-row select { flex-basis: 100%; }
     .rc-actions { width: 100%; justify-content: flex-end; }
-}
-
-/* --- Preseason readiness panel -------------------------------------------
-   Same card shell as .admin-status (above) so the two read as one family; the
-   body is a labelled grid of checks rather than a stat row. */
-.readiness {
-    width: auto;
-    max-width: 1100px;
-    margin: 0 16px 1.75em;
-    /* Matches .admin-status literally rather than using --cc-surface-2 (#171B31):
-       the two cards stack, and a near-but-not-equal background reads as a bug. */
-    background: #141A2E;
-    border: 1px solid var(--cc-border);
-    border-radius: 12px;
-    padding: 14px 16px;
-    color: var(--cc-text);
-}
-@media (min-width: 1132px) {
-    .readiness { margin-left: auto; margin-right: auto; }
-}
-.readiness[hidden] { display: none; }
-.readiness .ss-head {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.13em;
-    color: var(--cc-muted-2); margin-bottom: 11px;
-}
-.rd-summary { display: flex; flex-direction: column; gap: 3px; margin-bottom: 14px; }
-.rd-state { font-size: 1.05rem; font-weight: 600; }
-.rd-state.ok { color: var(--cc-success); }
-.rd-state.warn { color: var(--cc-amber); }
-.rd-sub { color: var(--cc-muted-2); font-size: 0.78rem; }
-
-.rd-group { margin-top: 14px; padding-top: 11px; border-top: 1px solid #222741; }
-.rd-group > small {
-    display: block; color: var(--cc-muted-2); font-size: 0.68rem;
-    text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 9px;
-}
-
-/* dot | label | detail | fix — the why/note lines span the full width beneath. */
-.rd-row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 4px 10px;
-    padding: 6px 0;
-    font-size: 0.85rem;
-}
-.rd-row .dot { width: 7px; height: 7px; border-radius: 50%; }
-.rd-row .dot.g { background: var(--cc-success); }
-.rd-row .dot.b { background: var(--cc-info); }
-.rd-row .dot.a { background: var(--cc-amber); }
-.rd-row .dot.r { background: var(--cc-danger); }
-.rd-label { font-weight: 500; }
-.rd-detail { color: var(--cc-muted-2); font-size: 0.8rem; text-align: right; }
-.rd-fix {
-    background: none; border: 1px solid var(--cc-border); border-radius: 6px;
-    color: var(--cc-muted-bright); font: inherit; font-size: 0.75rem;
-    padding: 3px 9px; cursor: pointer; white-space: nowrap;
-}
-.rd-fix:hover { border-color: var(--cc-info); color: var(--cc-text); }
-.rd-row.attn .rd-label { color: var(--cc-amber); }
-.rd-why, .rd-note {
-    grid-column: 2 / -1; margin: 2px 0 4px;
-    font-size: 0.78rem; color: var(--cc-muted-2); line-height: 1.45;
-}
-.rd-why { color: var(--cc-amber); opacity: 0.85; }
-
-/* Mobile: the detail has nowhere to go on one line. Switch to flex and use
-   `order` so the row reads dot · label · Fix, with the detail and the why-line
-   wrapping underneath — indented past the dot so they hang off the label.
-   (Grid with an explicit column here pushed Fix onto its own line, tripling the
-   row height.) */
-@media (max-width: 620px) {
-    .rd-row { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; }
-    .rd-row .dot { flex: none; }
-    .rd-label { flex: 1 1 auto; }
-    .rd-fix { flex: none; order: 3; }
-    .rd-detail { flex: 1 0 100%; order: 4; text-align: left; padding-left: 15px; }
-    .rd-why, .rd-note { flex: 1 0 100%; order: 5; padding-left: 15px; margin: 0; }
-}
-
-/* Highlight the Update Scores tool when results are waiting to be scored. */
-.function-container.attn .button-container button {
-    box-shadow: inset 3px 0 0 var(--cc-amber), 0px 0px 2px 2px var(--cc-surface);
 }
 
 /* Scoring config: label and its (small) value input on one row, so each rule
@@ -1094,12 +963,6 @@
 .function-container.is-open .button-container button::after {
     transform: rotate(45deg);
     border-color: var(--cc-text);
-}
-
-/* Keep the "unscored results" highlight working with the new flat button. */
-.function-container.attn .button-container button {
-    box-shadow: inset 3px 0 0 var(--cc-amber);
-    border-color: #F2C14E66;
 }
 
 /* --- Action (submit) buttons inside a panel --- */
