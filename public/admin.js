@@ -362,9 +362,7 @@ function renderAdminStatus(el, s, api, year, jobs) {
 
     var fix = el.querySelector('[data-fix-scores]');
     if (fix) fix.addEventListener('click', function () {
-        var c = document.querySelector('[scores-container]');
-        if (c && !c.classList.contains('open')) displayScoresContainer();
-        if (tool) tool.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        openTool('scores-container', displayScoresContainer);
     });
 }
 
@@ -625,6 +623,29 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// Open one tool card and bring it into view: the readiness panel's Fix
+// buttons, the status strip's "Force update scores", and the Clipboard
+// (public/admin-clipboard-view.js) all land here. The cards sit inside the
+// Toolbox drawer, which is closed by default — so the drawer opens FIRST:
+// toggleSub measures scrollHeight, and a card inside a closed <details>
+// measures 0 and would open to nothing. Returns false when the tool is not
+// on this page (a League Manager has no platform tools).
+function openTool(attr, opener) {
+    var c = document.querySelector('[' + attr + ']');
+    if (!c) return false;
+    var drawer = c.closest('details');
+    if (drawer && !drawer.open) drawer.open = true;
+    if (!c.classList.contains('open') && typeof opener === 'function') opener();
+    // Scroll the whole tool card into view, falling back to the container
+    // itself if the markup ever stops nesting one inside the other. Focus
+    // follows, so Tab continues inside the tool that just opened.
+    var card = c.closest('.function-container') || c;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var head = card.querySelector('.button-container button');
+    if (head) head.focus({ preventScroll: true });
+    return true;
+}
+
 // Check key -> [container attribute, opener] for the admin tool that fixes it.
 // The openers are function declarations defined further down this file, so they
 // hoist and are already bound by the time this literal is evaluated.
@@ -704,13 +725,7 @@ function renderReadiness(el, r) {
     el.querySelectorAll('[data-rd-fix]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var target = READINESS_FIX[btn.getAttribute('data-rd-fix')];
-            if (!target) return;
-            var c = document.querySelector('[' + target[0] + ']');
-            if (!c) return;
-            if (!c.classList.contains('open')) target[1]();
-            // Scroll the whole tool card into view, falling back to the container
-            // itself if the markup ever stops nesting one inside the other.
-            (c.closest('.function-container') || c).scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (target) openTool(target[0], target[1]);
         });
     });
 }

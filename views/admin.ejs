@@ -8,12 +8,15 @@
     <script src="haptic.js"></script>
     <script src="pull-to-refresh.js"></script>
     <link rel="stylesheet" href="admin.css">
+    <link rel="stylesheet" href="admin-clipboard.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet"/>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
     <script defer src="admin.js"></script>
+    <script defer src="admin-clipboard.js"></script>
+    <script defer src="admin-clipboard-view.js"></script>
     <title data-league-title="League Management">League Management · Campus Clash</title>
     <%- include('partials/favicons') %>
     <link rel="manifest" href="/manifest.json" />
@@ -41,6 +44,9 @@
         // the settings form can pre-fill them where an admin can see and
         // change them.
         window.DRAFT_DEFAULTS = <%- (typeof draftDefaults !== 'undefined' && draftDefaults) || '{}' %>;
+        // The Clipboard's role split (public/admin-clipboard.js): platform
+        // rows and hand-run fixes are an Admin's alone.
+        window.ADMIN_IS_ADMIN = <%= isAdmin ? 'true' : 'false' %>;
     </script>
 
     <div class="header">
@@ -54,6 +60,11 @@
     <% if (typeof canCreateLeague !== 'undefined' ? canCreateLeague : isAdmin) { %>
     <nav class="admin-leagues-link"><a href="/leagues"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Leagues</a></nav>
     <% } %>
+
+    <%# The Clipboard: this phase of the season and what it needs
+        (public/admin-clipboard-view.js). Sits above the status strip and
+        readiness panel until those retire. %>
+    <section class="cb-wrap" admin-clipboard hidden aria-label="Season checklist"></section>
 
     <div class="get-users-container" get-users-container>
         <div class="table-wrapper">
@@ -77,6 +88,12 @@
          reports what's actually on file before draft night. Rendered by
          renderReadiness(); hides itself once the season is scoring. -->
     <div class="readiness" season-readiness hidden></div>
+
+    <%# Every tool, in one drawer. The Clipboard's fix buttons open it on
+        the tool they need (openTool in public/admin.js). The markup inside
+        is unchanged, so every handler still finds its form. %>
+    <details class="cb-toolbox" admin-toolbox>
+        <summary><i class="fa-solid fa-toolbox" aria-hidden="true"></i><span class="cb-toolbox-name">Toolbox</span><span class="cb-toolbox-meta" admin-toolbox-meta></span><i class="fa-solid fa-chevron-down cb-toolbox-caret" aria-hidden="true"></i></summary>
 
     <% /* Platform-wide groups: Admins only. League Managers see just League setup. */ %>
     <% if (isAdmin) { %>
@@ -360,6 +377,8 @@
         </div>
     </section>
     <% } %>
+
+    </details>
 
     <footer>
         <%- include('partials/data-credit') %>
