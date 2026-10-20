@@ -348,6 +348,34 @@ describe('basketball', () => {
     });
 });
 
+describe('basketball preseason ratings', () => {
+    const base = { sport: 'basketball', isAdmin: true, seasonStatus: 'preseason', now: NOW, hoops: hoopsFull };
+    const pre = c => ({ season: 2027, current: Object.assign({ teams: 365, ranked: 365, sources: 1, importedAt: daysAgo(6) }, c) });
+
+    test('on file: a count and how old', () => {
+        expect(byKey(build(Object.assign({ preseason: pre() }, base)), 'hoops-preseason'))
+            .toMatchObject({ state: 'ok', label: '365 teams ranked', detail: 'Imported 6 days ago', fix: null });
+        expect(byKey(build(Object.assign({ preseason: pre({ importedAt: NOW.toISOString() }) }, base)), 'hoops-preseason').detail).toBe('Imported today');
+        expect(byKey(build(Object.assign({ preseason: pre({ importedAt: null }) }, base)), 'hoops-preseason').detail).toBe('Preseason ratings');
+    });
+
+    test('none, or two imports side by side, is a gap with the import tool', () => {
+        expect(byKey(build(Object.assign({ preseason: pre({ ranked: 0 }) }, base)), 'hoops-preseason'))
+            .toMatchObject({ state: 'warn', label: 'No preseason ratings', fix: 'hoops-preseason' });
+        expect(byKey(build(Object.assign({ preseason: pre({ sources: 2 }) }, base)), 'hoops-preseason'))
+            .toMatchObject({ state: 'warn', label: 'Two rating imports on file' });
+    });
+
+    test('a commissioner never gets it, even when handed the payload', () => {
+        expect(byKey(build(Object.assign({}, base, { isAdmin: false, preseason: pre({ ranked: 0 }) })), 'hoops-preseason')).toBeUndefined();
+    });
+
+    test('no payload, no row', () => {
+        expect(byKey(build(base), 'hoops-preseason')).toBeUndefined();
+        expect(byKey(build(Object.assign({ preseason: { season: null } }, base)), 'hoops-preseason')).toBeUndefined();
+    });
+});
+
 describe('the draft row', () => {
     const draftOf = (d, extra) => build(Object.assign({ sport: 'basketball', seasonStatus: 'preseason', now: NOW, draft: d }, extra));
 

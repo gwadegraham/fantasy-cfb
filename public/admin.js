@@ -641,7 +641,9 @@ function openTool(attr, opener) {
     // follows, so Tab continues inside the tool that just opened.
     var card = c.closest('.function-container') || c;
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    var head = card.querySelector('.button-container button');
+    // Football's collapsible cards have a header button; basketball's
+    // data-task cards (public/hoopsAdmin.js) have their Run button.
+    var head = card.querySelector('.button-container button, .ha-run');
     if (head) head.focus({ preventScroll: true });
     return true;
 }

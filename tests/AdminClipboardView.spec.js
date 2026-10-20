@@ -295,3 +295,123 @@ describe('the page markup', () => {
         expect(classes.filter(c => !c.startsWith('cb') && !['admin-group', 'is-shown', 'is-preview'].includes(c))).toEqual([]);
     });
 });
+
+describe('basketball (/hoops/admin)', () => {
+    const HOOPS = {
+        '/seasons/basketball': () => json({ sport: 'basketball', season: 2027, status: 'preseason' }),
+        '/hoops/admin/status': () => json({ season: 2027, seasonStatus: 'preseason', onFile: {
+            teams: { teams: 365, withLogos: 365 }, games: { games: 0, finals: 0 }, roster: { players: 5264 } } }),
+        '/hoops/admin/preseason': () => json({ season: 2027, current: { teams: 365, ranked: 0, sources: 0 } }),
+        '/job-runs': () => json([]),
+        '/draft/hoops-league/2027': () => json({ draftOrder: ['a', 'b'], totalRounds: 10, poolSize: 120 }),
+        '/scoring-config/hoops-league?season=2027': () => json({ engagement: { captainEnabled: true, captainMultiplier: 2 } }),
+        '/users/league/hoops-league/roster': () => json({ season: 2027, players: [{ inSeason: true }, { inSeason: true }, { inSeason: false }] })
+    };
+
+    // A slice of hoopsAdmin.ejs. An Admin's drawer holds the data-task area
+    // (drawn later by hoopsAdmin.js) and the preseason section.
+    async function bootHoops({ admin = true, routes = {} } = {}) {
+        document.body.innerHTML = `
+            <section class="cb-wrap" admin-clipboard hidden></section>
+            <details class="cb-toolbox" admin-toolbox>
+                <summary><span admin-toolbox-meta></span></summary>
+                ${admin ? '<main id="hoops-admin" data-toolbox-group="Basketball data"></main><section id="hoops-preseason" data-toolbox-group="Preseason ratings"></section>' : ''}
+                <section class="admin-group"><div class="group-head"><h2>League setup</h2></div>
+                    <div class="function-container"><div class="sub-container" draft-config-container></div></div></section>
+            </details>`;
+        calls = [];
+        const table = Object.assign({}, HOOPS, routes);
+        global.fetch = jest.fn(url => { calls.push(url); const h = table[url]; return h ? h() : json({ message: 'nope' }, 404); });
+        window.ADMIN_IS_ADMIN = admin;
+        window.ADMIN_SPORT = 'basketball';
+        window.APP_YEAR = '2027';
+        window.ccManageLeagueCode = () => 'hoops-league';
+        window.ccLeague = { name: () => 'Hardwood Heroes' };
+        window.ccCurrentWeek = { state: jest.fn(() => Promise.resolve({ week: 3 })) };
+        window.openTool = jest.fn(() => true);
+        (0, eval)(MODEL);
+        (0, eval)(VIEW);
+        await flush();
+        return document.querySelector('[admin-clipboard]');
+    }
+
+    afterEach(() => { window.ADMIN_SPORT = undefined; });
+
+    test('an Admin: basketball reads only — never football readiness, status or odds', async () => {
+        await bootHoops();
+        expect(calls).toEqual(expect.arrayContaining(Object.keys(HOOPS)));
+        expect(calls.some(u => /^\/scores\/|cfp-odds|\/seasons\/football/.test(u))).toBe(false);
+        // The week follows the VIEWED league, which may be football here.
+        expect(window.ccCurrentWeek.state).not.toHaveBeenCalled();
+    });
+
+    test('a commissioner: no Admin-only reads (they 404), but the league reads happen', async () => {
+        await bootHoops({ admin: false });
+        expect(calls.filter(u => /^\/hoops\/admin|^\/job-runs/.test(u))).toEqual([]);
+        expect(calls).toEqual(expect.arrayContaining(['/seasons/basketball', '/draft/hoops-league/2027', '/users/league/hoops-league/roster']));
+    });
+
+    test('Admin data-in phase: gaps point at the basketball tasks', async () => {
+        const root = await bootHoops();
+        expect(root.querySelector('[aria-current="step"]').textContent).toContain('Data in');
+        expect(item(root, 'No schedule on file').querySelector('[data-cb-fix]').textContent).toBe('Import');
+        expect(item(root, 'No preseason ratings').querySelector('[data-cb-fix]')).not.toBeNull();
+        expect(items(root)).toEqual(expect.arrayContaining(['2 managers', 'Draft date not set', 'Captain 2×']));
+    });
+
+    test('a task button targets its card even though hoopsAdmin.js has not drawn it yet', async () => {
+        const root = await bootHoops();
+        expect(document.querySelector('[data-task="schedule"]')).toBeNull();
+        item(root, 'No schedule on file').querySelector('[data-cb-fix]').click();
+        expect(window.openTool).toHaveBeenCalledWith('data-task="schedule"', null);
+    });
+
+    test('a commissioner gets the league rows only, and goes straight to draft prep', async () => {
+        const root = await bootHoops({ admin: false });
+        expect(root.querySelectorAll('.cb-grp').length).toBe(1);
+        expect(root.querySelector('[aria-current="step"]').textContent).toContain('Draft night');
+        expect(root.querySelector('[data-cb-fix="hoops-schedule"]')).toBeNull();
+    });
+
+    test('season status falls back to the hoops payload when /seasons fails', async () => {
+        const root = await bootHoops({ routes: { '/seasons/basketball': () => json({}, 500) } });
+        expect(root.hidden).toBe(false);
+    });
+
+    test('the drawer recounts when hoopsAdmin.js draws its task cards', async () => {
+        await bootHoops();
+        const meta = document.querySelector('[admin-toolbox-meta]');
+        expect(meta.textContent).toBe('1 tool · Basketball data, Preseason ratings, League setup');
+        document.getElementById('hoops-admin').innerHTML = '<section class="ha-task"></section><section class="ha-task"></section>';
+        await flush();
+        expect(meta.textContent).toBe('3 tools · Basketball data, Preseason ratings, League setup');
+    });
+});
+
+describe('the basketball page markup', () => {
+    const EJS = fs.readFileSync(path.join(__dirname, '..', 'views', 'hoopsAdmin.ejs'), 'utf8');
+
+    test('with a league: Clipboard, then the roster, then the drawer holding every tool', () => {
+        const cb = EJS.indexOf('admin-clipboard hidden');
+        const open = EJS.indexOf('<details class="cb-toolbox" admin-toolbox>');
+        const close = EJS.indexOf('</details>');
+        expect(cb).toBeGreaterThan(-1);
+        expect(cb).toBeLessThan(open);
+        expect(EJS.indexOf('user-table-body')).toBeLessThan(open);
+        const firstTasks = EJS.indexOf('id="hoops-admin"');
+        expect(firstTasks).toBeGreaterThan(open);
+        expect(firstTasks).toBeLessThan(close);
+        expect(EJS.indexOf("include('partials/admin-league-setup'")).toBeGreaterThan(open);
+        expect(EJS.indexOf("include('partials/admin-league-setup'")).toBeLessThan(close);
+    });
+
+    test('the Clipboard scripts load only with admin.js, after it', () => {
+        const block = EJS.slice(EJS.indexOf('<% if (manageLeague) { %>'), EJS.indexOf('<title>'));
+        expect(block.indexOf('/admin.js')).toBeGreaterThan(-1);
+        expect(block.indexOf('/admin-clipboard-view.js')).toBeGreaterThan(block.indexOf('/admin.js'));
+    });
+
+    test('the role is the server\'s answer', () => {
+        expect(EJS).toMatch(/window\.ADMIN_IS_ADMIN = <%= \(typeof isAdmin !== 'undefined' && isAdmin\) \? 'true' : 'false' %>/);
+    });
+});
