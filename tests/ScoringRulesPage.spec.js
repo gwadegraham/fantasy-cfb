@@ -131,3 +131,53 @@ describe('Basketball page reads basketball mechanics', () => {
         expect(html).not.toContain('kickoff');
     });
 });
+
+// The football lines were audited against modules/scoring-detectors.js:
+// regular-win rules all require isRegular and exclude conference title games,
+// the "power" list is four conferences (or the league's own), the Claunts
+// title game pays win or lose, and Captain/H2H skip the postseason.
+describe('Football page matches the football engine', () => {
+    const { POWER_CONFERENCES } = require('../modules/scoring-detectors');
+    const modes = { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0, captainEnabled: true, captainMultiplier: 2 };
+
+    function footballPage(code, extra) {
+        const cfg = resolveConfig(code, null);
+        const html = ejs.render(fs.readFileSync(VIEW, 'utf8'), Object.assign({
+            user: {}, userState: null, cfg, leagueCode: code, engagement: modes,
+            fields: fieldsForModel(cfg.model, cfg.disabled, cfg.enabled),
+            draftRules: { sport: 'football', poolSize: null, totalRounds: 10 }
+        }, extra), { filename: VIEW, includer: () => ({ template: '' }) });
+        return html.slice(html.indexOf('rules-container')).replace(/\s+/g, ' ');
+    }
+
+    it('Graham names the power conferences, not "P5"', () => {
+        const html = footballPage('graham-league', { powerConferences: POWER_CONFERENCES });
+        expect(html).not.toContain('P5');
+        expect(html).toContain('Non-power team beats a power-conference team');
+        expect(html).toContain('Power conferences: ACC, Big 12, Big Ten, SEC.');
+    });
+
+    it("follows a league's own power list", () => {
+        const html = footballPage('graham-league', { powerConferences: ['ACC', 'Big 12', 'Big Ten', 'SEC', 'FBS Independents'] });
+        expect(html).toContain('SEC, FBS Independents.');
+    });
+
+    it('stacking and base points are regular-season only', () => {
+        const html = footballPage('graham-league', {});
+        expect(html).toContain('a regular-season win earns the base points');
+        expect(html).toContain('Any regular-season win (base points)');
+        expect(html).toContain('a deep run adds up the points for every round played');
+    });
+
+    it('Claunts title game pays win or lose', () => {
+        expect(footballPage('claunts-league', {})).toContain('National Championship appearance (win or lose)');
+    });
+
+    it('game modes say regular season only, with kickoff wording', () => {
+        const html = footballPage('claunts-league', {});
+        expect(html).toContain('each regular-season week you');
+        expect(html).toContain('before your first kickoff');
+        expect(html).toContain('No Captain in bowls or the CFP.');
+        expect(html).not.toContain('tips off');
+    });
+});

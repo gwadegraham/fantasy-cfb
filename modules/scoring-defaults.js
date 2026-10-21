@@ -130,7 +130,7 @@ const STRUCTURES = {
         postseason: [
             { condition: 'cfpQuarterfinal', pointsKey: 'cfpQuarterfinal', label: 'CFP Quarterfinal appearance', displayOrder: 5 },
             { condition: 'cfpSemifinal', pointsKey: 'cfpSemifinal', label: 'CFP Semifinal appearance', displayOrder: 6 },
-            { condition: 'nationalChampionship', pointsKey: 'nationalChampionship', label: 'National Championship appearance', displayOrder: 7 },
+            { condition: 'nationalChampionship', pointsKey: 'nationalChampionship', label: 'National Championship appearance (win or lose)', displayOrder: 7 },
             { condition: 'cfpFirstRoundLoss', pointsKey: 'cfpAppearance', label: 'CFP appearance (first-round exit)', displayOrder: 4 },
             { condition: 'bowlAppearance', pointsKey: 'bowlAppearance', label: 'Non-playoff bowl appearance', additive: true, displayOrder: 2, stacksNote: 'A bowl win also earns these bowl-appearance points.' },
             { condition: 'bowlWin', pointsKey: 'bowlWin', label: 'Non-playoff bowl win', displayOrder: 3 },
@@ -140,11 +140,11 @@ const STRUCTURES = {
     graham: {
         combineMode: 'sum',
         regularWin: [
-            { condition: 'baseWin', pointsKey: 'baseWin', label: 'Any win (base points)' },
+            { condition: 'baseWin', pointsKey: 'baseWin', label: 'Any regular-season win (base points)' },
             { condition: 'confBonus', pointsKey: 'confBonus', label: 'Conference win', additive: true },
             { condition: 'rankedTop25Bonus', pointsKey: 'rankedTop25Bonus', label: 'Win vs. opponent ranked #11–25', additive: true },
             { condition: 'rankedTop10Bonus', pointsKey: 'rankedTop10Bonus', label: 'Win vs. opponent ranked #1–10', additive: true },
-            { condition: 'nonP5UpsetBonus', pointsKey: 'nonP5UpsetBonus', label: 'Non P5 team beats a P5 team', additive: true }
+            { condition: 'nonP5UpsetBonus', pointsKey: 'nonP5UpsetBonus', label: 'Non-power team beats a power-conference team', additive: true }
         ],
         postseason: [
             { condition: 'cfpFirstRound', pointsKey: 'cfpFirstRound', label: 'CFP First Round appearance', displayOrder: 3 },

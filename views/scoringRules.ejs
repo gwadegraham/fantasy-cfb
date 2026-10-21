@@ -59,7 +59,7 @@
           <% if (dr.sport === 'basketball') { %>
             <li><strong>Head-to-Head</strong> — each regular-season week you're matched against one rival. Outscore them for a <strong>+<%= engagement.h2hWinBonus %></strong> win bonus on top of your points. Conference tournament and March games still score, but don't count toward the matchup.</li>
           <% } else { %>
-            <li><strong>Head-to-Head</strong> — each week you're matched against one rival. Outscore them for a <strong>+<%= engagement.h2hWinBonus %></strong> win bonus on top of your points.</li>
+            <li><strong>Head-to-Head</strong> — each regular-season week you're matched against one rival. Outscore them for a <strong>+<%= engagement.h2hWinBonus %></strong> win bonus on top of your points. Matchups end with the last full slate, so championship week and the postseason still score but don't count toward a matchup.</li>
           <% } %>
           <li>
             <% if (engagement.h2hTieBonus > 0) { %>
@@ -73,7 +73,7 @@
           <% if (dr.sport === 'basketball') { %>
             <li><strong>Captain</strong> — name one team each regular-season week, before your first team tips off; its points that week count <strong><%= engagement.captainMultiplier %>×</strong>. No pick means your best-averaging team is captained for you. Not applied to conference tournaments or March.</li>
           <% } else { %>
-            <li><strong>Captain</strong> — name one team each week; its points count <strong><%= engagement.captainMultiplier %>×</strong>.</li>
+            <li><strong>Captain</strong> — name one team each regular-season week, before your first kickoff; its points that week count <strong><%= engagement.captainMultiplier %>×</strong>. No pick means your best-averaging team is captained for you. No Captain in bowls or the CFP.</li>
           <% } %>
         <% } %>
       </ul>
@@ -86,9 +86,9 @@
         <% if (dr.sport === 'basketball') { %>
           Each win scores <strong>one quadrant</strong>, set by the opponent's rank and where the game was played. Conference tournament games count here too.
         <% } else if (cfg.combineMode === 'sum') { %>
-          Bonuses <strong>stack</strong> — a win earns the base points plus every bonus that applies.
+          Bonuses <strong>stack</strong> — a regular-season win earns the base points plus every bonus that applies. Conference championships and other postseason games score only their postseason points.
         <% } else { %>
-          A win scores the <strong>single highest-priority</strong> rule that applies (bonuses do not stack).
+          A regular-season win scores the <strong>single highest-priority</strong> rule that applies (bonuses do not stack). Conference championships and other postseason games score only their postseason points.
         <% } %>
       </p>
       <ul class="scoring-list">
@@ -96,6 +96,7 @@
           <li>
             <% if (f.additive) { %><i class="fas fa-plus"></i><% } %><%= v %> <%= v === 1 ? 'pt' : 'pts' %> — <%= f.label %>
             <% if (f.stacksNote) { %><span class="scoring-subnote"><%= f.stacksNote %></span><% } %>
+            <% if (f.condition === 'nonP5UpsetBonus' && typeof powerConferences !== 'undefined' && powerConferences) { %><span class="scoring-subnote">Power conferences: <%= powerConferences.join(', ') %>.</span><% } %>
           </li>
         <% }); %>
       </ul>
@@ -105,6 +106,8 @@
       <h2 class="rule-header"><span data-icon="trophy" data-icon-size="20"></span>Postseason Scoring</h2>
       <% if (dr.sport === 'basketball') { %>
         <p class="scoring-mode">Each NCAA tournament game adds the points for its round, win or lose, so a deep run collects every round along the way. These games don't also score as quadrant wins, and the NIT and other postseason events don't score.</p>
+      <% } else { %>
+        <p class="scoring-mode">Each playoff game scores its own round, so a deep run adds up the points for every round played. Postseason games don't also score as regular-season wins.</p>
       <% } %>
       <ul class="scoring-list">
         <% fields.filter(function(f){ return f.group === 'postseason' && f.enabled; }).forEach(function(f){ var v = cfg.values[f.key]; %>
