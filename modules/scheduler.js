@@ -73,7 +73,13 @@ const JOB_SCHEDULES = [
     // Transfer portal + recruiting class per team (#541). Checked daily but
     // fetched weekly before tip-off (2 CBBD calls), once more after it, then
     // never: it is the offseason's history by the time anyone drafts.
-    { job: 'hoops-turnover', modulePath: '../modules/hoops-turnover-job', rule: { hour: 7, minute: 10 } }
+    { job: 'hoops-turnover', modulePath: '../modules/hoops-turnover-job', rule: { hour: 7, minute: 10 } },
+    // The basketball schedule, four weeks ahead: new games and announced tip
+    // times. 1 CBBD call a day (2 from February to April, with the postseason). 06:40
+    // Central, when no game is live — the upsert rewrites status from /games,
+    // which can lag the live poller mid-game — and before the day's tips, so
+    // tonight's tip-off pushes read tonight's real times.
+    { job: 'hoops-schedule', modulePath: '../modules/hoops-schedule-job', rule: { hour: 6, minute: 40 } }
 ];
 
 // Opt-in game-day live poller (modules/live-poll.js). Fires every 10 seconds;
