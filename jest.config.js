@@ -214,6 +214,14 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The schedule look-ahead: its branches are the skips and the
+        // failures, each deciding whether a stale schedule is loud.
+        "./modules/hoops-schedule-job.js": {
+            statements: 100,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-media-job.js": {
             statements: 100,
             branches: 80,

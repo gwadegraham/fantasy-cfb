@@ -6,7 +6,7 @@ const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, HOOPS_LIVE_POLL_SCHEDULE, livePollEna
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-net', 'hoops-ratings', 'hoops-scores', 'hoops-stats', 'hoops-styles', 'hoops-turnover',
+        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-net', 'hoops-ratings', 'hoops-schedule', 'hoops-scores', 'hoops-stats', 'hoops-styles', 'hoops-turnover',
             'player-season-leaders', 'recap-notice', 'saturday-scores', 'season-stats', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
     });
@@ -114,6 +114,13 @@ describe('scheduler config', () => {
         const spec = JOB_SCHEDULES.find(s => s.job === 'hoops-turnover');
         expect(spec.rule).toEqual({ hour: 7, minute: 10 });
         expect(spec.modulePath).toBe('../modules/hoops-turnover-job');
+    });
+
+    // The schedule look-ahead: early morning, when no basketball game is live.
+    it('pulls the basketball schedule ahead every morning', () => {
+        const spec = JOB_SCHEDULES.find(s => s.job === 'hoops-schedule');
+        expect(spec.rule).toEqual({ hour: 6, minute: 40 });
+        expect(spec.modulePath).toBe('../modules/hoops-schedule-job');
     });
 
     it('builds a timezone-aware recurrence rule', () => {
