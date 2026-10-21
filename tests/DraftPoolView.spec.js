@@ -190,6 +190,16 @@ describe('sorting', () => {
         expect(view.sortValue({ adjDE: null }, 'adjDE')).toBeGreaterThan(view.sortValue({ adjDE: 120 }, 'adjDE'));
     });
 
+    test('the projected record sorts as a record, not as text', () => {
+        // Compared as strings, 25-7 beat 25-6 and 9-23 beat 28-4.
+        const proj = (r) => view.sortValue({ projectedRecord: r }, 'proj');
+        expect(proj('25-6')).toBeGreaterThan(proj('25-7'));
+        expect(proj('28-4')).toBeGreaterThan(proj('9-23'));
+        // Wins before win %: a 28-4 banks more than a 20-2.
+        expect(proj('28-4')).toBeGreaterThan(proj('20-2'));
+        expect(proj(null)).toBeLessThan(proj('0-31'));
+    });
+
     test('an unknown column is inert rather than throwing', () => {
         expect(view.sortValue({}, 'nonsense')).toBe(0);
     });
