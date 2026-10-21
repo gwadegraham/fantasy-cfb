@@ -32,6 +32,7 @@ const Draft = require('./models/draft');
 const seasons = require('./modules/active-season');
 const franchiseRepo = require('./modules/franchise-repo');
 const { resolveConfig, fieldsForModel, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
+const { POWER_CONFERENCES } = require('./modules/scoring-detectors');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
 const { cloudinaryConfig } = require('./modules/profile-update');
@@ -571,7 +572,11 @@ app.get('/rules', async (req, res) => {
         } catch (err) { /* the defaults are a fine answer for a rules page */ }
         const draftRules = draftDefaults.draftRulesFor(sport, draft);
 
-        res.render('scoringRules', { user, userState, cfg, fields, leagueCode, engagement, draftRules });
+        // Which conferences count as "power" for the upset bonus: the league's own
+        // list, else the engine's default four — so the page names what scores.
+        const powerConferences = cfg.powerConferences || POWER_CONFERENCES;
+
+        res.render('scoringRules', { user, userState, cfg, fields, leagueCode, engagement, draftRules, powerConferences });
     } else {
         res.redirect("/login");
     }

@@ -130,7 +130,7 @@ const STRUCTURES = {
         postseason: [
             { condition: 'cfpQuarterfinal', pointsKey: 'cfpQuarterfinal', label: 'CFP Quarterfinal appearance', displayOrder: 5 },
             { condition: 'cfpSemifinal', pointsKey: 'cfpSemifinal', label: 'CFP Semifinal appearance', displayOrder: 6 },
-            { condition: 'nationalChampionship', pointsKey: 'nationalChampionship', label: 'National Championship appearance', displayOrder: 7 },
+            { condition: 'nationalChampionship', pointsKey: 'nationalChampionship', label: 'National Championship appearance (win or lose)', displayOrder: 7 },
             { condition: 'cfpFirstRoundLoss', pointsKey: 'cfpAppearance', label: 'CFP appearance (first-round exit)', displayOrder: 4 },
             { condition: 'bowlAppearance', pointsKey: 'bowlAppearance', label: 'Non-playoff bowl appearance', additive: true, displayOrder: 2, stacksNote: 'A bowl win also earns these bowl-appearance points.' },
             { condition: 'bowlWin', pointsKey: 'bowlWin', label: 'Non-playoff bowl win', displayOrder: 3 },
@@ -140,11 +140,11 @@ const STRUCTURES = {
     graham: {
         combineMode: 'sum',
         regularWin: [
-            { condition: 'baseWin', pointsKey: 'baseWin', label: 'Any win (base points)' },
+            { condition: 'baseWin', pointsKey: 'baseWin', label: 'Any regular-season win (base points)' },
             { condition: 'confBonus', pointsKey: 'confBonus', label: 'Conference win', additive: true },
             { condition: 'rankedTop25Bonus', pointsKey: 'rankedTop25Bonus', label: 'Win vs. opponent ranked #11–25', additive: true },
             { condition: 'rankedTop10Bonus', pointsKey: 'rankedTop10Bonus', label: 'Win vs. opponent ranked #1–10', additive: true },
-            { condition: 'nonP5UpsetBonus', pointsKey: 'nonP5UpsetBonus', label: 'Non P5 team beats a P5 team', additive: true }
+            { condition: 'nonP5UpsetBonus', pointsKey: 'nonP5UpsetBonus', label: 'Non-power team beats a power-conference team', additive: true }
         ],
         postseason: [
             { condition: 'cfpFirstRound', pointsKey: 'cfpFirstRound', label: 'CFP First Round appearance', displayOrder: 3 },
@@ -184,11 +184,11 @@ const STRUCTURES = {
             { condition: 'ncaaE8', pointsKey: 'ncaaE8', label: 'Reached the Elite Eight', additive: true, displayOrder: 6 },
             { condition: 'ncaaS16', pointsKey: 'ncaaS16', label: 'Reached the Sweet Sixteen', additive: true, displayOrder: 5 },
             { condition: 'ncaaR32', pointsKey: 'ncaaR32', label: 'Reached the second round', additive: true, displayOrder: 4 },
-            { condition: 'ncaaR64', pointsKey: 'ncaaR64', label: 'Reached the NCAA tournament', additive: true, displayOrder: 3 },
+            { condition: 'ncaaR64', pointsKey: 'ncaaR64', label: 'Reached the first round (Round of 64)', additive: true, displayOrder: 3 },
             { condition: 'ncaaFirstFour', pointsKey: 'ncaaFirstFour', label: 'Reached the First Four (play-in)', additive: true, displayOrder: 2 },
             // scaleBy multiplies the rule's points by a NUMBER off the
             // context — the only rule in the app whose value is not fixed.
-            { condition: 'seedUpsetBonus', pointsKey: 'seedUpsetBonus', label: 'Upset bonus, per seed', additive: true, scaleBy: 'seedUpset', displayOrder: 1, stacksNote: 'Adds the seed difference on top of the round reached.' }
+            { condition: 'seedUpsetBonus', pointsKey: 'seedUpsetBonus', label: 'Upset bonus, per seed', additive: true, scaleBy: 'seedUpset', displayOrder: 1, stacksNote: 'For each NCAA tournament win over a better seed: the seed gap times this value (a 12 beating a 5 = 7×), on top of that round\'s points.' }
         ]
     }
 };
@@ -241,7 +241,7 @@ function fieldsForModel(model, disabled, enabled) {
         rankGroup: r.rankGroup || null, rankFlat: !!r.rankFlat,
         enabled: ruleEnabled(r, disabled, enabled)
     }, extra || {});
-    const regular = structure.regularWin.map(r => field(r, 'regular'));
+    const regular = structure.regularWin.map(r => field(r, 'regular', { stacksNote: r.stacksNote || null }));
     const post = structure.postseason.map(r => field(r, 'postseason', {
         toggleable: true,                       // postseason events are always toggleable
         stacksNote: r.stacksNote || null,
