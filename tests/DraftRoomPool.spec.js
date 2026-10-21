@@ -256,16 +256,27 @@ describe('basketball — sorting and search', () => {
         document.getElementById('poolSearch').value;
     `);
 
+    // Through makePick, with no stinger loaded: the id that marks the pick as
+    // this client's must not depend on the sound effect being available.
+    const clickDraft = (r, teamId) => r.run(`
+        socket = { emit: function () {} };
+        teamsById[${JSON.stringify(String(teamId))}] = { id: ${teamId}, school: 'X' };
+        makePick(${teamId});
+    `);
+
     test('a pick this client made clears the search', () => {
         const r = room({ sport: 'basketball', pool: [hoopsRow()] });
-        r.run(`document.getElementById('poolSearch').value = 'duke'; onPickMade._ownPickTeamId = '10';`);
+        r.run(`document.getElementById('poolSearch').value = 'duke';`);
+        clickDraft(r, 10);
         expect(pickArrives(r, 10, 'me')).toBe('');
     });
 
     test("someone else's pick leaves a half-typed search alone", () => {
+        // Even while this client's own Draft click is still in flight.
         const r = room({ sport: 'basketball', pool: [hoopsRow()] });
+        clickDraft(r, 10);
         r.run(`document.getElementById('poolSearch').value = 'gonz';`);
-        expect(pickArrives(r, 10, 'someone-else')).toBe('gonz');
+        expect(pickArrives(r, 22, 'someone-else')).toBe('gonz');
     });
 });
 
