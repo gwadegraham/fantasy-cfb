@@ -40,7 +40,7 @@
       <ul>
         <% var dr = (typeof draftRules !== 'undefined' && draftRules) || { sport: 'football' }; %>
         <% if (dr.sport === 'basketball' && dr.poolSize) { %>
-          <li><i class="fas fa-circle fa-xs"></i>The top <strong><%= dr.poolSize %> teams</strong> by preseason rank are available to be drafted</li>
+          <li><i class="fas fa-circle fa-xs"></i>The top <strong><%= dr.poolSize %> teams</strong> by preseason T-Rank are available to be drafted</li>
         <% } else if (dr.sport === 'basketball') { %>
           <li><i class="fas fa-circle fa-xs"></i>Every <strong>Division I team</strong> is available to be drafted</li>
         <% } else { %>
@@ -56,7 +56,11 @@
       <h2 class="rule-header"><span data-icon="swords" data-icon-size="20"></span>Game Modes</h2>
       <ul class="scoring-list">
         <% if (engagement.h2hEnabled) { %>
-          <li><strong>Head-to-Head</strong> — each week you're matched against one rival. Outscore them for a <strong>+<%= engagement.h2hWinBonus %></strong> win bonus on top of your points.</li>
+          <% if (dr.sport === 'basketball') { %>
+            <li><strong>Head-to-Head</strong> — each regular-season week you're matched against one rival. Outscore them for a <strong>+<%= engagement.h2hWinBonus %></strong> win bonus on top of your points. Conference tournament and March games still score, but don't count toward the matchup.</li>
+          <% } else { %>
+            <li><strong>Head-to-Head</strong> — each week you're matched against one rival. Outscore them for a <strong>+<%= engagement.h2hWinBonus %></strong> win bonus on top of your points.</li>
+          <% } %>
           <li>
             <% if (engagement.h2hTieBonus > 0) { %>
               On a tie, <strong>both</strong> managers get <strong>+<%= engagement.h2hTieBonus %></strong> <%= engagement.h2hTieBonus === 1 ? 'pt' : 'pts' %>.
@@ -66,16 +70,22 @@
           </li>
         <% } %>
         <% if (engagement.captainEnabled) { %>
-          <li><strong>Captain</strong> — name one team each week; its points count <strong><%= engagement.captainMultiplier %>×</strong>.</li>
+          <% if (dr.sport === 'basketball') { %>
+            <li><strong>Captain</strong> — name one team each regular-season week, before your first team tips off; its points that week count <strong><%= engagement.captainMultiplier %>×</strong>. No pick means your best-averaging team is captained for you. Not applied to conference tournaments or March.</li>
+          <% } else { %>
+            <li><strong>Captain</strong> — name one team each week; its points count <strong><%= engagement.captainMultiplier %>×</strong>.</li>
+          <% } %>
         <% } %>
       </ul>
     </section>
     <% } %>
 
     <section class="rules-section">
-      <h2 class="rule-header"><span data-icon="football" data-icon-size="20"></span>Regular Season Scoring</h2>
+      <h2 class="rule-header"><% if (dr.sport === 'basketball') { %><i class="fa-solid fa-basketball"></i><% } else { %><span data-icon="football" data-icon-size="20"></span><% } %>Regular Season Scoring</h2>
       <p class="scoring-mode">
-        <% if (cfg.combineMode === 'sum') { %>
+        <% if (dr.sport === 'basketball') { %>
+          Each win scores <strong>one quadrant</strong>, set by the opponent's rank and where the game was played. Conference tournament games count here too.
+        <% } else if (cfg.combineMode === 'sum') { %>
           Bonuses <strong>stack</strong> — a win earns the base points plus every bonus that applies.
         <% } else { %>
           A win scores the <strong>single highest-priority</strong> rule that applies (bonuses do not stack).
@@ -85,6 +95,7 @@
         <% fields.filter(function(f){ return f.group === 'regular' && f.enabled; }).forEach(function(f){ var v = cfg.values[f.key]; %>
           <li>
             <% if (f.additive) { %><i class="fas fa-plus"></i><% } %><%= v %> <%= v === 1 ? 'pt' : 'pts' %> — <%= f.label %>
+            <% if (f.stacksNote) { %><span class="scoring-subnote"><%= f.stacksNote %></span><% } %>
           </li>
         <% }); %>
       </ul>
@@ -92,6 +103,9 @@
 
     <section class="rules-section">
       <h2 class="rule-header"><span data-icon="trophy" data-icon-size="20"></span>Postseason Scoring</h2>
+      <% if (dr.sport === 'basketball') { %>
+        <p class="scoring-mode">Each NCAA tournament game adds the points for its round, win or lose, so a deep run collects every round along the way. These games don't also score as quadrant wins, and the NIT and other postseason events don't score.</p>
+      <% } %>
       <ul class="scoring-list">
         <% fields.filter(function(f){ return f.group === 'postseason' && f.enabled; }).forEach(function(f){ var v = cfg.values[f.key]; %>
           <li>
@@ -104,7 +118,20 @@
 
     <section class="rules-section">
       <h2 class="rule-header"><span data-icon="chart" data-icon-size="20"></span>Rankings Used</h2>
-      <p>Rankings are based on the <strong>AP Poll</strong> until the <strong>CFP Poll</strong> is released.</p>
+      <% if (dr.sport === 'basketball') { %>
+        <!-- modules/hoops-ranks.js is the source of truth for this copy, and
+             modules/hoops-quadrants.js BANDS for the table. -->
+        <p>A game's quadrant uses the opponent's rank <strong>going into that week</strong>. Once banked, it is not re-graded.</p>
+        <p>Until the <strong>NCAA NET</strong> is published (early-to-mid December), ranks come from preseason <strong>T-Rank</strong>, blending into adjusted efficiency ratings as games are played. Once the NET is out, it is used outright.</p>
+        <ul class="scoring-list">
+          <li><strong>Quadrant 1</strong> — Home 1–30 · Neutral 1–50 · Away 1–75</li>
+          <li><strong>Quadrant 2</strong> — Home 31–75 · Neutral 51–100 · Away 76–135</li>
+          <li><strong>Quadrant 3</strong> — Home 76–160 · Neutral 101–200 · Away 136–240</li>
+          <li><strong>Quadrant 4</strong> — anything lower</li>
+        </ul>
+      <% } else { %>
+        <p>Rankings are based on the <strong>AP Poll</strong> until the <strong>CFP Poll</strong> is released.</p>
+      <% } %>
     </section>
   </div>
   <footer>

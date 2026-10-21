@@ -29,7 +29,7 @@ function render(draftRules) {
 describe('Draft Rules', () => {
     it('tells a basketball league its own pool and rounds', () => {
         const html = render({ sport: 'basketball', poolSize: 120, totalRounds: 10 });
-        expect(html).toContain('The top <strong>120 teams</strong> by preseason rank');
+        expect(html).toContain('The top <strong>120 teams</strong> by preseason T-Rank');
         expect(html).toContain('<strong>10 rounds</strong>');
         expect(html).not.toContain('FBS');
     });
@@ -53,5 +53,81 @@ describe('Draft Rules', () => {
 
     it('and so is a render that passes no draft rules at all', () => {
         expect(render(undefined)).toContain('Every <strong>FBS team</strong>');
+    });
+});
+
+// Rankings Used was football copy for every league — "AP Poll until the CFP
+// Poll" — on a basketball league ranked by T-Rank / adjusted efficiency / NET.
+describe('Rankings Used', () => {
+    const { BANDS } = require('../modules/hoops-quadrants');
+
+    function renderPage(draftRules) {
+        const cfg = resolveConfig('graham-league', null);
+        const locals = {
+            user: {}, userState: null, cfg, leagueCode: 'graham-league', engagement: null,
+            fields: fieldsForModel(cfg.model, cfg.disabled, cfg.enabled), draftRules
+        };
+        const html = ejs.render(fs.readFileSync(VIEW, 'utf8'), locals,
+            { filename: VIEW, includer: () => ({ template: '' }) });
+        const start = html.indexOf('Rankings Used');
+        return html.slice(start, html.indexOf('</section>', start)).replace(/\s+/g, ' ');
+    }
+
+    it('a basketball league never mentions the football polls', () => {
+        const html = renderPage({ sport: 'basketball', poolSize: 120, totalRounds: 10 });
+        expect(html).not.toMatch(/AP Poll|CFP/);
+        expect(html).toContain('NCAA NET');
+    });
+
+    it('the quadrant table matches the bands scoring uses', () => {
+        const html = renderPage({ sport: 'basketball', poolSize: 120, totalRounds: 10 });
+        const row = (q, lo) => ['home', 'neutral', 'away']
+            .map(v => `${v[0].toUpperCase()}${v.slice(1)} ${lo(v)}–${BANDS[v][q - 1]}`).join(' · ');
+        expect(html).toContain(row(1, () => 1));
+        expect(html).toContain(row(2, v => BANDS[v][0] + 1));
+        expect(html).toContain(row(3, v => BANDS[v][1] + 1));
+    });
+
+    it('football keeps the AP → CFP copy', () => {
+        const html = renderPage({ sport: 'football', poolSize: null, totalRounds: 10 });
+        expect(html).toContain('<strong>AP Poll</strong> until the <strong>CFP Poll</strong>');
+        expect(html).not.toContain('NCAA NET');
+    });
+});
+
+// The hoops page used to borrow football mechanics — "base points plus every
+// bonus", one undifferentiated Captain/H2H line — and never said the NCAA
+// ladder stacks. Each line below is what modules/hoops-detectors.js does.
+describe('Basketball page reads basketball mechanics', () => {
+    function hoopsPage(engagement) {
+        const cfg = resolveConfig('hoops-league', { model: 'hoops' });
+        const html = ejs.render(fs.readFileSync(VIEW, 'utf8'), {
+            user: {}, userState: null, cfg, leagueCode: 'hoops-league', engagement,
+            fields: fieldsForModel(cfg.model, cfg.disabled, cfg.enabled),
+            draftRules: { sport: 'basketball', poolSize: 120, totalRounds: 10 }
+        }, { filename: VIEW, includer: () => ({ template: '' }) });
+        return html.slice(html.indexOf('rules-container')).replace(/\s+/g, ' ');
+    }
+    const modes = { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0, captainEnabled: true, captainMultiplier: 2 };
+
+    it('a win scores one quadrant, not base points plus bonuses', () => {
+        const html = hoopsPage(null);
+        expect(html).toContain('Each win scores <strong>one quadrant</strong>');
+        expect(html).not.toContain('base points');
+        expect(html).not.toContain('highest-priority');
+    });
+
+    it('shows the conference title stacks note and the ladder stacking', () => {
+        const html = hoopsPage(null);
+        expect(html).toContain('Added on top of the quadrant win for the final itself.');
+        expect(html).toContain('collects every round along the way');
+        expect(html).toContain('Reached the first round (Round of 64)');
+    });
+
+    it('game modes say they skip conference tournaments and March', () => {
+        const html = hoopsPage(modes);
+        expect(html).toContain('each regular-season week you');
+        expect(html).toContain('before your first team tips off');
+        expect(html).not.toContain('kickoff');
     });
 });

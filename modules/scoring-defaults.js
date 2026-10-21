@@ -184,11 +184,11 @@ const STRUCTURES = {
             { condition: 'ncaaE8', pointsKey: 'ncaaE8', label: 'Reached the Elite Eight', additive: true, displayOrder: 6 },
             { condition: 'ncaaS16', pointsKey: 'ncaaS16', label: 'Reached the Sweet Sixteen', additive: true, displayOrder: 5 },
             { condition: 'ncaaR32', pointsKey: 'ncaaR32', label: 'Reached the second round', additive: true, displayOrder: 4 },
-            { condition: 'ncaaR64', pointsKey: 'ncaaR64', label: 'Reached the NCAA tournament', additive: true, displayOrder: 3 },
+            { condition: 'ncaaR64', pointsKey: 'ncaaR64', label: 'Reached the first round (Round of 64)', additive: true, displayOrder: 3 },
             { condition: 'ncaaFirstFour', pointsKey: 'ncaaFirstFour', label: 'Reached the First Four (play-in)', additive: true, displayOrder: 2 },
             // scaleBy multiplies the rule's points by a NUMBER off the
             // context — the only rule in the app whose value is not fixed.
-            { condition: 'seedUpsetBonus', pointsKey: 'seedUpsetBonus', label: 'Upset bonus, per seed', additive: true, scaleBy: 'seedUpset', displayOrder: 1, stacksNote: 'Adds the seed difference on top of the round reached.' }
+            { condition: 'seedUpsetBonus', pointsKey: 'seedUpsetBonus', label: 'Upset bonus, per seed', additive: true, scaleBy: 'seedUpset', displayOrder: 1, stacksNote: 'For each NCAA tournament win over a better seed: the seed gap times this value (a 12 beating a 5 = 7×), on top of that round\'s points.' }
         ]
     }
 };
@@ -241,7 +241,7 @@ function fieldsForModel(model, disabled, enabled) {
         rankGroup: r.rankGroup || null, rankFlat: !!r.rankFlat,
         enabled: ruleEnabled(r, disabled, enabled)
     }, extra || {});
-    const regular = structure.regularWin.map(r => field(r, 'regular'));
+    const regular = structure.regularWin.map(r => field(r, 'regular', { stacksNote: r.stacksNote || null }));
     const post = structure.postseason.map(r => field(r, 'postseason', {
         toggleable: true,                       // postseason events are always toggleable
         stacksNote: r.stacksNote || null,
