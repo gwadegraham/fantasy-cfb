@@ -71,7 +71,13 @@
         if (k === 'barthag') return p.barthag == null ? -1 : p.barthag;
         if (k === 'adjOE') return p.adjOE == null ? -1 : p.adjOE;
         if (k === 'adjDE') return p.adjDE == null ? 999 : p.adjDE;
-        if (k === 'proj') return String(p.projectedRecord || '');
+        // The projected record is a "W-L" string, and sorted as text 25-7
+        // came above 25-6 and 9-23 above 28-4. Wins first, then fewer losses;
+        // not win %, which would put a 20-2 above a 28-4 that banks more wins.
+        if (k === 'proj') {
+            var m = /^(\d+)-(\d+)/.exec(p.projectedRecord || '');
+            return m ? Number(m[1]) * 1000 - Number(m[2]) : -Infinity;
+        }
         return 0;
     }
 

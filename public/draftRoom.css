@@ -267,8 +267,13 @@
 }
 .draft-call-btn:hover { background: rgba(108, 155, 255, 0.2); }
 
-/* Board sits in a centered card that uses the width without stretching thin */
+/* Board sits in a centered card that uses the width without stretching thin.
+   width:100% because body is a centring flex column: without it the wrap
+   shrink-wraps to the pick ticker's nowrap max-content and overflows the
+   viewport between the mobile breakpoint and 1200px. */
 .draft-board-wrap {
+    width: 100%;
+    box-sizing: border-box;
     max-width: 1200px;
     margin: 8px auto 24px;
     padding: 0 16px;
