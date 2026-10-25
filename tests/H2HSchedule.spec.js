@@ -110,6 +110,43 @@ describe('GET /standings/h2h schedule', () => {
         expect(body.scheduleComplete).toBe(false);
     });
 
+    // The weekend hold. Week 1 settles overnight Saturday, so `currentWeek`
+    // moves to 2 while people are still reading week 1's results on Sunday.
+    // Until Monday 07:00 CT (and while week 2 hasn't kicked off) the panel and
+    // My Team feature the finished week — the same rule /games/current-week
+    // holds the rest of the app to. PAST is Sat 5 Sep, 6 PM CDT.
+    test('features the finished week until Monday 07:00 Central', async () => {
+        await seed();
+        const at = (iso) => jest.spyOn(Date, 'now').mockReturnValue(Date.parse(iso));
+        try {
+            at('2026-09-06T19:00:00.000Z');                     // Sun 2 PM CDT
+            const sunday = await get();
+            expect(sunday.featuredWeek).toBe(1);
+            // Only the featured week is held: week 2 is still the current one.
+            expect(sunday.currentWeek).toBe(2);
+            expect(sunday.scheduleComplete).toBe(false);
+            Date.now.mockRestore();
+
+            at('2026-09-07T12:01:00.000Z');                     // Mon 7:01 AM CDT
+            expect((await get()).featuredWeek).toBe(2);
+        } finally {
+            if (Date.now.mockRestore) Date.now.mockRestore();
+        }
+    });
+
+    // A Sunday kickoff in the next slate ends the hold: once week 2 is under
+    // way it is the week being played, Monday or not.
+    test('the hold ends as soon as the next week kicks off', async () => {
+        await seed();
+        await Game.updateOne({ id: 201 }, { startDate: '2026-09-06T18:00:00.000Z' });
+        jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-06T19:00:00.000Z'));
+        try {
+            expect((await get()).featuredWeek).toBe(2);
+        } finally {
+            Date.now.mockRestore();
+        }
+    });
+
     test('marks a settled week final, and an unstarted current week upcoming', async () => {
         await seed();
         const body = await get();
