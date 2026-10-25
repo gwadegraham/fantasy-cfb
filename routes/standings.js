@@ -21,6 +21,7 @@ const { competitionRanks } = require('../public/league-rank.js');
 const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore,
         h2hRoster, pinnedH2HIds, computeH2HAwards, h2hWeekRange } = require('../modules/h2h');
 const { findPoll } = require('../modules/scoring-detectors');
+const { holdUntil } = require('../modules/league-scoreboard');
 const { pickLogo } = require('../public/logo.js');
 const { resolveCaptain, autoCaptainTeamId } = require('../modules/captain');
 const { sportForLeague } = require('../modules/active-season');
@@ -1240,6 +1241,19 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (gameStatus(g, now) !== 'scheduled') startedByWeek[g.week] = true;
         });
         let featuredWeek = currentWeek || (finalWeeks.length ? finalWeeks[finalWeeks.length - 1] : (schedWeeks[schedWeeks.length - 1] || null));
+        // Football's weekend hold, the same rule /games/current-week answers with
+        // (league-scoreboard weekState). `currentWeek` moves on the moment a
+        // week settles, which is overnight Saturday, so Sunday-afternoon readers
+        // were featured next week's unplayed matchups. Until Monday 07:00 CT,
+        // and only while the next slate hasn't kicked off, feature the week that
+        // just finished. `currentWeek` itself is untouched: it still drives the
+        // live flag and scheduleComplete.
+        if (!isHoops && currentWeek != null && !startedByWeek[currentWeek] && finalWeeks.length) {
+            const lastFinal = finalWeeks[finalWeeks.length - 1];
+            const kicks = games.filter(g => g.week === lastFinal && !g.startTimeTbd)
+                .map(g => Date.parse(g.startDate)).filter(Number.isFinite);
+            if (kicks.length && now < holdUntil(Math.max(...kicks))) featuredWeek = lastFinal;
+        }
         // The fast path builds ONE week — the one actually on screen. Every other
         // week is a card behind the week picker, and the picker's own list still
         // ships (schedWeeks), so the client can render the current matchups at

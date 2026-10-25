@@ -847,7 +847,11 @@ async function hydrateH2H(user, activeYear) {
         else statsEl.appendChild(rec);
     }
 
-    const liveWk = (data.currentWeek != null && mine.some(x => x.week === data.currentWeek)) ? data.currentWeek : null;
+    // featuredWeek, not currentWeek: over a football weekend the server holds
+    // the week that just finished until Monday 07:00 CT, where currentWeek has
+    // already moved on to next week's unplayed matchups.
+    const focusWk = data.featuredWeek != null ? data.featuredWeek : data.currentWeek;
+    const liveWk = (focusWk != null && mine.some(x => x.week === focusWk)) ? focusWk : null;
     // The payload now carries weeks that haven't been played yet, so "latest"
     // has to mean the last PLAYED week — otherwise a manager sitting out the
     // current week (a bye, on an odd-sized league) would be featured with a
