@@ -134,6 +134,19 @@ describe('GET /standings/h2h schedule', () => {
         }
     });
 
+    // A Sunday kickoff in the next slate ends the hold: once week 2 is under
+    // way it is the week being played, Monday or not.
+    test('the hold ends as soon as the next week kicks off', async () => {
+        await seed();
+        await Game.updateOne({ id: 201 }, { startDate: '2026-09-06T18:00:00.000Z' });
+        jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-06T19:00:00.000Z'));
+        try {
+            expect((await get()).featuredWeek).toBe(2);
+        } finally {
+            Date.now.mockRestore();
+        }
+    });
+
     test('marks a settled week final, and an unstarted current week upcoming', async () => {
         await seed();
         const body = await get();

@@ -847,11 +847,14 @@ async function hydrateH2H(user, activeYear) {
         else statsEl.appendChild(rec);
     }
 
-    // featuredWeek, not currentWeek: over a football weekend the server holds
-    // the week that just finished until Monday 07:00 CT, where currentWeek has
-    // already moved on to next week's unplayed matchups.
-    const focusWk = data.featuredWeek != null ? data.featuredWeek : data.currentWeek;
-    const liveWk = (focusWk != null && mine.some(x => x.week === focusWk)) ? focusWk : null;
+    const liveWk = (data.currentWeek != null && mine.some(x => x.week === data.currentWeek)) ? data.currentWeek : null;
+    // The matchup TILE reads featuredWeek when it's a week you played: over a
+    // football weekend the server holds the week that just finished until
+    // Monday 07:00 CT, while currentWeek has already moved on to next week's
+    // unplayed matchup. liveWk stays on currentWeek — the Schedule tile's
+    // "Up next" and the drawer's lead card are about next week, held or not.
+    const heldWk = (data.featuredWeek != null && data.featuredWeek !== liveWk
+        && mine.some(x => x.week === data.featuredWeek && x.final)) ? data.featuredWeek : null;
     // The payload now carries weeks that haven't been played yet, so "latest"
     // has to mean the last PLAYED week — otherwise a manager sitting out the
     // current week (a bye, on an odd-sized league) would be featured with a
@@ -860,6 +863,8 @@ async function hydrateH2H(user, activeYear) {
     const featuredWk = liveWk != null ? liveWk
         : (played.length ? played[played.length - 1].week : mine[mine.length - 1].week);
     const featured = mine.find(x => x.week === featuredWk);
+    const tileWk = heldWk != null ? heldWk : featuredWk;
+    const tileMatch = mine.find(x => x.week === tileWk);
     const cardOf = (x, open) => window.ccH2H.matchupCard(x.g, { byId, youId: uid, youLabel, week: x.week, open });
     // My-perspective summary of a matchup (for glances).
     const summary = (x) => {
@@ -874,17 +879,17 @@ async function hydrateH2H(user, activeYear) {
     // Matchup tile — this week / latest. Rich glance: avatars, scores, win bar.
     if (mTile) mTile.hidden = false;
     const mg = document.getElementById('uh-glance-matchup');
-    if (mg && featured) {
-        const g = featured.g, iAmA = g.aId === uid;
-        const s = summary(featured);
+    if (mg && tileMatch) {
+        const g = tileMatch.g, iAmA = g.aId === uid;
+        const s = summary(tileMatch);
         const oppM = byId[iAmA ? g.bId : g.aId];
         const av = (m) => (window.ccH2H.avatar ? window.ccH2H.avatar(m) : '');
         let youPct = null;
-        if (featured.final) youPct = s.res === 'W' ? 100 : s.res === 'L' ? 0 : 50;
+        if (tileMatch.final) youPct = s.res === 'W' ? 100 : s.res === 'L' ? 0 : 50;
         else if (g.winP) youPct = iAmA ? g.winP.a : g.winP.b;
         const wc = s.res === 'W' ? ' win' : '', oc = s.res === 'L' ? ' win' : '';
-        const vsLabel = featured.final ? (s.res === 'T' ? 'T' : 'vs') : featured.upcoming ? 'vs' : 'LIVE';
-        const showScores = !featured.upcoming;
+        const vsLabel = tileMatch.final ? (s.res === 'T' ? 'T' : 'vs') : tileMatch.upcoming ? 'vs' : 'LIVE';
+        const showScores = !tileMatch.upcoming;
         mg.innerHTML = `<span class="uh-mug">
                 <span class="uh-mug-side">${av(me)}<span class="uh-mug-nm">${escapeHtml(youLabel)}</span>${showScores ? `<span class="uh-mug-sc num${wc}">${s.meScore}</span>` : ''}</span>
                 <span class="uh-mug-vs">${vsLabel}</span>
@@ -892,8 +897,8 @@ async function hydrateH2H(user, activeYear) {
             </span>${youPct == null ? '' : uhMiniBar(youPct)}`;
     }
     uhDrawer.matchup = (body) => {
-        const lead = `${featured.final === false ? 'This week' : 'Latest'} · Week ${featured.week}${me ? ` · ${escapeHtml(me.record)}` : ''}`;
-        body.innerHTML = `<div class="uh-drawer-lead">${lead}</div>` + cardOf(featured, true);
+        const lead = `${tileMatch.final === false ? 'This week' : 'Latest'} · Week ${tileMatch.week}${me ? ` · ${escapeHtml(me.record)}` : ''}`;
+        body.innerHTML = `<div class="uh-drawer-lead">${lead}</div>` + cardOf(tileMatch, true);
         window.ccH2H.wire(body);
     };
 
