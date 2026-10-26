@@ -65,6 +65,11 @@ const JOB_SCHEDULES = [
     // a week's ranks must be fixed before its first game, and nothing is
     // published in time to include Sunday.
     { job: 'hoops-net', modulePath: '../modules/hoops-net-job', rule: { hour: 11, minute: 30 } },
+    // The basketball AP Top 25, shown beside team names (display only — no
+    // scoring reads it). 1 CBBD call a day; the poll lands Monday late
+    // morning Eastern, so 12:45 Central catches it the day it is released and
+    // every later run is a free retry.
+    { job: 'hoops-ap', modulePath: '../modules/hoops-ap-job', rule: { hour: 12, minute: 45 } },
     // Basketball style tags for the draft pool and team page (#542). At most
     // 1 CBBD call a day, 0 before tip-off once last season's tags are stored
     // and 0 after the final. 07:00 Central, after hoops-stats, so last

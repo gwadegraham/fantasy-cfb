@@ -86,21 +86,34 @@ describe('indexHoopsResults', () => {
 
 describe('the basketball upset story', () => {
     const teams = [{ id: 7, school: 'Gonzaga' }, { id: 8, school: 'Baylor' }];
+    // The "#N" in the story is the loser's AP rank at tip-off (Duke: AP #6),
+    // never the T-Rank/NET the quadrant was banked against (oppRank 3 below).
+    const apRankOf = (teamId) => ({ 99: 6, 51: null }[teamId] || null);
     const results = indexHoopsResults([
         { id: 1, status: 'final', homeTeamId: 7, awayTeamId: 99, homeTeam: 'Gonzaga', awayTeam: 'Duke', homePoints: 70, awayPoints: 60 },
         { id: 2, status: 'final', homeTeamId: 50, awayTeamId: 8, homeTeam: 'Kansas', awayTeam: 'Baylor', homePoints: 60, awayPoints: 70, homeSeed: 4, awaySeed: 13 },
         { id: 3, status: 'final', homeTeamId: 8, awayTeamId: 51, homeTeam: 'Baylor', awayTeam: 'UNC', homePoints: 50, awayPoints: 70 }
-    ]);
+    ], apRankOf);
     const recapFor = (rows) => {
         const ann = user('a', [wk(20, 12, rows)], teams);
         return buildWeeklyRecaps({ user: ann, leagueUsers: [ann], season: SEASON, sport: 'basketball', upsetByGameId: results }).recaps[0];
     };
 
-    test('a Q1 win tells the story, with the opponent rank it was banked at', () => {
+    test('a Q1 win tells the story, naming the opponent\'s AP rank', () => {
         const r = recapFor([{ teamId: 7, gameId: 1, score: 5, quadrant: 1, oppRank: 3 }]);
-        expect(r.upset).toMatchObject({ kind: 'q1', team: 'Gonzaga', loser: 'Duke', loserRank: 3 });
-        expect(r.narrative).toBe("Gonzaga's Q1 win over #3 Duke powered your 12-pt week, good for 1st.");
-        expect(r.slides.find(s => s.id === 'upset')).toMatchObject({ big: 'Q1', sub: 'beat #3 Duke' });
+        expect(r.upset).toMatchObject({ kind: 'q1', team: 'Gonzaga', loser: 'Duke', loserRank: 6 });
+        expect(r.narrative).toBe("Gonzaga's Q1 win over #6 Duke powered your 12-pt week, good for 1st.");
+        expect(r.slides.find(s => s.id === 'upset')).toMatchObject({ big: 'Q1', sub: 'beat #6 Duke' });
+    });
+
+    test('a Q1 win over a team outside the AP poll names no rank', () => {
+        const unpolled = indexHoopsResults([
+            { id: 1, status: 'final', homeTeamId: 7, awayTeamId: 99, homeTeam: 'Gonzaga', awayTeam: 'Duke', homePoints: 70, awayPoints: 60 }
+        ], () => null);
+        const ann = user('a', [wk(20, 12, [{ teamId: 7, gameId: 1, score: 5, quadrant: 1, oppRank: 3 }])], teams);
+        const r = buildWeeklyRecaps({ user: ann, leagueUsers: [ann], season: SEASON, sport: 'basketball', upsetByGameId: unpolled }).recaps[0];
+        expect(r.upset).toMatchObject({ kind: 'q1', loserRank: null });
+        expect(r.narrative).toBe("Gonzaga's Q1 win over Duke powered your 12-pt week, good for 1st.");
     });
 
     test('a seed upset outranks a Q1 win', () => {

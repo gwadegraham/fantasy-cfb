@@ -110,7 +110,10 @@ function indexUpsets(games, spreadByGameId, rankByWeek) {
 // basketball scoreByTeam row carries teamId and no school name, so the
 // builder matches on the id. Final means status 'final' with two real,
 // unequal scores: CBBD writes 0-0 on a scheduled game (see models/hoopsGame.js).
-function indexHoopsResults(games) {
+// apRankOf (optional) is (teamId, startDate) => the loser's AP rank at tip-off
+// or null: the "#N" the story names is the AP poll, as football's is, never
+// the T-Rank/NET the quadrant was graded on.
+function indexHoopsResults(games, apRankOf) {
     const out = {};
     const pts = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v))) ? null : Number(v);
     (games || []).forEach(g => {
@@ -123,6 +126,7 @@ function indexHoopsResults(games) {
             winnerId: homeWon ? g.homeTeamId : g.awayTeamId,
             winner: homeWon ? g.homeTeam : g.awayTeam,
             loser: homeWon ? g.awayTeam : g.homeTeam,
+            loserRank: apRankOf ? apRankOf(homeWon ? g.awayTeamId : g.homeTeamId, g.startDate) : null,
             winnerSeed: seed(homeWon ? g.homeSeed : g.awaySeed),
             loserSeed: seed(homeWon ? g.awaySeed : g.homeSeed),
             winScore: homeWon ? hp : ap,
@@ -134,7 +138,8 @@ function indexHoopsResults(games) {
 
 // The best basketball story among one week's roster rows, or null. A seed
 // upset beats a Q1 win (it is rarer), a bigger seed gap beats a smaller one,
-// and among Q1 wins the better-ranked opponent wins.
+// and among Q1 wins the better-ranked opponent wins — ranked by the quadrant's
+// own rank, though the story names the AP one (indexHoopsResults).
 function hoopsUpsetFor(rows, resultsByGameId, logoOf, nameOf) {
     let best = null, bestKey = null;
     (rows || []).forEach(st => {
@@ -151,7 +156,7 @@ function hoopsUpsetFor(rows, resultsByGameId, logoOf, nameOf) {
         const team = nameOf(st.teamId, st.team) || u.winner;
         best = seedGap
             ? { kind: 'seed', team, loser: u.loser, loserRank: null, seed: u.winnerSeed, loserSeed: u.loserSeed, margin: null, fantasy: round(st.score || 0), logo: logoOf(st.teamId, team) }
-            : { kind: 'q1', team, loser: u.loser, loserRank: oppRank, margin: null, fantasy: round(st.score || 0), logo: logoOf(st.teamId, team) };
+            : { kind: 'q1', team, loser: u.loser, loserRank: u.loserRank || null, margin: null, fantasy: round(st.score || 0), logo: logoOf(st.teamId, team) };
     });
     return best;
 }

@@ -13,7 +13,7 @@ const HoopsTeam = require('../models/hoopsTeam');
 const { entryFor } = require('./roster-teams');
 const { captainLockMs, autoCaptainTeamId } = require('./captain');
 const { seasonModeWeeks, captainGames, captainFocus, lockedWeek } = require('./hoops-modes');
-const { ranksFor } = require('./hoops-ranks');
+const hoopsAp = require('./hoops-ap');
 
 const Franchise = require('../models/franchise');
 const League = require('../models/league');
@@ -105,8 +105,8 @@ async function freezeLockedWeeks(nowMs = Date.now()) {
     return frozen;
 }
 
-// Opponent ranks shown on the picker are capped where football's are: a
-// "#40" tag beside every other opponent stops meaning anything.
+// Opponent ranks shown on the picker are the AP Top 25, as football's are —
+// display only (modules/hoops-ap.js). The cap is a guard: AP stops at 25.
 const RANK_SHOWN = 25;
 
 async function teamNames(season, ids) {
@@ -142,12 +142,15 @@ async function captainState({ userId, league, season, nowMs = Date.now() }) {
         .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
     const mine = new Set(teamIds);
     const oppIds = weekGames.flatMap(g => [g.homeId, g.awayId]).filter(id => id != null && !mine.has(Number(id)));
-    const [names, ranked] = await Promise.all([
+    const [names, apPolls] = await Promise.all([
         teamNames(season, oppIds),
-        ranksFor(season, target.week).catch(() => ({ ranks: {} }))
+        hoopsAp.cachedPolls(season).catch(() => [])
     ]);
+    // The poll in force when the week's first game tips.
+    const tips = weekGames.map(g => Date.parse(g.startDate)).filter(Number.isFinite);
+    const apRanks = hoopsAp.ranksAt(apPolls, tips.length ? Math.min(...tips) : Date.now());
     const rankOf = (id) => {
-        const r = Number(ranked && ranked.ranks && ranked.ranks[String(id)]);
+        const r = Number(apRanks[String(id)]);
         return Number.isInteger(r) && r >= 1 && r <= RANK_SHOWN ? r : null;
     };
     const slate = teamIds.map(tid => ({

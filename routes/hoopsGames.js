@@ -24,7 +24,7 @@ const visibility = require('../modules/hoops-visibility');
 const gamePage = require('../modules/hoops-game-page');
 const board = require('../modules/hoops-league-scoreboard');
 const boardHelpers = require('../modules/league-scoreboard');
-const hoopsTeamPage = require('../modules/hoops-team-page');
+const hoopsAp = require('../modules/hoops-ap');
 const staleDuplicates = require('../modules/hoops-stale-duplicates');
 const { dropStale } = staleDuplicates;
 const franchiseRepo = require('../modules/franchise-repo');
@@ -356,7 +356,7 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
             return res.json({ league, season, seasonType, week: null, weeks: [], conferences: [], games: [], liveCount: 0 });
         }
 
-        const [listed, franchises, ranks] = await Promise.all([
+        const [listed, franchises, apPolls] = await Promise.all([
             HoopsGame.find({ season, week }, {
                 id: 1, week: 1, seasonType: 1, startDate: 1, startTimeTbd: 1, status: 1, neutralSite: 1,
                 period: 1, clock: 1, homeTeamId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
@@ -365,10 +365,11 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
             }).lean(),
             franchiseRepo.byLeagueAndSeason(league, season,
                 { fields: ['firstName', 'lastName', 'color', 'avatarUrl', 'seasons'] }),
-            hoopsTeamPage.cachedRanks(season, week)
+            displayPolls(season)
         ]);
         // A rescheduled game's old listing never tips (#498).
         const games = dropStale(listed, nowMs);
+        const ranks = hoopsAp.ranksAt(apPolls, weekStart(games));
 
         const teamIds = [...new Set(games.flatMap(g => [Number(g.homeTeamId), Number(g.awayTeamId)]))];
         const teamDocs = await HoopsTeam.find({ season, id: { $in: teamIds } },
@@ -398,6 +399,22 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
         res.status(500).json({ message: 'Could not load the scoreboard' });
     }
 });
+
+// The rank beside a name on a week's cards is the AP poll in force when the
+// week began (modules/hoops-ap.js) — display only; quadrants are graded on
+// modules/hoops-ranks.js. One poll a week, released before the week's games,
+// so the week's first tip names it; a week with no dated game reads today's.
+// Display only: a failed read costs the numbers, not the page.
+function displayPolls(season) {
+    return hoopsAp.cachedPolls(season).catch(err => {
+        console.error(`hoops AP polls for ${season}: ${err && err.message}`);
+        return [];
+    });
+}
+function weekStart(games) {
+    const times = (games || []).map(g => new Date(g.startDate).getTime()).filter(Number.isFinite);
+    return times.length ? Math.min(...times) : Date.now();
+}
 
 // A season's week windows ({ week, first, last } in ms), the input the shared
 // weekWindows/weekState pair works on. Grouped in Mongo rather than scanning
@@ -497,11 +514,12 @@ router.get('/teams/:season/:week', async (req, res) => {
         const games = staleDuplicates.dropStale(pool, nowMs).filter(g => listedIds.has(g.id));
 
         const teamIds = [...new Set(games.flatMap(g => [Number(g.homeTeamId), Number(g.awayTeamId)]))];
-        const [teamDocs, ranks] = teamIds.length ? await Promise.all([
+        const [teamDocs, apPolls] = teamIds.length ? await Promise.all([
             HoopsTeam.find({ season, id: { $in: teamIds } },
                 { id: 1, school: 1, abbreviation: 1, logos: 1, _id: 0 }).lean(),
-            hoopsTeamPage.cachedRanks(season, week)
-        ]) : [[], {}];
+            displayPolls(season)
+        ]) : [[], []];
+        const ranks = hoopsAp.ranksAt(apPolls, weekStart(games));
         const teams = {};
         teamDocs.forEach(t => { teams[t.id] = { school: t.school, abbr: t.abbreviation || null, logo: pickLogo(t.logos) || null }; });
 

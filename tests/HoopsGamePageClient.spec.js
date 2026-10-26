@@ -99,6 +99,23 @@ test('no league selected: no roster lines at all', async () => {
     expect(document.querySelectorAll('.hg-fc .p')).toHaveLength(0);
 });
 
+// The names carry the AP poll; each side's Q chip carries the OPPONENT's
+// quadrant rank (T-Rank, then NET), so a Q1 beside an unranked name explains
+// itself.
+test("each side's Q chip names the opponent's quadrant rank", async () => {
+    const p = payload();
+    p.home = Object.assign({}, p.home, { rank: null, quadrantRank: 4 });
+    p.away = Object.assign({}, p.away, { rank: null, quadrantRank: 37 });
+    await render(p);
+    const titles = Array.from(document.querySelectorAll('.hg-q')).map(n => n.getAttribute('title'));
+    // Away (Texas) first: its Q2 is graded on Duke's #4; Duke's Q1 on Texas's #37.
+    expect(titles).toEqual([
+        'Q2: opponent ranked #4 (T-Rank, then NET), adjusted for venue',
+        'Q1: opponent ranked #37 (T-Rank, then NET), adjusted for venue'
+    ]);
+    expect(Array.from(document.querySelectorAll('.hg-side .hg-nm')).map(n => n.textContent)).toEqual(['TEXAS', 'DUKE']);
+});
+
 test('postseason: the tournament, not a quadrant', async () => {
     const p = payload();
     p.game = Object.assign({}, p.game, { postseason: true, tournament: 'NCAA' });

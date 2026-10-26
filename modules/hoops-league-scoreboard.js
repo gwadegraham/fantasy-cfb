@@ -19,9 +19,10 @@ const { entryFor } = require('./roster-teams');
 const { initialsOf } = require('./league-scoreboard');
 const { outlets } = require('./hoops-media');
 
-// The rank the card shows and the "ranked" filter keys on: the top 25 only,
-// as football shows the AP top 25. Every D-I team has a T-Rank, and "#212"
-// beside every name is noise.
+// The rank the card shows and the "ranked" filter keys on: the AP top 25, as
+// football shows it (the caller passes AP ranks, modules/hoops-ap.js). The cap
+// stays as a guard: a scoring rank passed here by mistake would put "#212"
+// beside every name.
 const TOP = 25;
 
 // { <teamId>: owner } for one league season, from basketball rosters.

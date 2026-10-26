@@ -36,6 +36,7 @@ const { buildHoopsProjections, hasForecast } = require('../modules/hoops-standin
 const { ncaaField } = require('../modules/hoops-postseason-state');
 const { seasonModeWeeks } = require('../modules/hoops-modes');
 const hoopsRanks = require('../modules/hoops-ranks');
+const hoopsAp = require('../modules/hoops-ap');
 const { pickParts } = require('../modules/hoops-captain');
 
 // The poll the PROJECTIONS should value a hypothetical ranked win against: the
@@ -541,13 +542,19 @@ async function hoopsRecapInputs(users, seasonNum) {
     });
     const idList = [...ids];
     if (!idList.length) return { upsetByGameId: {}, weatherByGameId: {}, completeWeeks: null };
-    const games = await HoopsGame.find(
-        { season: seasonNum, $or: [{ homeTeamId: { $in: idList } }, { awayTeamId: { $in: idList } }] },
-        { id: 1, week: 1, startDate: 1, startTimeTbd: 1, status: 1, homeTeamId: 1, awayTeamId: 1,
-          homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, homeSeed: 1, awaySeed: 1, _id: 0 }
-    ).lean();
+    const [games, apPolls] = await Promise.all([
+        HoopsGame.find(
+            { season: seasonNum, $or: [{ homeTeamId: { $in: idList } }, { awayTeamId: { $in: idList } }] },
+            { id: 1, week: 1, startDate: 1, startTimeTbd: 1, status: 1, homeTeamId: 1, awayTeamId: 1,
+              homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, homeSeed: 1, awaySeed: 1, _id: 0 }
+        ).lean(),
+        hoopsAp.cachedPolls(seasonNum).catch(err => {
+            console.error(`[recap] hoops AP polls for ${seasonNum}: ${err.message}`);
+            return [];
+        })
+    ]);
     return {
-        upsetByGameId: indexHoopsResults(games),
+        upsetByGameId: indexHoopsResults(games, (teamId, at) => hoopsAp.rankAt(apPolls, teamId, at)),
         weatherByGameId: {},
         completeWeeks: completedWeeks(games, new Date(), 'basketball')
     };

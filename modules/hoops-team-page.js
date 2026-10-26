@@ -17,6 +17,7 @@ const HoopsTeamStats = require('../models/hoopsTeamStats');
 const roster = require('./hoops-roster');
 const franchiseRepo = require('./franchise-repo');
 const { ranksFor } = require('./hoops-ranks');
+const hoopsAp = require('./hoops-ap');
 const { latestNet, clearNetCache } = require('./hoops-net');
 const { stylesFor } = require('./hoops-styles');
 const { turnoverFor } = require('./hoops-turnover');
@@ -40,7 +41,7 @@ async function cachedRanks(season, week, now = Date.now()) {
     rankCache.set(key, { at: now, ranks });
     return ranks;
 }
-function clearRankCache() { rankCache.clear(); weekCache.clear(); clearNetCache(); }
+function clearRankCache() { rankCache.clear(); weekCache.clear(); clearNetCache(); hoopsAp.clearCache(); }
 
 // THE week a game still to play is quadranted against: the latest week of
 // the season in which ANY game has gone final. Season-wide, not per team —
@@ -213,9 +214,13 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
         const wk = isFinal(g) || nowWeek === null ? Number(g.week) : nowWeek;
         if (Number.isFinite(wk) && !ranksByWeek.has(wk)) ranksByWeek.set(wk, null);
     }
-    await Promise.all([...ranksByWeek.keys()].map(async wk => {
-        ranksByWeek.set(wk, await cachedRanks(yr, wk));
-    }));
+    const [apPolls] = await Promise.all([
+        // Display only: a failed read costs the numbers, not the page.
+        hoopsAp.cachedPolls(yr).catch(() => []),
+        ...[...ranksByWeek.keys()].map(async wk => {
+            ranksByWeek.set(wk, await cachedRanks(yr, wk));
+        })
+    ]);
 
     const points = (owner && owner.points) || {};
     const bankedAt = (owner && owner.banked) || {};
@@ -246,7 +251,13 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
                 school: (opp && opp.school) || (home ? g.awayTeam : g.homeTeam),
                 abbreviation: (opp && opp.abbreviation) || null,
                 logo: opp ? pickLogo(opp.logos) || null : null,
-                rank: Number.isFinite(oppRank) ? oppRank : null,
+                // Beside the name: the AP poll in force at tip-off, as
+                // football shows (display only, modules/hoops-ap.js).
+                rank: hoopsAp.rankAt(apPolls, oppId, g.startDate || now),
+                // The rank the quadrant is graded on (T-Rank, then NET),
+                // carried for the Q chip's tooltip — a Q1 against an
+                // opponent outside the AP poll needs its reason.
+                quadrantRank: Number.isFinite(oppRank) ? oppRank : null,
                 // A non-D-I opponent has no basketball team page to link to.
                 hasPage: !!opp
             },

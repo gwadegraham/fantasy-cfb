@@ -305,6 +305,21 @@ test('a result shows its banked points', async () => {
     expect(florida.querySelector('.p').textContent).toBe('+5');
 });
 
+// The number beside the name is the AP poll; the quadrant grades on another
+// rank, which the Q chip's tooltip carries — the reason a Q1 can sit beside
+// an unranked name.
+test('the Q chip names the rank its quadrant is graded on; no rank, no tooltip', async () => {
+    const p = payload();
+    p.games[0].opponent = { id: 2, school: 'Florida', rank: null, quadrantRank: 34 };
+    await render(p);
+    tab('schedule');
+    const florida = Array.from(document.querySelectorAll('.sp-gr')).find(n => n.textContent.includes('Florida'));
+    expect(florida.querySelector('.ht-rk')).toBeNull();
+    expect(florida.querySelector('.ht-qt').getAttribute('title')).toBe('Q1: opponent ranked #34 (T-Rank, then NET), adjusted for venue');
+    const army = Array.from(document.querySelectorAll('.sp-gr')).find(n => n.textContent.includes('Army'));
+    expect(army.querySelector('.ht-qt').hasAttribute('title')).toBe(false);
+});
+
 test('a postseason game is off the team sheet and off the table, and says its tournament', async () => {
     const base = payload();
     base.games.push(g(20, { final: false, us: null, them: null, points: null, quadrant: null, postseason: true,
@@ -401,6 +416,7 @@ describe('Next up (#506)', () => {
         expect(card.getAttribute('href')).toBe('/hoops/game/4');
         expect(card.querySelector('.ht-next-opp').textContent).toBe('vs3 Virginia');
         expect(card.querySelector('.ht-qt').textContent).toBe('Q1');
+        expect(card.querySelector('.ht-qt').hasAttribute('title')).toBe(false);   // no quadrantRank in the fixture
         expect(card.querySelector('.ht-next-pay').textContent).toBe('+5 if won');
         expect(card.querySelector('.ht-next-when').textContent).toMatch(/^Next up · /);
     });

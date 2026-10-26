@@ -339,7 +339,7 @@ describe('basketball', () => {
         // hoops-scores is quiet by design (no JobRun on idle nights), so never
         // having run is not a fault: only daily-scores carries a stale check.
         expect(group(cb, 'platform').items.map(r => r.key)).toEqual(['hoops-refresh', 'jobs']);
-        expect(byKey(cb, 'jobs')).toMatchObject({ state: 'ok', detail: '1 of 9 have run · 8 no runs yet' });
+        expect(byKey(cb, 'jobs')).toMatchObject({ state: 'ok', detail: '1 of 10 have run · 9 no runs yet' });
         expect(byKey(cb, 'hoops-refresh')).toMatchObject({ label: '1,715 finals on file', detail: 'Latest 2026-10-06', auto: null });
     });
 
@@ -389,7 +389,7 @@ describe('jobList: the same job list for both sports', () => {
         const fb = jobList('football', [], { now: NOW });
         expect(fb.map(j => j.name)).toEqual(JOBS.football.map(j => j.name));
         expect(fb.every(j => j.state === 'off' && j.status === null)).toBe(true);
-        expect(jobList('basketball', null, { now: NOW })).toHaveLength(9);
+        expect(jobList('basketball', null, { now: NOW })).toHaveLength(10);
     });
 
     test('states: failed warns, running is info, success and skipped are ok', () => {
@@ -435,7 +435,7 @@ describe('jobList: the same job list for both sports', () => {
     test('every job has run: no "no runs yet" tail', () => {
         const all = JOBS.basketball.map(j => run(j.name, 'success', 1));
         const cb = build({ sport: 'basketball', isAdmin: true, seasonStatus: 'in-season', now: NOW, jobs: all });
-        expect(byKey(cb, 'jobs').detail).toBe('9 of 9 have run');
+        expect(byKey(cb, 'jobs').detail).toBe('10 of 10 have run');
     });
 
     test('a nightly job never run in season: "has not run", with its schedule', () => {
@@ -519,7 +519,7 @@ describe('review fixes', () => {
         const cb = build({ sport: 'basketball', isAdmin: true, seasonStatus: 'in-season', now: NOW,
             jobs: [{ jobName: 'hoops-scores', status: 'success', startedAt: daysAgo(0.5) },
                 { jobName: 'hoops-net', status: null }] });
-        expect(byKey(cb, 'jobs')).toMatchObject({ label: 'Jobs running fine', detail: '1 of 9 have run · 8 no runs yet' });
+        expect(byKey(cb, 'jobs')).toMatchObject({ label: 'Jobs running fine', detail: '1 of 10 have run · 9 no runs yet' });
     });
 
     test('the H2H tie bonus is shown when set, as readiness shows it', () => {
