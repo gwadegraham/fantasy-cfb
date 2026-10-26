@@ -253,12 +253,12 @@ function sortPool(key) {
         poolSort.dir *= -1;
     } else {
         poolSort.key = key;
-        // Names/conference/recruiting read best ascending; stats descending.
-            // Ascending for the columns where a SMALLER number is better: the
+        // Names/conference read best ascending; stats descending.
+        // Ascending for the columns where a SMALLER number is better: the
         // two ranks, and basketball's defensive efficiency. Opening Defense
         // descending would list the worst defences first, against the whole
-        // point of its sort sentinel.
-    poolSort.dir = (key === 'name' || key === 'conf' || key === 'rank' || key === 'adjDE' || key === 'proj') ? 1 : -1;
+        // point of its sort sentinel. Proj. is a stat — best record first.
+        poolSort.dir = (key === 'name' || key === 'conf' || key === 'rank' || key === 'adjDE') ? 1 : -1;
     }
     renderPool();
 }
@@ -450,6 +450,15 @@ function onPickMade({ pick, state }) {
 
     var isOwn = String(pick.userId) === String(myUserId);
 
+    // A pick made from a search leaves the search filtering on a team that is
+    // now drafted — "0 shown" — and the commissioner cleared it by hand every
+    // pick. Clear it only for the pick THIS client made (same team-id match as
+    // the chime below), so someone else's pick never wipes a search mid-typing.
+    if (onPickMade._ownPickTeamId != null && onPickMade._ownPickTeamId === String(pick.team && pick.team.id)) {
+        var search = document.getElementById('poolSearch');
+        if (search) search.value = '';
+    }
+
     // Chime only for a pick that's YOURS — either you clicked Draft (makePick
     // already chimed, set _ownChimeAt) or someone picked on your behalf. Other
     // managers' picks are silent here: leagues draft together on a call, and six
@@ -528,10 +537,12 @@ function makePick(teamId) {
     // Chime the instant YOU click Draft — before the server round-trip — so your
     // own pick's sound isn't delayed by network/DB latency. onPickMade suppresses
     // the confirm chime for this pick so it doesn't double. Cleared on error.
+    // _ownPickTeamId is set even without the stinger: onPickMade also uses it
+    // to clear the pool search once this pick lands.
+    onPickMade._ownPickTeamId = String(teamId);
     if (typeof window.ccDraftStinger === 'function') {
         window.ccDraftStinger();
-        onPickMade._ownChimeAt = Date.now();
-        onPickMade._ownPickTeamId = String(teamId);   // so onPickMade suppresses THIS pick's confirm chime
+        onPickMade._ownChimeAt = Date.now();   // so onPickMade suppresses THIS pick's confirm chime
     }
     socket.emit('make-pick', { league: leagueCode, season, team });
 }

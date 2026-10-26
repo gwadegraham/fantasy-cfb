@@ -234,6 +234,52 @@ describe('basketball', () => {
     });
 });
 
+describe('basketball — sorting and search', () => {
+    const records = (r) => [...r.body().matchAll(/<td[^>]*>(\d+-\d+)<\/td>/g)].map(m => m[1]);
+
+    test('Proj. opens best record first', () => {
+        const r = room({ sport: 'basketball', pool: [
+            hoopsRow({ id: 1, projectedRecord: '9-23' }),
+            hoopsRow({ id: 2, projectedRecord: '25-7' }),
+            hoopsRow({ id: 3, projectedRecord: '28-4' }),
+            hoopsRow({ id: 4, projectedRecord: '25-6' })
+        ] });
+        r.run("sortPool('proj')");
+        expect(records(r)).toEqual(['28-4', '25-6', '25-7', '9-23']);
+    });
+
+    // The reveal and its renderAll run after a timer; the search is cleared
+    // before it, so the timer is stubbed out rather than waited on.
+    const pickArrives = (r, teamId, userId) => r.run(`
+        setTimeout = function () { return 0; };
+        onPickMade({ pick: { userId: ${JSON.stringify(userId)}, round: 1, team: { id: ${teamId} } }, state: draft });
+        document.getElementById('poolSearch').value;
+    `);
+
+    // Through makePick, with no stinger loaded: the id that marks the pick as
+    // this client's must not depend on the sound effect being available.
+    const clickDraft = (r, teamId) => r.run(`
+        socket = { emit: function () {} };
+        teamsById[${JSON.stringify(String(teamId))}] = { id: ${teamId}, school: 'X' };
+        makePick(${teamId});
+    `);
+
+    test('a pick this client made clears the search', () => {
+        const r = room({ sport: 'basketball', pool: [hoopsRow()] });
+        r.run(`document.getElementById('poolSearch').value = 'duke';`);
+        clickDraft(r, 10);
+        expect(pickArrives(r, 10, 'me')).toBe('');
+    });
+
+    test("someone else's pick leaves a half-typed search alone", () => {
+        // Even while this client's own Draft click is still in flight.
+        const r = room({ sport: 'basketball', pool: [hoopsRow()] });
+        clickDraft(r, 10);
+        r.run(`document.getElementById('poolSearch').value = 'gonz';`);
+        expect(pickArrives(r, 22, 'someone-else')).toBe('gonz');
+    });
+});
+
 describe('a pool that could not be built', () => {
     // The message used to be painted once and then wiped by the first socket
     // update, because renderPool rewrites the table unconditionally. The
