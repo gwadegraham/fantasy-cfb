@@ -12,6 +12,8 @@ const leagueSelection = require('../modules/league-selection');
 const teamPage = require('../modules/hoops-team-page');
 const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
+const HoopsApRank = require('../models/hoopsApRank');
+const hoopsAp = require('../modules/hoops-ap');
 const Franchise = require('../models/franchise');
 const Account = require('../models/account');
 const League = require('../models/league');
@@ -118,8 +120,13 @@ describe('GET /hoops/games/scoreboard/:league/:season/:week', () => {
         await SportSeason.create([{ sport: 'football', season: 2026, status: 'in-season' }, { sport: 'basketball', season: SEASON, status: 'in-season' }]);
         await seasons.prime();
         teamPage.clearRankCache();
+        hoopsAp.clearCache();
         jest.spyOn(leagueSelection, 'viewableBy').mockResolvedValue([LEAGUE]);
         jest.spyOn(leagueSelection, 'selectedLeague').mockResolvedValue(LEAGUE);
+        // Two AP polls: one before week 1, one between the weeks. Duke's
+        // T-Rank (2, below) must never be what the card shows.
+        const poll = (week, pollDate, teamId, rank) => ({ season: SEASON, seasonType: 'regular', week, pollDate, teamId, rank });
+        await HoopsApRank.create([poll(1, tip(-30), 1, 7), poll(2, tip(1), 1, 3), poll(2, tip(1), 2, 12)]);
         await HoopsTeam.create([
             { id: 1, season: SEASON, school: 'Duke', abbreviation: 'DUKE', conference: 'ACC', preseason: { rank: 2 } },
             { id: 2, season: SEASON, school: 'Texas', abbreviation: 'TEX', conference: 'SEC', preseason: { rank: 40 } }
@@ -144,7 +151,25 @@ describe('GET /hoops/games/scoreboard/:league/:season/:week', () => {
         expect(res.body.weeks.map(w => w.week)).toEqual([1, 2]);
         expect(res.body.games.map(g => g.id)).toEqual([20, 21]);
         expect(res.body.conferences.map(c => c.name)).toEqual(['ACC', 'SEC']);
-        expect(res.body.games[0].home).toMatchObject({ team: 'Duke', rank: 2, owner: { franchise: 'Hoop Dreams' } });
+        expect(res.body.games[0].home).toMatchObject({ team: 'Duke', rank: 3, owner: { franchise: 'Hoop Dreams' } });
+        expect(res.body.games[0].away).toMatchObject({ team: 'Texas', rank: 12 });
+    });
+
+    // The rank beside a name is the AP poll in force when the week began —
+    // never the T-Rank or NET that grades the quadrants.
+    test('a past week shows the AP poll of its own time, and an unpolled team no rank', async () => {
+        const res = await request(app).get(`/hoops/games/scoreboard/${LEAGUE}/${SEASON}/1`);
+        expect(res.body.games[0].home).toMatchObject({ team: 'Duke', rank: 7 });
+        expect(res.body.games[0].away).toMatchObject({ team: 'Texas', rank: null });
+        expect(res.body.games[0].ranked).toBe(true);
+    });
+
+    test('no AP poll on file: no ranks at all, not the scoring rank', async () => {
+        await HoopsApRank.deleteMany({});
+        hoopsAp.clearCache();
+        const res = await request(app).get(`/hoops/games/scoreboard/${LEAGUE}/${SEASON}`);
+        expect(res.body.games[0].home.rank).toBeNull();
+        expect(res.body.games[0].ranked).toBe(false);
     });
 
     test('a named week, with the points banked in it', async () => {

@@ -15,7 +15,7 @@ const Game = require('../models/game');
 const League = require('../models/league');
 const SportSeason = require('../models/sportSeason');
 const seasons = require('../modules/active-season');
-const hoopsTeamPage = require('../modules/hoops-team-page');
+const hoopsAp = require('../modules/hoops-ap');
 const { GRACE_MS } = require('../modules/hoops-stale-duplicates');
 
 const LEAGUE = 'hoops-league';
@@ -119,13 +119,16 @@ describe('GET /hoops/games/teams/:season/:week', () => {
         expect(res.body.games.map(g => g.id)).toEqual([20, 21, 22]);
     });
 
-    // Rivalry Games shows T-Rank where football shows the AP poll (#528) —
-    // the scoreboard's cached ranks for that week, top 25 only.
-    test("carries the week's T-Rank top 25 and the TV outlet", async () => {
-        const ranks = jest.spyOn(hoopsTeamPage, 'cachedRanks').mockResolvedValue({ 1: 4, 3: 40 });
+    // Rivalry Games shows the AP poll beside a name, as football does — the
+    // poll in force when the week began, display only.
+    test("carries the week's AP ranks and the TV outlet", async () => {
+        const polls = jest.spyOn(hoopsAp, 'cachedPolls').mockResolvedValue([
+            { at: at(-30).getTime(), ranks: { 1: 9 } },
+            { at: at(-1).getTime(), ranks: { 1: 4 } }
+        ]);
         await HoopsGame.updateOne({ id: 20 }, { $set: { broadcasts: [{ name: 'ESPN', type: 'TV' }] } });
         const res = await request(app).get(`/hoops/games/teams/${SEASON}/2?ids=1`);
-        expect(ranks).toHaveBeenCalledWith(SEASON, 2);
+        expect(polls).toHaveBeenCalledWith(SEASON);
         expect(res.body.games[0]).toMatchObject({ id: 20, outlet: 'ESPN', home: { id: 1, rank: 4 }, away: { id: 3, rank: null } });
     });
 

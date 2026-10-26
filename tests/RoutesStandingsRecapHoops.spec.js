@@ -11,6 +11,8 @@ const request = require('supertest');
 const { useMongo } = require('./helpers/mongo');
 const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
+const HoopsApRank = require('../models/hoopsApRank');
+const hoopsAp = require('../modules/hoops-ap');
 const Game = require('../models/game');
 const Franchise = require('../models/franchise');
 const Account = require('../models/account');
@@ -63,6 +65,9 @@ const recap = (userId) => request(app).get(`/standings/recap/${LEAGUE}/latest/${
 test('recaps a basketball week with the roster team named and the Q1 story told', async () => {
     await HoopsGame.create(hoopsGame({ id: 501, week: 19, startDate: PAST(1), homeTeamId: 1, awayTeamId: 77, homeTeam: 'Gonzaga', awayTeam: 'Duke' }));
     const ann = await manager('Ann', [1, 2], [{ week: 19, score: 5, scoreByTeam: [{ teamId: 1, gameId: 501, score: 5, quadrant: 1, oppRank: 4 }] }]);
+    // Duke was banked at #4 (scoring rank) but sat #9 in the AP poll at tip-off.
+    hoopsAp.clearCache();
+    await HoopsApRank.create({ season: SEASON, seasonType: 'regular', week: 1, pollDate: PAST(30), teamId: 77, rank: 9 });
 
     const res = await recap(ann._id);
 
@@ -72,7 +77,7 @@ test('recaps a basketball week with the roster team named and the Q1 story told'
     const r = res.body.recaps[0];
     expect(r.label).toBe('Week 19');
     expect(r.mvpTeam).toMatchObject({ school: 'Gonzaga', logo: 'gonzaga.png' });
-    expect(r.upset).toMatchObject({ kind: 'q1', team: 'Gonzaga', loser: 'Duke', loserRank: 4 });
+    expect(r.upset).toMatchObject({ kind: 'q1', team: 'Gonzaga', loser: 'Duke', loserRank: 9 });
 });
 
 test('holds back a week whose basketball slate has not finished tipping off', async () => {

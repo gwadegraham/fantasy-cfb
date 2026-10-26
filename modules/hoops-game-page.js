@@ -9,6 +9,7 @@
 const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
 const teamPage = require('./hoops-team-page');
+const hoopsAp = require('./hoops-ap');
 const boxScore = require('./hoops-box-score');
 const roster = require('./hoops-roster');
 const { isFinal } = require('./hoops-scoring-pass');
@@ -105,7 +106,7 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
     // so the two pages give an unplayed game the same quadrant.
     const nowWeek = final ? null : await teamPage.currentWeek(yr);
     const rankWeek = final || nowWeek === null ? Number(game.week) : nowWeek;
-    const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed, net] = await Promise.all([
+    const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed, net, apPolls] = await Promise.all([
         HoopsTeam.find({ season: yr, id: { $in: [homeId, awayId] } },
             { id: 1, school: 1, abbreviation: 1, mascot: 1, color: 1, alt_color: 1, logos: 1, _id: 0 }).lean(),
         Number.isFinite(rankWeek) ? teamPage.cachedRanks(yr, rankWeek) : {},
@@ -115,7 +116,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         teamPage.ownership(league, yr, awayId),
         teamPage.quadrantValues(league),
         final ? boxScore.getBox(id) : null,
-        latestNet(yr, [homeId, awayId])
+        latestNet(yr, [homeId, awayId]),
+        hoopsAp.cachedPolls(yr).catch(() => [])
     ]);
     const byId = new Map(teams.map(t => [Number(t.id), t]));
     // Jersey numbers on the box, from the once-a-season roster import (the
@@ -154,9 +156,9 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         const oppRank = ranks[String(oppId)];
         // Paid already: the quadrant it was PAID at (#502), as the team page
         // shows it, not one recomputed from ranks that have moved since. A
-        // side's own rank is the rank the OTHER side was paid against, when
-        // that side's owner has been paid, so a "#5" never sits beside a Q3
-        // that was banked against #120.
+        // side's quadrantRank is the rank the OTHER side was paid against,
+        // when that side's owner has been paid, so a Q3 tooltip never says #5
+        // when it was banked against #120.
         const bankedFor = (o) => (final && o && o.banked ? o.banked[String(id)] : undefined);
         const paid = bankedFor(owner);
         const otherPaid = bankedFor(teamId === homeId ? awayOwner : homeOwner);
@@ -170,10 +172,15 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
             altColor: (t && t.alt_color) || null,
             logo: t ? pickLogo(t.logos) || null : null,
             hasPage: !!t,
-            rank: Number.isFinite(rank) ? rank : null,
+            // Beside the name: the AP poll in force at tip-off, as football
+            // shows (display only, modules/hoops-ap.js).
+            rank: hoopsAp.rankAt(apPolls, teamId, game.startDate),
+            // The rank the OTHER side's quadrant is graded on (T-Rank, then
+            // NET) — the reason a Q1 can sit beside an unranked name.
+            quadrantRank: Number.isFinite(rank) ? rank : null,
             // The official NCAA NET as ncaa.com shows it today (#533), or
-            // null before it publishes. Today's, not the game's: `rank` is
-            // what the game was graded against.
+            // null before it publishes. Today's, not the game's:
+            // `quadrantRank` is what the game was graded against.
             net: net[String(teamId)] || null,
             // Through this game when played; going INTO it when not.
             record: rec,

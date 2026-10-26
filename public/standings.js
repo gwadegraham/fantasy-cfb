@@ -1571,8 +1571,8 @@ function hoopsScoreBadge(teamId, gameId, pts) {
     return '';
 }
 
-// One side of a basketball rivalry card: T-Rank top 25 where football shows
-// the AP rank, the hoopsteams logo the route already joined on.
+// One side of a basketball rivalry card: the AP rank, as football shows, and
+// the hoopsteams logo the route already joined on.
 function hoopsSideCell(side) {
     var logo = side.logo
         ? '<img src="' + hoopsEsc(side.logo) + '" style="padding-right: 5px;">'
@@ -1635,7 +1635,7 @@ function paintHoopsWeekPicker(weeks, week) {
 }
 
 // Rivalry Games on a basketball league (#528): games where two managers'
-// basketball teams meet, from GET /hoops/games/teams in one request — T-Rank
+// basketball teams meet, from GET /hoops/games/teams in one request — AP ranks
 // and hoopsteams logos come back on the same answer, so there is no rankings,
 // logo or betting call to make.
 async function displayHoopsSchedule(data) {

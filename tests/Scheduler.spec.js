@@ -6,7 +6,7 @@ const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, HOOPS_LIVE_POLL_SCHEDULE, livePollEna
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-net', 'hoops-ratings', 'hoops-schedule', 'hoops-scores', 'hoops-stats', 'hoops-styles', 'hoops-torvik', 'hoops-turnover',
+        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-ap', 'hoops-media', 'hoops-net', 'hoops-ratings', 'hoops-schedule', 'hoops-scores', 'hoops-stats', 'hoops-styles', 'hoops-torvik', 'hoops-turnover',
             'player-season-leaders', 'recap-notice', 'saturday-scores', 'season-stats', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
     });
@@ -68,6 +68,8 @@ describe('scheduler config', () => {
         expect(byJob['enrichment']).toEqual({ dayOfWeek: 2, hour: 5, minute: 30 });
         // Basketball TV: weekly, the Monday after Selection Sunday included.
         expect(byJob['hoops-media']).toEqual({ dayOfWeek: 1, hour: 6, minute: 0 });
+        // The AP poll: daily, after Monday's late-morning Eastern release.
+        expect(byJob['hoops-ap']).toEqual({ hour: 12, minute: 45 });
     });
 
     // CBBD keeps no ratings history (#318), so the snapshot runs every day

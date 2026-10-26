@@ -92,6 +92,7 @@
             { name: 'hoops-torvik', label: 'Torvik T-Rank', when: 'Daily 06:20 + 22:20' },
             { name: 'hoops-schedule', label: 'Schedule, 4 weeks ahead', when: 'Daily 06:40' },
             { name: 'hoops-net', label: 'NCAA NET', when: 'Daily 11:30, from mid-November' },
+            { name: 'hoops-ap', label: 'AP poll', when: 'Daily 12:45' },
             { name: 'hoops-styles', label: 'Style tags', when: 'Daily 07:00' },
             { name: 'hoops-turnover', label: 'Portal + recruits', when: 'Daily 07:10, preseason' }
         ]

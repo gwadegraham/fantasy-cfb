@@ -222,6 +222,21 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The basketball AP poll: display only, beside team names. ONE billable
+        // call a day; the branches that matter are the dropped rows (receiving
+        // votes, other polls) and which poll is in force on a given night.
+        "./modules/hoops-ap.js": {
+            statements: 95,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
+        "./modules/hoops-ap-job.js": {
+            statements: 100,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-media-job.js": {
             statements: 100,
             branches: 80,

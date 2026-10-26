@@ -73,12 +73,24 @@
             + '<th>T</th></tr>' + row(d.away, b.away) + row(d.home, b.home) + '</table>';
     }
 
+    // A side's Q chip. The numbers beside the names are the AP poll; the
+    // quadrant is graded on the OPPONENT's rank in a different list (T-Rank,
+    // then the NET), which the chip carries — hover, or a tap on a phone — so
+    // a Q1 against an unranked name explains itself.
+    function qChip(d, t) {
+        var opp = t === d.home ? d.away : d.home;
+        var qr = opp && opp.quadrantRank;
+        var tip = qr ? kit.qtipAttrs('Q' + t.quadrant + ' · graded vs #' + qr,
+            'Q' + t.quadrant + ': opponent ranked #' + qr + ' (T-Rank, then NET), adjusted for venue') : '';
+        return '<span class="hg-q' + (t.quadrant === 1 ? ' q1' : '') + '"' + tip + '>Q' + t.quadrant + '</span>';
+    }
+
     // Each side's own read of the game: the quadrant it was worth to THAT
     // team (Q1 for one side can be Q3 for the other) and who banked what.
     function fantasy(d) {
         var vals = d.quadrantValues;
         var card = function (t, won) {
-            var q = t.quadrant ? '<span class="hg-q' + (t.quadrant === 1 ? ' q1' : '') + '">Q' + t.quadrant + '</span>'
+            var q = t.quadrant ? qChip(d, t)
                 : '<span class="hg-q post">' + esc(d.game.tournament || 'Post') + '</span>';
             var head = d.game.final
                 ? q + (won ? 'win' : 'loss') + ' for <b>' + esc(t.school) + '</b>'
@@ -252,7 +264,7 @@
         var line = function (t, winP) {
             var v = t.quadrant ? vals[t.quadrant] : null;
             var owner = t.owner ? esc(t.owner.franchiseName || t.owner.firstName || 'A manager') : null;
-            var q = t.quadrant ? '<span class="hg-q' + (t.quadrant === 1 ? ' q1' : '') + '">Q' + t.quadrant + '</span>'
+            var q = t.quadrant ? qChip(d, t)
                 : '<span class="hg-q post">' + esc(d.game.tournament || 'Post') + '</span>';
             if (!owner) return '<div class="hg-st-row">' + q + '<span class="who"><b>' + esc(t.school) + '</b> · not on a roster</span></div>';
             // A win that pays nothing (Q4) says so, rather than "+0, expected +0".
