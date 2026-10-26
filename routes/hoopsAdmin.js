@@ -74,7 +74,7 @@ const { windowsFor } = cbbd;
 // do this page's tasks (the same refresh as POST /hoops/games/refresh, three
 // days back nightly and four weeks ahead each morning); the rest are shown because "did last night's run work?" is the
 // question an admin opens this page with.
-const HOOPS_JOBS = ['hoops-scores', 'hoops-live', 'hoops-stats', 'hoops-schedule', 'hoops-media', 'hoops-ratings', 'hoops-net', 'hoops-styles', 'hoops-turnover'];
+const HOOPS_JOBS = ['hoops-scores', 'hoops-live', 'hoops-stats', 'hoops-schedule', 'hoops-media', 'hoops-ratings', 'hoops-net', 'hoops-torvik', 'hoops-styles', 'hoops-turnover'];
 
 // What is on file for the season, per task, plus the latest scheduled run of
 // each basketball job. Free: Mongo reads only, never a CBBD call — this runs

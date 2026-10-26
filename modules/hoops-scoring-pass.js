@@ -252,6 +252,7 @@ async function scoreHoopsWeekNow(league, { season, week, apply = true } = {}) {
         league, season: yr, week: wk,
         source: ranked.source,
         staleWeek: ranked.staleWeek,
+        torvikWeek: ranked.torvikWeek,
         managers: results.length,
         games: final.length,
         skipped: games.length - final.length,

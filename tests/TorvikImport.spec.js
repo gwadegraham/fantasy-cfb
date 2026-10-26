@@ -92,6 +92,13 @@ describe('parseTorvikJson', () => {
             .toThrow(/Arizona is 1-0.*in-season/);
     });
 
+    test('the in-season job reads a ranking WITH results, which the preseason import refuses', () => {
+        // modules/hoops-torvik-job.js wants exactly the file the import
+        // turns away: Torvik's current rank once games are played.
+        const rows = torvik.parseTorvikJson([jsonRow(1, 'Duke', 'ACC', { rec: '3-0' }), jsonRow(2, 'Arizona', 'B12', { rec: '2-1' })], { inSeason: true });
+        expect(rows.map(r => [r.rank, r.school])).toEqual([[1, 'Duke'], [2, 'Arizona']]);
+    });
+
     test('a non-list is refused, and a non-array row becomes a malformed row', () => {
         expect(() => torvik.parseTorvikJson({ a: 1 })).toThrow(/not a list/);
         const rows = torvik.parseTorvikJson([7]);
@@ -149,6 +156,13 @@ describe('fetchFromTorvik', () => {
         const fetchImpl = reply(200, JSON.stringify([jsonRow(1, 'Duke', 'ACC')]));
         const out = await torvik.fetchFromTorvik(SEASON, { fetchImpl });
         expect(fetchImpl.mock.calls[0][0]).toBe('https://barttorvik.com/2027_team_results.json');
+        expect(out.rows[0].school).toBe('Duke');
+    });
+
+    test('an in-season fetch passes the option through to the parser', async () => {
+        const body = JSON.stringify([jsonRow(1, 'Duke', 'ACC', { rec: '4-0' })]);
+        await expect(torvik.fetchFromTorvik(SEASON, { fetchImpl: reply(200, body) })).rejects.toThrow(/in-season/);
+        const out = await torvik.fetchFromTorvik(SEASON, { fetchImpl: reply(200, body), inSeason: true });
         expect(out.rows[0].school).toBe('Duke');
     });
 

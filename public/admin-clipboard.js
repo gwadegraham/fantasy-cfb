@@ -89,6 +89,7 @@
             { name: 'hoops-stats', label: 'Stats + box scores', when: 'Daily 05:00' },
             { name: 'hoops-media', label: 'TV listings', when: 'Mondays 06:00' },
             { name: 'hoops-ratings', label: 'Ratings', when: 'Daily 06:15 + 22:15' },
+            { name: 'hoops-torvik', label: 'Torvik T-Rank', when: 'Daily 06:20 + 22:20' },
             { name: 'hoops-schedule', label: 'Schedule, 4 weeks ahead', when: 'Daily 06:40' },
             { name: 'hoops-net', label: 'NCAA NET', when: 'Daily 11:30, from mid-November' },
             { name: 'hoops-styles', label: 'Style tags', when: 'Daily 07:00' },

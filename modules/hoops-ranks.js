@@ -4,7 +4,9 @@
 // model rests on this one question — and the answer changes source partway
 // through the season:
 //
-//   preseason, early weeks   Torvik's T-Rank, already in prod for 365 teams
+//   preseason, early weeks   Torvik's T-Rank: his CURRENT rank going into
+//                            the week (modules/hoops-torvik-job.js), else
+//                            the preseason import
 //   once games accumulate    CBBD /ratings/adjusted net-efficiency rank
 //   in between               blended, so the standings do not lurch the week
 //                            the source changes
@@ -22,6 +24,17 @@
 // the number on ncaa.com. A later week the NET job missed uses the latest
 // earlier NET week rather than dropping back to CBBD: one source switch a
 // season, not one per missed fetch.
+//
+// ---- which Torvik ----
+//
+// Torvik's rank moves through the season — it starts from his preseason
+// projection and gives way to results as they come in — so the Torvik side
+// of everything below is his rank as it stood going into the week:
+// HoopsTorvikRank, frozen at the week's first tip. The preseason import on
+// hoopsTeam is the fallback for a week no snapshot reaches (the job had not
+// run yet, or barttorvik walled it), and it is still what the draft and the
+// coverage floors are measured on. Graham decided (26 Oct 2026) that Torvik
+// stays current for as long as it is in the blend.
 //
 // ---- why blend at all ----
 //
@@ -42,6 +55,7 @@
 
 const HoopsRating = require('../models/hoopsRating');
 const HoopsNetRank = require('../models/hoopsNetRank');
+const HoopsTorvikRank = require('../models/hoopsTorvikRank');
 const HoopsTeam = require('../models/hoopsTeam');
 
 // Weeks over which the live number takes over from the preseason one.
@@ -219,6 +233,32 @@ function netWeeks(season, week) {
     ]);
 }
 
+// Torvik's ranking going into a week: the newest WHOLE snapshot at or
+// before it, as { ranks, week }, or null to fall back to the preseason
+// import. A thin week (a run that matched part of the field) is passed over
+// for the whole one before it, as a thin NET week is.
+//
+// `weeks` is torvikWeeks()'s answer when the caller already has it in flight.
+async function torvikRanks(season, week, preCount, weeks) {
+    const yr = Number(season);
+    const wk = Number(week);
+    if (!Number.isFinite(yr) || !Number.isFinite(wk)) return null;
+    const floor = preCount > 0 ? preCount * MIN_LIVE_COVERAGE : 1;
+    const whole = (await (weeks || torvikWeeks(yr, wk))).find(w => w.n >= floor);
+    if (!whole) return null;
+    const rows = await HoopsTorvikRank.find({ season: yr, week: whole._id }, { teamId: 1, rank: 1, _id: 0 }).lean();
+    return { ranks: byTeam(rows), week: whole._id };
+}
+
+// Row counts of every Torvik week at or before `week`, newest first.
+function torvikWeeks(season, week) {
+    return HoopsTorvikRank.aggregate([
+        { $match: { season: Number(season), week: { $lte: Number(week) } } },
+        { $group: { _id: '$week', n: { $sum: 1 } } },
+        { $sort: { _id: -1 } }
+    ]);
+}
+
 function byTeam(rows) {
     const out = {};
     for (const r of rows) out[String(r.teamId)] = r.rank;
@@ -236,15 +276,24 @@ async function ranksFor(season, week) {
     // and this runs on every rank-cache miss and every scoring pass. The
     // CBBD week is fetched even when the NET wins — a wasted read is
     // cheaper than a second round.
-    const [pre, weeks, live] = await Promise.all([
+    const [preseason, weeks, live, tWeeks] = await Promise.all([
         preseasonRanks(season),
         netWeeks(season, week),
-        liveRanks(season, week)
+        liveRanks(season, week),
+        torvikWeeks(season, week)
     ]);
-    const preCount = Object.keys(pre).length;
+    const preCount = Object.keys(preseason).length;
+
+    const [net, current] = await Promise.all([
+        netRanks(season, week, preCount, weeks),
+        torvikRanks(season, week, preCount, tWeeks)
+    ]);
+    // The Torvik side of everything below: his rank going into this week,
+    // else the preseason import.
+    const pre = current ? current.ranks : preseason;
+    const torvikWeek = current ? current.week : null;
 
     // The NET, once it has published, outranks everything below.
-    const net = await netRanks(season, week, preCount, weeks);
     if (net) {
         // A team the NET does not rank — a school reclassifying into D-I, or
         // one NCAA leaves off — keeps the rank the sources below give it:
@@ -252,7 +301,7 @@ async function ranksFor(season, week) {
         // unranked, and every win over it a silent Q4.
         const ranks = Object.assign({}, pre, live.ranks, net.ranks);
         return {
-            ranks, source: 'ncaa-net', blendWeight: 0, staleWeek: net.stale ? net.week : null,
+            ranks, source: 'ncaa-net', blendWeight: 0, staleWeek: net.stale ? net.week : null, torvikWeek,
             notOnNet: Object.keys(ranks).length - Object.keys(net.ranks).length
         };
     }
@@ -265,24 +314,26 @@ async function ranksFor(season, week) {
         console.error(`hoops-ranks: ignoring week ${live.week} — only ${liveCount} of ${preCount} teams rated`);
     }
 
-    const havePre = preCount > 0;
+    const havePre = Object.keys(pre).length > 0;
     const haveLive = liveCount > 0 && !thin;
-    if (!haveLive) return { ranks: pre, source: 'torvik', blendWeight: 1, staleWeek: null, partialWeek: thin ? live.week : null };
-    if (!havePre) return { ranks: live.ranks, source: 'cbbd-adjusted', blendWeight: 0, staleWeek: live.stale ? live.week : null };
+    if (!haveLive) return { ranks: pre, source: 'torvik', blendWeight: 1, staleWeek: null, torvikWeek, partialWeek: thin ? live.week : null };
+    if (!havePre) return { ranks: live.ranks, source: 'cbbd-adjusted', blendWeight: 0, staleWeek: live.stale ? live.week : null, torvikWeek };
 
     const w = blendWeight(week);
-    if (w >= 1) return { ranks: pre, source: 'torvik', blendWeight: 1, staleWeek: null };
-    if (w <= 0) return { ranks: live.ranks, source: 'cbbd-adjusted', blendWeight: 0, staleWeek: live.stale ? live.week : null };
+    if (w >= 1) return { ranks: pre, source: 'torvik', blendWeight: 1, staleWeek: null, torvikWeek };
+    if (w <= 0) return { ranks: live.ranks, source: 'cbbd-adjusted', blendWeight: 0, staleWeek: live.stale ? live.week : null, torvikWeek };
     return {
         ranks: blendRanks(pre, live.ranks, w),
         source: 'blended',
         blendWeight: w,
-        staleWeek: live.stale ? live.week : null
+        staleWeek: live.stale ? live.week : null,
+        torvikWeek
     };
 }
 
 module.exports = {
     ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, netRanks, netWeeks, latestNetWeek, rankOf,
+    torvikRanks, torvikWeeks,
     _resetThinLog: () => thinLogged.clear(), MIN_LIVE_COVERAGE,
     FULLY_PRESEASON, FULLY_LIVE
 };

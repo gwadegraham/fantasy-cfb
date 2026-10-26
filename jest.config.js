@@ -250,6 +250,17 @@ module.exports = {
         // job's branches are the same kind — each decides whether a lost
         // day is loud. The parser and matcher decide whether a team is
         // ranked at all, and an unranked team grades as Q4.
+        // Torvik's weekly T-Rank (the Torvik side of the blend). Same kind of
+        // job as the two above: every branch decides whether a week is filed
+        // under the right number, or whether a lost pull is loud.
+        "./modules/hoops-torvik-job.js": {
+            statements: 100,
+            // The rest is run()'s defaults and the non-Error throw guards it
+            // shares with the ratings job.
+            branches: 85,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-net-job.js": {
             statements: 100,
             branches: 95,

@@ -519,7 +519,7 @@ describe('the Automated jobs list: the same on both sports', () => {
         expect(document.querySelector('[admin-jobs-list]').innerHTML).toBe(before);
     });
 
-    test('basketball lists its 9 jobs in the same markup', async () => {
+    test('basketball lists its 10 jobs in the same markup', async () => {
         document.body.innerHTML = `<section admin-clipboard hidden></section>
             <section admin-jobs><h3><span admin-jobs-count></span></h3><ul admin-jobs-list></ul></section>`;
         calls = [];
@@ -530,7 +530,7 @@ describe('the Automated jobs list: the same on both sports', () => {
         window.ADMIN_IS_ADMIN = true; window.ADMIN_SPORT = 'basketball'; window.APP_YEAR = '2027';
         window.ccManageLeagueCode = () => 'hoops-league';
         (0, eval)(MODEL); (0, eval)(VIEW); await flush();
-        expect(jobRows()).toHaveLength(9);
+        expect(jobRows()).toHaveLength(10);
         // Same markup; the one that ran (NCAA NET) lists ahead of never-run ones.
         expect(jobRows()[0].textContent).toContain('NCAA NET');
         expect(document.querySelector('[admin-jobs-count]').textContent).toBe('All clear');

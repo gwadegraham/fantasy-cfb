@@ -65,6 +65,12 @@ const JOB_SCHEDULES = [
     // a week's ranks must be fixed before its first game, and nothing is
     // published in time to include Sunday.
     { job: 'hoops-net', modulePath: '../modules/hoops-net-job', rule: { hour: 11, minute: 30 } },
+    // Torvik's current T-Rank, the Torvik side of the quadrant blend: one GET
+    // of barttorvik.com's JSON a run, no CBBD calls. Each pull is filed under
+    // the week whose first tip is still ahead, so a week freezes at its first
+    // game. 06:20 Central picks up Torvik's overnight update; 22:20 is the
+    // retry, and lands Saturday night before a Sunday opener.
+    { job: 'hoops-torvik', modulePath: '../modules/hoops-torvik-job', rule: { hour: [6, 22], minute: 20 } },
     // Basketball style tags for the draft pool and team page (#542). At most
     // 1 CBBD call a day, 0 before tip-off once last season's tags are stored
     // and 0 after the final. 07:00 Central, after hoops-stats, so last

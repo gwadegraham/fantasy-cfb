@@ -12,11 +12,12 @@
 
 const { useMongo } = require('./helpers/mongo');
 const {
-    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, netRanks, _resetThinLog,
+    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, netRanks, torvikRanks, _resetThinLog,
     FULLY_PRESEASON, FULLY_LIVE
 } = require('../modules/hoops-ranks');
 const HoopsRating = require('../models/hoopsRating');
 const HoopsNetRank = require('../models/hoopsNetRank');
+const HoopsTorvikRank = require('../models/hoopsTorvikRank');
 const { latestNetWeek } = require('../modules/hoops-ranks');
 const HoopsTeam = require('../models/hoopsTeam');
 
@@ -359,7 +360,7 @@ describe('the official NET takes over once it publishes (#533)', () => {
         await HoopsRating.create([1, 2, 3, 4, 5].map(id => rating(id, mid, id)));
         await netWeek(mid, [5, 4, 3, 2, 1]);
         expect(await ranksFor(SEASON, mid)).toEqual({
-            ranks: { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 }, source: 'ncaa-net', blendWeight: 0, staleWeek: null, notOnNet: 0
+            ranks: { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 }, source: 'ncaa-net', blendWeight: 0, staleWeek: null, torvikWeek: null, notOnNet: 0
         });
     });
 
@@ -481,6 +482,99 @@ describe('the official NET takes over once it publishes (#533)', () => {
         expect(await netRanks(SEASON, 4, 0)).toEqual({ ranks: { 7: 1 }, week: 3, stale: true });
     });
 
+});
+
+describe('Torvik stays current: the weekly snapshot is the Torvik side', () => {
+    useMongo();
+
+    // Preseason 1..5 best-first; snapshots reorder it so a test can tell
+    // which ranking was read.
+    const team = (id, rank) => ({ id, season: SEASON, school: `T${id}`, preseason: { rank } });
+    const field = () => HoopsTeam.create([1, 2, 3, 4, 5].map(id => team(id, id)));
+    const torvikWeek = (week, ranks, season = SEASON) =>
+        HoopsTorvikRank.create(ranks.map((r, i) => ({ season, week, teamId: i + 1, rank: r })));
+    const REVERSED = [5, 4, 3, 2, 1];
+
+    test('week 1 is graded on the snapshot filed for it, not the preseason import', async () => {
+        await field();
+        await torvikWeek(1, REVERSED);
+        const out = await ranksFor(SEASON, 1);
+        expect(out).toMatchObject({ source: 'torvik', blendWeight: 1, torvikWeek: 1 });
+        expect(out.ranks).toEqual({ 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 });
+    });
+
+    test('with no snapshot at all, it is the preseason import, and says so', async () => {
+        await field();
+        const out = await ranksFor(SEASON, 1);
+        expect(out.torvikWeek).toBeNull();
+        expect(out.ranks).toEqual({ 1: 1, 2: 2, 3: 3, 4: 4, 5: 5 });
+    });
+
+    test('a week the job missed uses the latest EARLIER snapshot', async () => {
+        await field();
+        await torvikWeek(1, [1, 2, 3, 4, 5]);
+        await torvikWeek(2, REVERSED);
+        const out = await ranksFor(SEASON, 3);
+        expect(out.torvikWeek).toBe(2);
+        expect(out.ranks['5']).toBe(1);
+    });
+
+    test('a LATER snapshot is never read for an earlier week — that would be hindsight', async () => {
+        await field();
+        await torvikWeek(2, REVERSED);
+        const out = await ranksFor(SEASON, 1);
+        expect(out.torvikWeek).toBeNull();
+        expect(out.ranks['1']).toBe(1);
+    });
+
+    test('a thin snapshot is passed over for the whole one before it', async () => {
+        await field();
+        await torvikWeek(1, REVERSED);
+        await HoopsTorvikRank.create({ season: SEASON, week: 2, teamId: 1, rank: 1 });
+        const out = await ranksFor(SEASON, 2);
+        expect(out.torvikWeek).toBe(1);
+        expect(out.ranks['1']).toBe(5);
+    });
+
+    test('another season\'s snapshot is never read', async () => {
+        await field();
+        await torvikWeek(1, REVERSED, SEASON - 1);
+        expect((await ranksFor(SEASON, 1)).torvikWeek).toBeNull();
+    });
+
+    test('in the ramp, the snapshot is what blends with CBBD', async () => {
+        await field();
+        const mid = Math.floor((FULLY_PRESEASON + FULLY_LIVE) / 2);
+        await torvikWeek(mid, REVERSED);
+        await HoopsRating.create([1, 2, 3, 4, 5].map(id => ({ season: SEASON, week: mid, teamId: id, rank: 6 - id, source: 'cbbd-adjusted' })));
+        // Both sources agree on the reversed order, so the blend must too;
+        // blended against the preseason import it would come out mixed.
+        const out = await ranksFor(SEASON, mid);
+        expect(out).toMatchObject({ source: 'blended', torvikWeek: mid });
+        expect(out.ranks).toEqual({ 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 });
+    });
+
+    test('a team the NET leaves out falls back to the snapshot, not the preseason import', async () => {
+        await field();
+        await torvikWeek(9, REVERSED);
+        await HoopsNetRank.create([1, 2, 3, 4].map(id => ({ season: SEASON, week: 9, teamId: id, rank: id })));
+        const out = await ranksFor(SEASON, 9);
+        expect(out.source).toBe('ncaa-net');
+        expect(out.ranks['5']).toBe(1);
+    });
+
+    test('the draft\'s preseason ranks are still the import', async () => {
+        await field();
+        await torvikWeek(1, REVERSED);
+        expect(await preseasonRanks(SEASON)).toEqual({ 1: 1, 2: 2, 3: 3, 4: 4, 5: 5 });
+    });
+
+    test('torvikRanks: null for an unreadable season or week; fetches its own weeks when not handed them', async () => {
+        await torvikWeek(1, REVERSED);
+        expect(await torvikRanks('x', 1, 5)).toBeNull();
+        expect(await torvikRanks(SEASON, 'x', 5)).toBeNull();
+        expect(await torvikRanks(SEASON, 1, 0)).toEqual({ ranks: { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 }, week: 1 });
+    });
 });
 
 describe('the ranking feeds quadrants end to end', () => {

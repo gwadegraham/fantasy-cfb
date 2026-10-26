@@ -6,7 +6,7 @@ const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, HOOPS_LIVE_POLL_SCHEDULE, livePollEna
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-net', 'hoops-ratings', 'hoops-schedule', 'hoops-scores', 'hoops-stats', 'hoops-styles', 'hoops-turnover',
+        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-net', 'hoops-ratings', 'hoops-schedule', 'hoops-scores', 'hoops-stats', 'hoops-styles', 'hoops-torvik', 'hoops-turnover',
             'player-season-leaders', 'recap-notice', 'saturday-scores', 'season-stats', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
     });
@@ -98,6 +98,16 @@ describe('scheduler config', () => {
         const sunday = rule.nextInvocationDate(new Date('2026-11-08T12:00:00Z'));
         expect(sunday.toISOString()).toBe('2026-11-08T17:30:00.000Z');
         expect(easternDay(sunday).getUTCDay()).toBe(0);
+    });
+
+    // Torvik's current T-Rank: a morning run after his overnight update,
+    // and an evening retry that lands Saturday night — before a Sunday
+    // opener freezes week 1.
+    it('pulls Torvik twice a day, the evening run on Saturday night before a Sunday opener', () => {
+        const spec = JOB_SCHEDULES.find(s => s.job === 'hoops-torvik');
+        expect(spec.rule).toEqual({ hour: [6, 22], minute: 20 });
+        const saturday = toRule(spec.rule).nextInvocationDate(new Date('2026-10-31T20:00:00Z'));
+        expect(saturday.toISOString()).toBe('2026-11-01T03:20:00.000Z');
     });
 
     // Style tags (#542): one leaderboard call a day at most, after the
