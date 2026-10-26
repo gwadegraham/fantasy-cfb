@@ -267,3 +267,51 @@ describe('make-pick enforces the cap, for basketball', () => {
         expect(res.ok).toBe(false);
     });
 });
+
+// The last pick freezes a basketball draft's grades (modules/hoops-grade-freeze).
+// Through the real handler: the freeze is only worth anything if the socket
+// actually calls it, and only at the end — a freeze after pick 1 would pin
+// a grade for rosters that do not exist yet.
+describe('the last pick freezes the grades', () => {
+    const hoopsGradeFreeze = require('../modules/hoops-grade-freeze');
+
+    // Polled, not slept: the freeze runs after draft-complete is broadcast.
+    async function settled(spy) {
+        for (let i = 0; i < 40 && !spy.mock.calls.length; i++) await new Promise(r => setTimeout(r, 50));
+    }
+
+    test('a basketball draft freezes once, at the final pick', async () => {
+        const spy = jest.spyOn(hoopsGradeFreeze, 'freezeHoopsGrades').mockResolvedValue({ status: 200, body: {} });
+        await HoopsTeam.create([hoops(1, 'Best', 1), hoops(2, 'Next', 2)]);
+        await Draft.create({ league: HOOPS, season: HOOPS_SEASON, status: 'active', poolSize: 2,
+            draftOrder: [ANN, BOB], totalRounds: 1, snake: true, currentOverall: 1 });
+
+        const ann = await joinedClient(ANN, HOOPS, HOOPS_SEASON);
+        expect((await pick(ann, { league: HOOPS, season: HOOPS_SEASON, team: { id: 1 } })).ok).toBe(true);
+        ann.close();
+        await new Promise(r => setTimeout(r, 200));
+        expect(spy).not.toHaveBeenCalled();
+
+        const bob = await joinedClient(BOB, HOOPS, HOOPS_SEASON);
+        expect((await pick(bob, { league: HOOPS, season: HOOPS_SEASON, team: { id: 2 } })).ok).toBe(true);
+        await settled(spy);
+        bob.close();
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy).toHaveBeenCalledWith({ league: HOOPS, season: HOOPS_SEASON });
+    });
+
+    test('a football draft is left alone', async () => {
+        const spy = jest.spyOn(hoopsGradeFreeze, 'freezeHoopsGrades');
+        await Team.create([fbs(1, 'Alabama'), fbs(2, 'Auburn')]);
+        await activeDraft({ totalRounds: 1 });
+        const ann = await joinedClient(ANN, LEAGUE, SEASON);
+        expect((await pick(ann, { league: LEAGUE, season: SEASON, team: { id: 1 } })).ok).toBe(true);
+        ann.close();
+        const bob = await joinedClient(BOB, LEAGUE, SEASON);
+        expect((await pick(bob, { league: LEAGUE, season: SEASON, team: { id: 2 } })).ok).toBe(true);
+        await new Promise(r => setTimeout(r, 300));
+        bob.close();
+        expect((await Draft.findOne({ league: LEAGUE }).lean()).status).toBe('complete');
+        expect(spy).not.toHaveBeenCalled();
+    });
+});

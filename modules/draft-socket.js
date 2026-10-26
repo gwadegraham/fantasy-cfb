@@ -1,5 +1,6 @@
 const Draft = require('../models/draft');
 const draftPool = require('./draft-pool');
+const hoopsGradeFreeze = require('./hoops-grade-freeze');
 const { rosterEntryFor } = require('./roster-teams');
 const { sportForLeague, commissionersOf } = require('./active-season');
 const engine = require('./draft-engine');
@@ -109,6 +110,29 @@ async function persistTeamsToUsers(draft) {
         console.error(`draft ${draft.league}/${draft.season}: ${failed.length} roster(s) FAILED to persist — ${failed.join(' | ')}`);
     }
     return { failed };
+}
+
+// A basketball draft freezes its grade input the moment it completes, so the
+// letter every manager sees on draft night is the one they keep all season.
+// Football's grades are frozen against SP+ history by the commissioner route
+// and are left alone.
+//
+// After draft-complete, not before: the room should not wait on a projection
+// of every pool team. Never thrown — the draft is over either way — and a
+// refusal (a flagged schedule, a half-finished import) leaves the grades live,
+// which heal as the schedule fills in; the log says why and how to override.
+async function autoFreezeGrades(draft) {
+    if (sportForLeague(draft.league) !== 'basketball') return null;
+    try {
+        const out = await hoopsGradeFreeze.freezeHoopsGrades({ league: draft.league, season: draft.season });
+        if (out.status !== 200) {
+            console.error(`draft ${draft.league}/${draft.season}: grades NOT frozen automatically — ${out.body.message}`);
+        }
+        return out;
+    } catch (err) {
+        console.error(`draft ${draft.league}/${draft.season}: grade freeze threw — ${err.message}`);
+        return null;
+    }
 }
 
 module.exports = function registerDraftSockets(io) {
@@ -258,6 +282,7 @@ module.exports = function registerDraftSockets(io) {
                 if (finalDraft.status === 'complete') {
                     await persistTeamsToUsers(finalDraft);
                     io.to(roomKey(league, season)).emit('draft-complete', publicState(finalDraft));
+                    await autoFreezeGrades(finalDraft);
                 }
             } catch (err) {
                 socket.emit('draft-error', { message: err.message });
@@ -273,6 +298,7 @@ module.exports.publicState = publicState;
 // the whole suite green — the same gap as the pool gate in #476, in this same
 // file, one PR later.
 module.exports.persistTeamsToUsers = persistTeamsToUsers;
+module.exports.autoFreezeGrades = autoFreezeGrades;
 // Exported for its own test: the commissioner list (#600) is the one rule here
 // that is not on the token, so nothing else would notice it stop working.
 module.exports.isCommissionerOf = isCommissionerOf;
