@@ -102,12 +102,16 @@ function problemsWith(rows) {
 //
 // Not trusted beyond that: the caller still runs problemsWith(), whose
 // column-swap and reversed-sort checks are exactly what a moved index trips.
-function parseTorvikJson(data) {
+//
+// `inSeason` is the weekly snapshot job (modules/hoops-torvik-job.js), the
+// one reader that WANTS a ranking with results in it. Checked against
+// 2026_team_results.json after that season: same indexes, [3] the record.
+function parseTorvikJson(data, { inSeason = false } = {}) {
     if (!Array.isArray(data)) throw new Error('the JSON is not a list of teams');
     // Once games are played this same file holds IN-SEASON ratings. They are
     // not preseason ones, and stamping them as preseason would quietly rank
     // the draft (and seed quadrant scoring) on a week of results.
-    const played = data.filter(r => Array.isArray(r) && r[3] && r[3] !== '0-0');
+    const played = inSeason ? [] : data.filter(r => Array.isArray(r) && r[3] && r[3] !== '0-0');
     if (played.length) {
         throw new Error(`${played.length} team(s) already have a record (${played[0][1]} is ${played[0][3]}) — these are in-season ratings, not preseason`);
     }
@@ -162,7 +166,7 @@ function parsePaste(text) {
 
 // The server fetches the JSON itself. The fetcher is injectable so a test
 // never touches the network.
-async function fetchFromTorvik(season, { fetchImpl = global.fetch, timeoutMs = 15000 } = {}) {
+async function fetchFromTorvik(season, { fetchImpl = global.fetch, timeoutMs = 15000, inSeason = false } = {}) {
     const url = jsonUrlFor(season);
     let res;
     try {
@@ -174,7 +178,7 @@ async function fetchFromTorvik(season, { fetchImpl = global.fetch, timeoutMs = 1
     if (!res.ok) throw new Error(`${url} answered ${res.status} — paste it instead`);
     // The wall barttorvik puts in front of its pages answers 200 with HTML.
     if (!/^\s*\[/.test(body)) throw new Error(`${url} answered with a web page, not data (it may be blocking servers now) — open it in a browser and paste it instead`);
-    return { rows: parseTorvikJson(JSON.parse(body)), url };
+    return { rows: parseTorvikJson(JSON.parse(body), { inSeason }), url };
 }
 
 // True once ANY basketball league has banked points in `season`. After that a
@@ -236,7 +240,7 @@ async function check(season, ratings) {
         return out;
     }
 
-    const teams = await HoopsTeam.find({ season }, { school: 1, conference: 1 }).lean();
+    const teams = await HoopsTeam.find({ season }, { id: 1, school: 1, conference: 1 }).lean();
     out.teams = teams.length;
     if (!teams.length) {
         out.problems.push(`no hoopsteams rows for season ${season} — run the teams ingest first`);
