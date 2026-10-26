@@ -21,6 +21,8 @@ const League = require('../models/league');
 const SportSeason = require('../models/sportSeason');
 const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
+const HoopsApRank = require('../models/hoopsApRank');
+const hoopsAp = require('../modules/hoops-ap');
 const Game = require('../models/game');
 const AuditLog = require('../models/auditLog');
 const seasons = require('../modules/active-season');
@@ -72,7 +74,16 @@ beforeEach(async () => {
     await HoopsTeam.create([
         { id: 1, season: SEASON, school: 'Hoops One' },
         { id: 2, season: SEASON, school: 'Hoops Two' },
-        { id: 90, season: SEASON, school: 'Opponent', abbreviation: 'OPP', preseason: { rank: 10 } }
+        { id: 90, season: SEASON, school: 'Opponent', abbreviation: 'OPP', preseason: { rank: 3 } }
+    ]);
+    // The picker shows the AP rank, never the T-Rank (3, above) that grades
+    // quadrants. The week reads the poll in force at its FIRST tip: the
+    // second poll (dated between the week's first game and its Thursday
+    // one) must not be used, or the picker would show #1, not #10.
+    hoopsAp.clearCache();
+    await HoopsApRank.create([
+        { season: SEASON, seasonType: 'regular', week: 1, pollDate: new Date('2099-10-19T00:00:00Z'), teamId: 90, rank: 10 },
+        { season: SEASON, seasonType: 'regular', week: 2, pollDate: new Date('2099-11-05T00:00:00Z'), teamId: 90, rank: 1 }
     ]);
     await HoopsGame.create([
         hg(1, 1, TUE_TBD, { startTimeTbd: true }),

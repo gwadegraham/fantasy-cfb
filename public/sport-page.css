@@ -173,3 +173,13 @@
 .sp-stake .v { color: var(--cc-accent); font-weight: 800; text-align: right; font-size: 15px; font-variant-numeric: tabular-nums; }
 .sp-stake .v.zero { color: var(--cc-muted-2); font-weight: 600; font-size: 13px; }
 .sp-stake .v small { display: block; font-size: 10px; font-weight: 500; color: var(--cc-muted-2); }
+
+/* ---- tap-to-show tips (qtipAttrs in sport-page.js) ----------------------- */
+/* Phones have no hover, so a chip with a tip shows it in this bubble on a
+   tap. Fixed to the viewport: card rows clip with overflow:hidden. */
+[data-qtip] { cursor: pointer; }
+[data-qtip]:focus-visible { outline: 2px solid var(--cc-interactive); outline-offset: 2px; }
+.sp-qtip { position: fixed; z-index: 1050; max-width: min(280px, calc(100vw - 16px)); box-sizing: border-box;
+    padding: 6px 10px; border-radius: 6px; background: var(--cc-surface-3); color: var(--cc-text);
+    border: 1px solid var(--cc-border-2); box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+    font: 600 12px/1.35 Poppins, sans-serif; pointer-events: none; }

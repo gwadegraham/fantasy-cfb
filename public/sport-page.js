@@ -14,6 +14,7 @@
 //   window.ccSportPage.countUp(root)                    [data-countup] numbers tick up (not if reduced motion)
 //   window.ccSportPage.vsRow / vsHead                   a stat-comparison row (.sp-vs), two-colour bars
 //   window.ccSportPage.syncStickyTop()                  re-measure the navbar offset
+//   window.ccSportPage.qtipAttrs(text, title)           make a chip tap to show `text` (phones have no hover)
 //
 // It also pins the sticky tabs under the navbar (--sp-sticky-top), measured.
 // Works in the browser and under Node (module.exports) for tests.
@@ -254,6 +255,59 @@
         });
     }
 
+    // ---- tap-to-show tips ----------------------------------------------------
+
+    // A `title` tooltip never shows on a phone. A chip carrying qtipAttrs()
+    // shows its text in one bubble when tapped (or Enter/Space), and the
+    // bubble closes on a second tap, a tap elsewhere, Escape or a scroll. The
+    // bubble is fixed to the viewport so a row's overflow cannot clip it, and
+    // a tap inside a link (the team page's Next up card) does not follow it.
+    function qtipAttrs(text, title) {
+        return ' data-qtip="' + esc(text) + '" role="button" tabindex="0" aria-expanded="false"'
+            + (title ? ' title="' + esc(title) + '"' : '');
+    }
+    var bubble = null, openChip = null;
+    function closeTip() {
+        if (openChip) openChip.setAttribute('aria-expanded', 'false');
+        openChip = null;
+        if (bubble) bubble.hidden = true;
+    }
+    function openTip(chip) {
+        var doc = global.document;
+        // A page that rewrites its body drops the bubble; make a new one.
+        if (!bubble || !bubble.isConnected) {
+            bubble = doc.createElement('div');
+            bubble.className = 'sp-qtip';
+            bubble.id = 'sp-qtip';
+            bubble.setAttribute('role', 'tooltip');
+            doc.body.appendChild(bubble);
+        }
+        closeTip();
+        bubble.textContent = chip.getAttribute('data-qtip');
+        bubble.hidden = false;
+        openChip = chip;
+        chip.setAttribute('aria-expanded', 'true');
+        chip.setAttribute('aria-describedby', 'sp-qtip');
+        var r = chip.getBoundingClientRect(), b = bubble.getBoundingClientRect();
+        var vw = doc.documentElement.clientWidth || global.innerWidth || 0;
+        var left = Math.max(8, Math.min(r.left + r.width / 2 - b.width / 2, vw - b.width - 8));
+        var top = r.top - b.height - 8;
+        if (top < 8) top = r.bottom + 8;
+        bubble.style.left = left + 'px';
+        bubble.style.top = top + 'px';
+    }
+    function onTipEvent(e) {
+        var chip = e.target && e.target.closest ? e.target.closest('[data-qtip]') : null;
+        if (e.type === 'keydown') {
+            if (e.key === 'Escape') { closeTip(); return; }
+            if (!chip || (e.key !== 'Enter' && e.key !== ' ')) return;
+        }
+        if (!chip) { closeTip(); return; }
+        e.preventDefault();
+        e.stopPropagation();
+        if (openChip === chip) closeTip(); else openTip(chip);
+    }
+
     var api = { esc: esc, fixed: fixed, pct: pct, record: record, shortName: shortName, shortNames: shortNames,
         dayOf: dayOf, countdown: countdown, tabs: tabs, overflows: overflows, fitNames: fitNames, load: load,
         syncStickyTop: syncStickyTop, readable: readable, matchColors: matchColors, countUp: countUp };
@@ -261,12 +315,21 @@
     api.numbered = numbered;
     api.vsRow = vsRow;
     api.vsHead = vsHead;
+    api.qtipAttrs = qtipAttrs;
 
     if (global.document) {
         syncStickyTop();
         global.addEventListener('resize', syncStickyTop);
         var fonts = global.document.fonts;
         if (fonts && fonts.ready && fonts.ready.then) fonts.ready.then(syncStickyTop).catch(function () {});
+        // Installed once: the kit can be evaluated again (tests, a re-render).
+        if (!global.__ccQtip) {
+            global.__ccQtip = true;
+            global.document.addEventListener('click', onTipEvent);
+            global.document.addEventListener('keydown', onTipEvent);
+            global.addEventListener('scroll', closeTip, true);
+            global.addEventListener('resize', closeTip);
+        }
     }
     global.ccSportPage = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;

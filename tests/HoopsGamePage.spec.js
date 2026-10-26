@@ -378,14 +378,34 @@ describe('build', () => {
         expect(p.away.net).toMatchObject({ rank: 70 });
     });
 
+    // The number beside each name is the AP poll in force at tip-off, as
+    // football shows it — display only; the quadrant keeps its own rank.
+    test('a failed AP read costs the numbers, not the page', async () => {
+        jest.spyOn(require('../modules/hoops-ap'), 'cachedPolls').mockRejectedValue(new Error('db down'));
+        const p = await gamePage.build(500);
+        expect(p.home).toMatchObject({ school: 'Duke', rank: null, quadrantRank: 4, quadrant: 1 });
+    });
+
+    test('each side shows its AP rank at tip-off, not the rank its quadrant is graded on', async () => {
+        const HoopsApRank = require('../models/hoopsApRank');
+        const tip = new Date(GAME.startDate).getTime();
+        await HoopsApRank.create([
+            { season: SEASON, seasonType: 'regular', week: 1, pollDate: new Date(tip - 9 * 864e5), teamId: 1, rank: 8 },
+            { season: SEASON, seasonType: 'regular', week: 2, pollDate: new Date(tip + 864e5), teamId: 1, rank: 1 }
+        ]);
+        const p = await gamePage.build(500);
+        expect(p.home).toMatchObject({ school: 'Duke', rank: 8, quadrantRank: 4, quadrant: 1 });
+        expect(p.away).toMatchObject({ school: 'Texas', rank: null, quadrantRank: 37 });
+    });
+
     test('each side reads the game from its OWN point of view; the box is the stored one', async () => {
         const get = stubCbbd();
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
         const p = await gamePage.build(500);
         expect(get).not.toHaveBeenCalled();                  // the page never calls CBBD
         // Neutral site: Texas (#37) is Q1 for Duke; Duke (#4) is Q1 for Texas too.
-        expect(p.home).toMatchObject({ id: 1, school: 'Duke', abbreviation: 'DUKE', rank: 4, points: 75, quadrant: 1, hasPage: true });
-        expect(p.away).toMatchObject({ id: 2, school: 'Texas', rank: 37, points: 60, quadrant: 1 });
+        expect(p.home).toMatchObject({ id: 1, school: 'Duke', abbreviation: 'DUKE', quadrantRank: 4, rank: null, points: 75, quadrant: 1, hasPage: true });
+        expect(p.away).toMatchObject({ id: 2, school: 'Texas', quadrantRank: 37, rank: null, points: 60, quadrant: 1 });
         expect(p.game).toMatchObject({ final: true, neutralSite: true, notes: 'Dick Vitale Invitational', venue: 'Spectrum Center' });
         expect(p.box.home.points).toBe(75);
     });
@@ -425,7 +445,7 @@ describe('build', () => {
         await Franchise.create({ accountId: a._id, league: LEAGUE, seasons: [{ season: SEASON, franchiseName: 'Hoop Dreams',
             teamRefs: [{ id: 1, sport: 'basketball' }], weeklyScore: [{ week: 3, score: 1, scoreByTeam: [{ teamId: 1, gameId: 500, score: 1, quadrant: 3, oppRank: 120 }] }] }] });
         const p = await gamePage.build(500, { league: LEAGUE });
-        expect(p.away.rank).toBe(120);                                // Texas, as Duke was paid against it
+        expect(p.away.quadrantRank).toBe(120);                                // Texas, as Duke was paid against it
     });
 
     test('the viewer\'s own team is flagged — and no account id reaches the payload', async () => {

@@ -312,7 +312,7 @@
             + (o.rank ? '<span class="ht-rk">' + o.rank + '</span> ' : '')
             + (o.logo ? '<img class="sp-ologo" src="' + esc(o.logo) + '" alt="" onerror="this.remove()">' : '')
             + '<b>' + esc(o.school) + '</b></span>'
-            + (g.quadrant ? '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '">Q' + g.quadrant + '</span>'
+            + (g.quadrant ? qChip(g)
                 : '<span class="ht-qt post">' + esc(g.tournament || 'Post') + '</span>')
             + (pay ? '<span class="ht-next-pay">' + pay + '</span>' : '') + '</div>'
             + (g.notes ? '<div class="ht-next-note">' + esc(g.notes) + '</div>' : '') + '</a>';
@@ -359,6 +359,17 @@
         return o.hasPage === false ? '<span class="opp">' : '<a class="opp" href="' + teamHref(o.id) + '">';
     }
 
+    // The Q chip. The number beside the opponent's name is the AP poll; the
+    // quadrant is graded on a different rank (T-Rank, then the NET), so the
+    // chip carries that one — hover on a desktop, a tap on a phone — or a Q1
+    // against a team outside the AP Top 25 is unexplained.
+    function qChip(g) {
+        var qr = g.opponent && g.opponent.quadrantRank;
+        var tip = qr ? kit.qtipAttrs('Q' + g.quadrant + ' · graded vs #' + qr,
+            'Q' + g.quadrant + ': opponent ranked #' + qr + ' (T-Rank, then NET), adjusted for venue') : '';
+        return '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '"' + tip + '>Q' + g.quadrant + '</span>';
+    }
+
     function gameRow(d, g) {
         var vals = d.quadrantValues || {};
         var res = g.final
@@ -375,7 +386,7 @@
             + esc(g.opponent.school) + '</span></span>'
             + (g.notes ? '<span class="note">' + esc(g.notes) + '</span>' : '') + (g.opponent.hasPage === false ? '</span>' : '</a>')
             + '<a class="res" href="' + gameHref + '">' + res + '</a>'
-            + (g.quadrant ? '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '">Q' + g.quadrant + '</span>'
+            + (g.quadrant ? qChip(g)
                 : '<span class="ht-qt post" title="Scored on the tournament ladder">' + esc(g.tournament || 'Post') + '</span>')
             + '<span class="p' + (g.points ? '' : ' z') + '">' + pts + '</span></div>';
     }

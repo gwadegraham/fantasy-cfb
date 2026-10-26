@@ -18,6 +18,7 @@ const jobMailer = require('../modules/job-mailer');
 const leagueSelection = require('../modules/league-selection');
 const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
+const HoopsApRank = require('../models/hoopsApRank');
 const HoopsTeamStats = require('../models/hoopsTeamStats');
 const Franchise = require('../models/franchise');
 const Account = require('../models/account');
@@ -79,9 +80,39 @@ describe('build', () => {
         const p = await teamPage.build(1, { season: SEASON });
         const byId = Object.fromEntries(p.games.map(g => [g.id, g]));
         expect(byId[10]).toMatchObject({ venue: 'away', quadrant: 1, us: 74, them: 62, final: true });
-        expect(byId[10].opponent).toMatchObject({ id: 2, school: 'Florida', abbreviation: 'FLA', rank: 4, hasPage: true });
+        expect(byId[10].opponent).toMatchObject({ id: 2, school: 'Florida', abbreviation: 'FLA', quadrantRank: 4, rank: null, hasPage: true });
         expect(byId[11]).toMatchObject({ venue: 'home', quadrant: 4 });
         expect(byId[12]).toMatchObject({ venue: 'neutral', quadrant: 1 });
+    });
+
+    // Beside the name: the AP poll in force at tip-off (display only). The
+    // quadrant still grades on the T-Rank, carried as quadrantRank.
+    test('a failed AP read costs the numbers, not the page', async () => {
+        await HoopsGame.create(game(10, 1, 2, 1, { homePoints: 62, awayPoints: 74 }));
+        jest.spyOn(require('../modules/hoops-ap'), 'cachedPolls').mockRejectedValue(new Error('db down'));
+        const p = await teamPage.build(1, { season: SEASON });
+        expect(p.games[0].opponent).toMatchObject({ rank: null, quadrantRank: 4 });
+        expect(p.games[0].quadrant).toBe(1);
+    });
+
+    test('the opponent shows its AP rank at tip-off; the quadrant keeps the scoring rank', async () => {
+        await HoopsGame.create([
+            game(10, 1, 2, 1, { homePoints: 62, awayPoints: 74 }),   // 10 Nov 2026
+            game(12, 2, 1, 2, { neutralSite: true }),                 // 17 Nov 2026
+            game(11, 1, 1, 3)                                          // Army at Duke
+        ]);
+        const poll = (week, day, rank) => ({ season: SEASON, seasonType: 'regular', week, pollDate: new Date(Date.UTC(2026, 10, day)), teamId: 2, rank });
+        // Army (T-Rank #358, a home Q4) sits #2 in the AP: the quadrant must
+        // stay Q4 — AP is display only, never graded on.
+        await HoopsApRank.create([poll(1, 9, 11), poll(2, 16, 6),
+            Object.assign(poll(1, 9, 2), { teamId: 3 })]);
+        const p = await teamPage.build(1, { season: SEASON });
+        const byId = Object.fromEntries(p.games.map(g => [g.id, g]));
+        expect(byId[10].opponent).toMatchObject({ rank: 11, quadrantRank: 4 });
+        expect(byId[12].opponent).toMatchObject({ rank: 6, quadrantRank: 4 });
+        expect(byId[11].opponent).toMatchObject({ rank: 2, quadrantRank: 358 });
+        expect(byId[11].quadrant).toBe(4);
+        expect(byId[10].quadrant).toBe(1);
     });
 
     test('rank is the opponent\'s in THAT week — a team that has since fallen keeps its banked quadrant', async () => {
@@ -320,7 +351,7 @@ describe('build', () => {
         await owner([1], [{ week: 1, score: 5, scoreByTeam: [{ teamId: 1, gameId: 11, score: 5, quadrant: 1, oppRank: 60 }] }]);
         const g = (await teamPage.build(1, { season: SEASON, league: LEAGUE })).games.find(x => x.id === 11);
         expect(g.quadrant).toBe(1);
-        expect(g.opponent.rank).toBe(60);
+        expect(g.opponent.quadrantRank).toBe(60);
         expect(g.points).toBe(5);
     });
 
@@ -329,7 +360,7 @@ describe('build', () => {
         await owner([1], [{ week: 1, score: 0, scoreByTeam: [{ teamId: 1, gameId: 11, score: 0 }] }]);
         const g = (await teamPage.build(1, { season: SEASON, league: LEAGUE })).games.find(x => x.id === 11);
         expect(g.quadrant).toBe(4);
-        expect(g.opponent.rank).toBe(358);
+        expect(g.opponent.quadrantRank).toBe(358);
     });
 
     test('unknown team, or no season: null', async () => {
