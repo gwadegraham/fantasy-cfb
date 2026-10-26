@@ -1003,6 +1003,56 @@
     }
 }
 
+/* Preseason on tablet and up: lay the managers out as a two-column grid of
+   tiles. The 640px card above still left a narrow list floating in a page-wide
+   band, with 84px rows sized for a logo strip that doesn't exist yet. Every
+   score is 0 and every rank T-1 until tip-off, so the header, the "Tied" line
+   and the H2H base+bonus math say nothing — only rank, manager, record and 0
+   stay. The table markup is unchanged; the grid is CSS on top of it, so the
+   first drafted team puts the normal table back. */
+@media only screen and (min-width: 48em) {
+    .table-wrapper:has(> .fl-table.std-no-teams) { box-shadow: none; overflow: visible; }
+    .fl-table.std-no-teams { max-width: none; }
+    .fl-table.std-no-teams thead,
+    .fl-table.std-no-teams .std-roster-row,
+    .fl-table.std-no-teams .sticky-header-score br,
+    .fl-table.std-no-teams .gap,
+    .fl-table.std-no-teams .score-sub { display: none; }
+    .fl-table.std-no-teams tbody {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 16px;
+    }
+    .fl-table.std-no-teams tbody .standings-row {
+        display: flex;
+        align-items: center;
+        min-height: 56px;
+        padding: 0 18px;
+        background: var(--cc-surface);
+        border: 1px solid var(--cc-border);
+        border-radius: var(--cc-r-md);
+    }
+    /* The :not(.medal-1) line is there to outrank the H2H cell fill, border and
+       score gutter (.fl-table.mode-h2h tbody .standings-row:not(.medal-1) td). */
+    .fl-table.std-no-teams tbody .standings-row > th,
+    .fl-table.std-no-teams tbody .standings-row > td,
+    .fl-table.mode-h2h.std-no-teams tbody .standings-row:not(.medal-1) > td {
+        position: static;
+        height: auto;
+        line-height: 1.3;
+        padding: 0;
+        background: none;
+        border: none;
+    }
+    .fl-table.std-no-teams .standings-row .rank-cell { width: 44px; flex-shrink: 0; text-align: left; }
+    .fl-table.std-no-teams .standings-row .name-cell { flex: 1; min-width: 0; text-align: left; }
+    .fl-table.std-no-teams .standings-row .name-cell a { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; }
+    .fl-table.std-no-teams .standings-row .std-name { overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+    .fl-table.std-no-teams .standings-row .rec-cell { width: auto; margin: 0 16px; color: var(--cc-muted); }
+    .fl-table.std-no-teams .standings-row .sticky-header-score,
+    .fl-table.std-no-teams .standings-row .score-cell { width: auto; text-align: right; color: var(--cc-muted-bright); }
+}
+
 /* ================================================================= */
 /* Shared content box                                                */
 /* ================================================================= */
