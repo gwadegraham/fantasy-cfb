@@ -44,7 +44,7 @@
             + '<section class="sp-card ha-task ha-pre">'
             + '<div class="ha-head"><i class="fa-solid fa-ranking-star"></i><h2>Torvik T-Rank</h2>'
             + '<code data-pre-url></code></div>'
-            + '<p class="ha-what">Ranks the draft pool and seeds quadrant scoring until live ratings take over. '
+            + '<p class="ha-what">Ranks the draft pool. Scoring uses Torvik\'s current rank, pulled nightly, and falls back to this only for a week with no pull. '
             + 'Refresh once, right before the draft. Nothing is written until you Apply.</p>'
             + '<div class="ha-onfile" data-pre-onfile>Loading…</div>'
             + '<div data-pre-lock></div>'

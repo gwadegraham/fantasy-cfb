@@ -101,6 +101,30 @@ describe('targetWeek — frozen at the week\'s first tip', () => {
         expect(await job.targetWeek(SEASON, SATURDAY_NIGHT)).toEqual({ week: 1 });
     });
 
+    test('a postponed listing does not freeze a week either, and a game with no week is ignored', async () => {
+        await HoopsGame.create([
+            game(1, '2026-10-31T17:00:00Z', { status: 'postponed' }),
+            game(null, '2026-10-31T18:00:00Z')
+        ]);
+        expect(await job.targetWeek(SEASON, SATURDAY_NIGHT)).toEqual({ week: 1 });
+    });
+
+    test('Sunday night after a week\'s last game, the pull goes to NEXT week, not the one after', async () => {
+        // Week 1's games have all tipped; week 2 has not started. Only week
+        // 2's own games may freeze week 2.
+        expect(await job.targetWeek(SEASON, new Date('2026-11-09T04:20:00Z'))).toEqual({ week: 2 });
+    });
+
+    test('a week freezes at its Monday even when none of its games are stored yet', async () => {
+        // A game the nightly refresh stores only after it is played (the
+        // postseason): Tuesday of week 2, nothing in week 2 on file before
+        // now, the next stored game later that week. Without the Monday
+        // rule, this pull would rewrite week 2 with that game's result in it.
+        await HoopsGame.deleteMany({ week: 2 });
+        await HoopsGame.create(game(2, '2026-11-13T23:00:00Z'));
+        expect(await job.targetWeek(SEASON, new Date('2026-11-11T03:20:00Z'))).toEqual({ week: 3 });
+    });
+
     test('after the last game there is nothing to rank; with no schedule, it says so', async () => {
         expect(await job.targetWeek(SEASON, new Date('2026-11-20T12:00:00Z'))).toEqual({ skip: 'no game left to tip — nothing to rank' });
         expect(await job.targetWeek(2031, SATURDAY_NIGHT)).toEqual({ skip: 'no schedule ingested' });

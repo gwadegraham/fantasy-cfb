@@ -25,6 +25,15 @@
 // first tip, Saturday night's pull is the one that grades opening weekend.
 // For every Monday-to-Sunday week the two rules agree.
 //
+// A week ALSO freezes at its Monday, Eastern midnight, whatever is stored.
+// The first-tip test only sees games already in Mongo, and postseason games
+// are usually created by the nightly refresh AFTER they are played (QA on
+// PR #617): a First Four game stored on Wednesday would otherwise leave its
+// week open on Tuesday night, and a pull then would grade it on a ranking
+// that includes its own result. Monday is never later than a week's first
+// game except in week 1's weekend lead-in, which is the case the first-tip
+// rule exists for.
+//
 // ---- footprint ----
 //
 // One GET of barttorvik.com/<season>_team_results.json per run, from
@@ -43,6 +52,7 @@ const jobLogger = require('./job-logger');
 const jobMailer = require('./job-mailer');
 const { guardJob } = require('./job-guard');
 const torvik = require('./torvik-import');
+const { seasonStartFrom, easternMidnight } = require('./hoops-calendar');
 const { basketballLeagues } = require('./hoops-scores-job');
 const HoopsGame = require('./../models/hoopsGame');
 const HoopsTorvikRank = require('./../models/hoopsTorvikRank');
@@ -52,19 +62,26 @@ const LABEL = 'Hoops Torvik';
 
 // A cancelled or postponed listing never tips, so it cannot freeze a week.
 const DEAD_STATUSES = ['cancelled', 'canceled', 'postponed'];
+const DAY_MS = 86400000;
 
 // The week a snapshot taken now is filed under, or { skip }. Two local
 // reads, no fetch.
 async function targetWeek(season, now) {
     const live = { season, week: { $gte: 1 }, status: { $nin: DEAD_STATUSES } };
-    const next = await HoopsGame.findOne(Object.assign({ startDate: { $gt: now } }, live), { week: 1, _id: 0 })
+    const next = await HoopsGame.findOne(Object.assign({}, live, { startDate: { $gt: now } }), { week: 1, _id: 0 })
         .sort({ startDate: 1 }).lean();
     if (!next) {
         const any = await HoopsGame.exists({ season });
         return { skip: any ? 'no game left to tip — nothing to rank' : 'no schedule ingested' };
     }
-    const started = await HoopsGame.exists(Object.assign({ week: next.week, startDate: { $lte: now } }, live));
-    return { week: started ? next.week + 1 : next.week };
+    const first = await HoopsGame.findOne({ season }, { startDate: 1, _id: 0 }).sort({ startDate: 1 }).lean();
+    const monday = easternMidnight(new Date(seasonStartFrom(first.startDate).getTime() + (next.week - 1) * 7 * DAY_MS));
+    const frozen = now >= monday
+        // `live` FIRST: its week clause is a floor, and merged last it
+        // overwrote this one — any game tipped all season then "froze" the
+        // week, and Sunday night's pull skipped to the week after next.
+        || await HoopsGame.exists(Object.assign({}, live, { week: next.week, startDate: { $lte: now } }));
+    return { week: frozen ? next.week + 1 : next.week };
 }
 
 // Store one snapshot as the given week's ranks, replacing the week wholesale
