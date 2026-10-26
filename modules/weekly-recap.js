@@ -138,8 +138,9 @@ function indexHoopsResults(games, apRankOf) {
 
 // The best basketball story among one week's roster rows, or null. A seed
 // upset beats a Q1 win (it is rarer), a bigger seed gap beats a smaller one,
-// and among Q1 wins the better-ranked opponent wins — ranked by the quadrant's
-// own rank, though the story names the AP one (indexHoopsResults).
+// and among Q1 wins one over an AP-ranked team beats one over an unranked
+// team (the story names the AP rank, indexHoopsResults); ties within each go
+// to the better rank.
 function hoopsUpsetFor(rows, resultsByGameId, logoOf, nameOf) {
     let best = null, bestKey = null;
     (rows || []).forEach(st => {
@@ -149,8 +150,11 @@ function hoopsUpsetFor(rows, resultsByGameId, logoOf, nameOf) {
         const q1 = Number(st.quadrant) === 1;
         if (!seedGap && !q1) return;
         const oppRank = Number.isInteger(Number(st.oppRank)) && Number(st.oppRank) > 0 ? Number(st.oppRank) : null;
-        // Larger is better: seed upsets above every Q1, then gap / opp rank.
-        const key = seedGap ? 1000 + seedGap : 500 - (oppRank || 499);
+        const apRank = Number.isInteger(Number(u.loserRank)) && Number(u.loserRank) > 0 ? Number(u.loserRank) : null;
+        // Larger is better: seed upsets above every Q1; then a Q1 over an AP-
+        // ranked team (the "#N" the story will print), best AP rank first;
+        // then the rest by the rank the quadrant was graded on.
+        const key = seedGap ? 1000 + seedGap : apRank ? 700 - apRank : 500 - (oppRank || 499);
         if (best && key <= bestKey) return;
         bestKey = key;
         const team = nameOf(st.teamId, st.team) || u.winner;

@@ -116,6 +116,22 @@ describe('the basketball upset story', () => {
         expect(r.narrative).toBe("Gonzaga's Q1 win over Duke powered your 12-pt week, good for 1st.");
     });
 
+    // The story prints the AP rank, so a Q1 over an AP-ranked team is told
+    // ahead of one over a team the scoring rank liked better but the AP
+    // does not rank.
+    test('a Q1 win over an AP-ranked team is the story, over a better-graded unranked one', () => {
+        const res = indexHoopsResults([
+            { id: 1, status: 'final', homeTeamId: 7, awayTeamId: 99, homeTeam: 'Gonzaga', awayTeam: 'Kansas', homePoints: 70, awayPoints: 60 },
+            { id: 4, status: 'final', homeTeamId: 8, awayTeamId: 52, homeTeam: 'Baylor', awayTeam: 'Purdue', homePoints: 70, awayPoints: 60 }
+        ], (teamId) => ({ 99: 3 }[teamId] || null));
+        const ann = user('a', [wk(20, 12, [
+            { teamId: 7, gameId: 1, score: 5, quadrant: 1, oppRank: 12 },   // AP #3 Kansas, NET #12
+            { teamId: 8, gameId: 4, score: 5, quadrant: 1, oppRank: 8 }     // unranked Purdue, NET #8
+        ])], teams);
+        const r = buildWeeklyRecaps({ user: ann, leagueUsers: [ann], season: SEASON, sport: 'basketball', upsetByGameId: res }).recaps[0];
+        expect(r.upset).toMatchObject({ kind: 'q1', team: 'Gonzaga', loser: 'Kansas', loserRank: 3 });
+    });
+
     test('a seed upset outranks a Q1 win', () => {
         const r = recapFor([
             { teamId: 7, gameId: 1, score: 5, quadrant: 1, oppRank: 3 },

@@ -11,6 +11,7 @@
 
 const cbbd = require('./cbbd-client');
 const HoopsApRank = require('../models/hoopsApRank');
+const { easternDay } = require('./hoops-calendar');
 
 // CBBD's own label on an AP row (the query parameter is 'ap').
 const AP_POLL = 'AP Top 25';
@@ -23,6 +24,18 @@ async function ingest(season) {
         && Number.isInteger(Number(r.ranking)) && Number(r.ranking) > 0
         && r.teamId != null && Number.isFinite(Number(r.teamId)) && r.pollDate
         && r.week != null && Number.isFinite(Number(r.week)));
+
+    // An empty answer is normal before the preseason poll. Rows that read as
+    // nothing, or nothing once polls are stored, is CBBD changing shape (a
+    // renamed label or field): fail loudly, keep what is stored, rather than
+    // log a quiet success while the ranks stop moving.
+    if (data.length && !rows.length) {
+        throw new Error(`CBBD /rankings returned ${data.length} rows but none read as an AP poll — the response shape changed`);
+    }
+    if (!rows.length) {
+        const stored = await HoopsApRank.countDocuments({ season });
+        if (stored) throw new Error(`CBBD /rankings returned no AP polls for ${season}, but ${stored} rows are stored`);
+    }
 
     const polls = new Map();
     rows.forEach(r => {
@@ -56,20 +69,25 @@ async function ingest(season) {
     return { polls: polls.size, rows: rows.length, latest: latest ? new Date(latest) : null, remainingCalls };
 }
 
-// CBBD stamps a poll at midnight UTC on its Monday — Sunday evening in
-// Central, while Sunday's late games are still being played. The AP releases
-// it Monday around noon Eastern, so it is in force from 16:00 UTC: a Sunday
-// tip shows the poll that was out when it tipped, not the one that will
-// already count its result.
-const RELEASE_OFFSET_MS = 16 * 60 * 60 * 1000;
+// Which poll a game reads is decided on EASTERN CALENDAR DAYS, the hoops
+// calendar's zone (modules/hoops-calendar.js). CBBD stamps a poll at
+// midnight UTC on its Monday; a poll is in force for games on that Monday
+// and after. Instants would get two cases wrong:
+//   - a late Sunday tip (Sunday 19:00 Central is already Monday 00:00 UTC)
+//     would read the poll that will count its own result;
+//   - a TBD game is stamped midnight EASTERN (05:00 UTC in winter), so a
+//     week opening on a Monday TBD would read last week's poll.
+// A Monday game that tips before the noon release shows the new poll a few
+// hours early. Accepted.
 
 // A season's polls, oldest first: [{ at: ms, ranks: { <teamId>: rank } }].
-// `at` is when the poll was in force, not CBBD's stamp.
+// `at` is the poll's Monday, as UTC midnight of that calendar date.
 async function polls(season) {
     const rows = await HoopsApRank.find({ season }, { pollDate: 1, teamId: 1, rank: 1, _id: 0 }).lean();
     const byDate = new Map();
     rows.forEach(r => {
-        const at = new Date(r.pollDate).getTime() + RELEASE_OFFSET_MS;
+        const d = new Date(r.pollDate);
+        const at = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
         if (!Number.isFinite(at)) return;
         if (!byDate.has(at)) byDate.set(at, {});
         byDate.get(at)[String(r.teamId)] = r.rank;
@@ -89,12 +107,15 @@ async function cachedPolls(season, now = Date.now()) {
 }
 function clearCache() { cache.clear(); }
 
-// The poll in force at `when`: the latest released on or before it. A game
-// before the first poll of the season shows no rank, and so does a team
-// outside the poll. Pure, so a page can resolve many games off one read.
+// The poll in force on `when`'s Eastern day: the latest whose Monday is on or
+// before it. A game before the season's first poll shows no rank, and so
+// does a team outside the poll. Pure, so a page can resolve many games off
+// one read.
 function ranksAt(pollList, when) {
-    const t = when instanceof Date ? when.getTime() : new Date(when).getTime();
-    if (!Number.isFinite(t)) return {};
+    if (when === null || when === undefined) return {};
+    const day = easternDay(when);
+    if (!day) return {};
+    const t = day.getTime();
     let found = null;
     for (const p of pollList || []) {
         if (p.at <= t) found = p; else break;
@@ -106,4 +127,4 @@ function rankAt(pollList, teamId, when) {
     return Number.isInteger(r) ? r : null;
 }
 
-module.exports = { ingest, polls, cachedPolls, clearCache, ranksAt, rankAt, AP_POLL, TTL_MS, RELEASE_OFFSET_MS };
+module.exports = { ingest, polls, cachedPolls, clearCache, ranksAt, rankAt, AP_POLL, TTL_MS };

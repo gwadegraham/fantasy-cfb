@@ -81,7 +81,7 @@ describe('ingest', () => {
 
 // CBBD stamps a poll at Monday 00:00 UTC — Sunday evening Central, with late
 // games still on. A Sunday tip must read the poll out when it tipped.
-test('a poll is in force from its Monday release, not from CBBD\'s Sunday-evening stamp', async () => {
+test('a late Sunday tip keeps the poll it tipped under, though CBBD stamps the next one Sunday evening Central', async () => {
     await HoopsApRank.create([
         { season: SEASON, seasonType: 'regular', week: 1, pollDate: new Date('2026-11-09T00:00:00Z'), teamId: 72, rank: 3 },
         { season: SEASON, seasonType: 'regular', week: 2, pollDate: new Date('2026-11-16T00:00:00Z'), teamId: 72, rank: 12 }
@@ -99,22 +99,45 @@ test('a row with no week is not stored', async () => {
 });
 
 describe('the poll in force', () => {
+    // polls() turns each CBBD stamp into its Monday, UTC midnight.
     const polls = [
         { at: Date.parse(PRESEASON), ranks: { 72: 2, 87: 1 } },
         { at: Date.parse(WEEK2), ranks: { 72: 5 } }
     ];
 
-    test('is the latest released on or before the moment', () => {
+    test('is the latest whose Monday is on or before the game\'s Eastern day', () => {
         expect(hoopsAp.rankAt(polls, 72, '2026-11-05T00:00:00Z')).toBe(2);
-        expect(hoopsAp.rankAt(polls, 72, WEEK2)).toBe(5);
+        expect(hoopsAp.rankAt(polls, 72, '2026-11-09T23:00:00Z')).toBe(5);   // Monday evening
         expect(hoopsAp.rankAt(polls, 72, new Date('2027-01-01T00:00:00Z'))).toBe(5);
     });
 
-    test('a team outside that poll, a moment before any poll, or no date: no rank', () => {
+    // CBBD's placeholder for an unannounced tip is midnight EASTERN — 05:00
+    // UTC in winter. A Monday TBD game is a Monday game.
+    test('a Monday TBD game reads that Monday\'s poll', () => {
+        expect(hoopsAp.rankAt(polls, 72, '2026-11-09T05:00:00Z')).toBe(5);
+    });
+
+    test('a team outside that poll, a game before any poll, or no date: no rank', () => {
         expect(hoopsAp.rankAt(polls, 87, '2026-11-20T00:00:00Z')).toBeNull();   // dropped out in week 2
         expect(hoopsAp.rankAt(polls, 72, '2026-10-01T00:00:00Z')).toBeNull();
         expect(hoopsAp.rankAt(polls, 72, null)).toBeNull();
+        expect(hoopsAp.rankAt(polls, 72, 'not a date')).toBeNull();
         expect(hoopsAp.ranksAt([], Date.now())).toEqual({});
+    });
+});
+
+describe('a changed CBBD answer fails loudly', () => {
+    test('rows that read as no AP poll: an error, nothing written', async () => {
+        stubCbbd([row(1, PRESEASON, 87, 'Florida', 1, { pollType: 'AP Poll' })]);
+        await expect(hoopsAp.ingest(SEASON)).rejects.toThrow(/response shape changed/);
+        expect(await HoopsApRank.countDocuments({})).toBe(0);
+    });
+
+    test('an empty answer once polls are stored: an error, the stored polls kept', async () => {
+        await HoopsApRank.create({ season: SEASON, seasonType: 'regular', week: 1, pollDate: new Date(PRESEASON), teamId: 87, rank: 1 });
+        stubCbbd([]);
+        await expect(hoopsAp.ingest(SEASON)).rejects.toThrow(/no AP polls for 2027, but 1 rows are stored/);
+        expect(await HoopsApRank.countDocuments({})).toBe(1);
     });
 });
 

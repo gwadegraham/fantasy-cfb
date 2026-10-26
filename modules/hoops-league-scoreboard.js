@@ -8,7 +8,8 @@
 //   - rosters are teamRefs (rosterIds), not football's full team objects;
 //   - live/final comes from the game's status, which the live poller writes,
 //     with football's time window only as the fallback for a lagging poller;
-//   - "ranked" is T-Rank top 25 for that week (the same ranks scoring banks);
+//   - "ranked" is the AP top 25 in force that week (display only; scoring
+//     grades on modules/hoops-ranks.js);
 //   - no spread, weather, possession or down-and-distance.
 //
 // Pure, like football's: the route feeds it query results.
