@@ -495,3 +495,67 @@ describe('GET /draft/board — a basketball league', () => {
         expect(res.body.projections).toHaveLength(6);
     });
 });
+
+// The automatic freeze the draft socket runs at the last pick
+// (modules/draft-socket.js autoFreezeGrades). Same rules as the route,
+// minus the override: anything it will not decide alone leaves the grade live.
+describe('autoFreezeGrades — the freeze at the last pick', () => {
+    const { autoFreezeGrades } = require('../modules/draft-socket');
+    const draftDoc = () => Draft.findOne({ league: LEAGUE, season: SEASON }).lean();
+
+    beforeEach(() => {
+        jest.spyOn(visibility, 'seesBasketball').mockResolvedValue(true);
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    it('pins a snapshot, so the draft-night grade holds through later churn', async () => {
+        await seed();
+        const live = await grades();
+        const out = await autoFreezeGrades(await draftDoc());
+        expect(out.status).toBe(200);
+        expect(String((await draftDoc()).hoopsGradeSnapshot)).toBe(out.body.snapshotId);
+
+        await HoopsTeam.updateOne({ season: SEASON, id: 150 }, { $set: { 'preseason.barthag': 0.41, 'preseason.rank': 8 } });
+        await HoopsGame.deleteOne({ id: 7002 });
+        const after = await grades();
+        expect(after.body.frozenAt).toBeTruthy();
+        expect(after.body.managers).toEqual(live.body.managers);
+
+        const row = await AuditLog.findOne({ action: 'draft.grades.freeze' }).lean();
+        expect(row.actorRole).toBe('system');
+        expect(row.summary).toContain('automatically at the last pick');
+    });
+
+    it('a flagged schedule is NOT frozen in: the grade stays live and the log says why', async () => {
+        await seed();
+        const mine = hoopsGames().filter(g => g.homeTeamId === 333 || g.awayTeamId === 333).map(g => g.id);
+        await HoopsGame.deleteMany({ id: { $in: mine.slice(0, 8) } });
+        const out = await autoFreezeGrades(await draftDoc());
+        expect(out.status).toBe(409);
+        expect((await draftDoc()).hoopsGradeSnapshot).toBeUndefined();
+        expect(await HoopsGradeSnapshot.countDocuments({})).toBe(0);
+        expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/NOT frozen automatically.*Hoops 333/));
+    });
+
+    it('never replaces a freeze that already exists', async () => {
+        await seed();
+        const first = await freeze();
+        const out = await autoFreezeGrades(await draftDoc());
+        expect(out.status).toBe(409);
+        expect(String((await draftDoc()).hoopsGradeSnapshot)).toBe(first.body.snapshotId);
+        expect(await HoopsGradeSnapshot.countDocuments({})).toBe(1);
+    });
+
+    it('a football league is not touched', async () => {
+        await seed();
+        expect(await autoFreezeGrades({ league: 'graham-league', season: 2026 })).toBeNull();
+        expect(await HoopsGradeSnapshot.countDocuments({})).toBe(0);
+    });
+
+    it('a failure is logged, never thrown — the draft is already over', async () => {
+        await seed();
+        jest.spyOn(HoopsGradeSnapshot, 'create').mockRejectedValueOnce(new Error('atlas fell over'));
+        await expect(autoFreezeGrades(await draftDoc())).resolves.toBeNull();
+        expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/grade freeze threw — atlas fell over/));
+    });
+});
