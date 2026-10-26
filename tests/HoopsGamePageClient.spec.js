@@ -116,6 +116,20 @@ test("each side's Q chip names the opponent's quadrant rank", async () => {
     expect(Array.from(document.querySelectorAll('.hg-side .hg-nm')).map(n => n.textContent)).toEqual(['TEXAS', 'DUKE']);
 });
 
+test("a tap on a side's Q chip shows the opponent's quadrant rank (phones have no hover)", async () => {
+    const p = payload();
+    p.home = Object.assign({}, p.home, { rank: null, quadrantRank: 4 });
+    p.away = Object.assign({}, p.away, { rank: null, quadrantRank: 37 });
+    await render(p);
+    const chips = document.querySelectorAll('.hg-q');
+    chips[1].click();
+    expect(document.querySelector('.sp-qtip').textContent).toBe('Q1 · graded vs #37');
+    chips[0].click();
+    expect(document.querySelector('.sp-qtip').textContent).toBe('Q2 · graded vs #4');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.querySelector('.sp-qtip').hidden).toBe(true);
+});
+
 test('postseason: the tournament, not a quadrant', async () => {
     const p = payload();
     p.game = Object.assign({}, p.game, { postseason: true, tournament: 'NCAA' });

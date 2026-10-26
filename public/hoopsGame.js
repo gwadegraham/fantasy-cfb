@@ -75,13 +75,14 @@
 
     // A side's Q chip. The numbers beside the names are the AP poll; the
     // quadrant is graded on the OPPONENT's rank in a different list (T-Rank,
-    // then the NET), which the chip carries so a Q1 against an unranked name
-    // explains itself.
+    // then the NET), which the chip carries — hover, or a tap on a phone — so
+    // a Q1 against an unranked name explains itself.
     function qChip(d, t) {
         var opp = t === d.home ? d.away : d.home;
         var qr = opp && opp.quadrantRank;
-        var title = qr ? ' title="Q' + t.quadrant + ': opponent ranked #' + esc(qr) + ' (T-Rank, then NET), adjusted for venue"' : '';
-        return '<span class="hg-q' + (t.quadrant === 1 ? ' q1' : '') + '"' + title + '>Q' + t.quadrant + '</span>';
+        var tip = qr ? kit.qtipAttrs('Q' + t.quadrant + ' · graded vs #' + qr,
+            'Q' + t.quadrant + ': opponent ranked #' + qr + ' (T-Rank, then NET), adjusted for venue') : '';
+        return '<span class="hg-q' + (t.quadrant === 1 ? ' q1' : '') + '"' + tip + '>Q' + t.quadrant + '</span>';
     }
 
     // Each side's own read of the game: the quadrant it was worth to THAT

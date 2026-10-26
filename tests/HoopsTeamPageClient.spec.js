@@ -320,6 +320,54 @@ test('the Q chip names the rank its quadrant is graded on; no rank, no tooltip',
     expect(army.querySelector('.ht-qt').hasAttribute('title')).toBe(false);
 });
 
+// Phones never show a title tooltip, so a tap on the chip shows the same
+// reason in a bubble; a second tap, a tap elsewhere or Escape closes it.
+describe('the Q chip on a phone', () => {
+    const bubble = () => document.querySelector('.sp-qtip');
+    async function floridaChip() {
+        const p = payload();
+        p.games[0].opponent = { id: 2, school: 'Florida', rank: null, quadrantRank: 34 };
+        await render(p);
+        tab('schedule');
+        return Array.from(document.querySelectorAll('.sp-gr')).find(n => n.textContent.includes('Florida')).querySelector('.ht-qt');
+    }
+    afterEach(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+
+    test('a tap shows "Q1 · graded vs #34"; a second tap hides it', async () => {
+        const chip = await floridaChip();
+        expect(chip.getAttribute('role')).toBe('button');
+        chip.click();
+        expect(bubble().hidden).toBe(false);
+        expect(bubble().textContent).toBe('Q1 · graded vs #34');
+        expect(chip.getAttribute('aria-expanded')).toBe('true');
+        chip.click();
+        expect(bubble().hidden).toBe(true);
+        expect(chip.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    test('a tap anywhere else, or Escape, closes it; Enter opens it from the keyboard', async () => {
+        const chip = await floridaChip();
+        chip.click();
+        document.querySelector('main').click();
+        expect(bubble().hidden).toBe(true);
+        chip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        expect(bubble().hidden).toBe(false);
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        expect(bubble().hidden).toBe(true);
+    });
+
+    test('a tap on the chip inside the Next up card does not follow the card\'s link', async () => {
+        const p = payload();
+        p.games[3].opponent = { id: 5, school: 'Virginia', rank: 3, quadrantRank: 21 };
+        await render(p);
+        const chip = document.querySelector('.ht-next .ht-qt');
+        const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+        chip.dispatchEvent(ev);
+        expect(ev.defaultPrevented).toBe(true);
+        expect(bubble().textContent).toBe('Q1 · graded vs #21');
+    });
+});
+
 test('a postseason game is off the team sheet and off the table, and says its tournament', async () => {
     const base = payload();
     base.games.push(g(20, { final: false, us: null, them: null, points: null, quadrant: null, postseason: true,

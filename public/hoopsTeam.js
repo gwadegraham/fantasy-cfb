@@ -361,12 +361,13 @@
 
     // The Q chip. The number beside the opponent's name is the AP poll; the
     // quadrant is graded on a different rank (T-Rank, then the NET), so the
-    // chip carries that one — a Q1 against a team outside the AP Top 25 is
-    // otherwise unexplained.
+    // chip carries that one — hover on a desktop, a tap on a phone — or a Q1
+    // against a team outside the AP Top 25 is unexplained.
     function qChip(g) {
         var qr = g.opponent && g.opponent.quadrantRank;
-        var title = qr ? ' title="Q' + g.quadrant + ': opponent ranked #' + esc(qr) + ' (T-Rank, then NET), adjusted for venue"' : '';
-        return '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '"' + title + '>Q' + g.quadrant + '</span>';
+        var tip = qr ? kit.qtipAttrs('Q' + g.quadrant + ' · graded vs #' + qr,
+            'Q' + g.quadrant + ': opponent ranked #' + qr + ' (T-Rank, then NET), adjusted for venue') : '';
+        return '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '"' + tip + '>Q' + g.quadrant + '</span>';
     }
 
     function gameRow(d, g) {

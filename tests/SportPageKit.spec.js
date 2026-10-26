@@ -296,3 +296,92 @@ describe('vsRow: a stat comparison row, away left and home right (#506)', () => 
         expect(kit.vsHead('W&M', 'DUKE')).toBe('<div class="sp-vs-head"><span>W&amp;M</span><span></span><span>DUKE</span></div>');
     });
 });
+
+// A title tooltip never shows on a phone; qtipAttrs makes a chip show its
+// text in one bubble on a tap. Fixed to the viewport, so card rows that clip
+// with overflow:hidden cannot hide it.
+describe('qtip: tap-to-show tips', () => {
+    const bubble = () => document.querySelector('.sp-qtip');
+    const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    const rect = (r) => () => Object.assign({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }, r);
+    function chip(text = 'Q1 · graded vs #34', title) {
+        document.body.innerHTML = '<main><span id="c"' + kit.qtipAttrs(text, title) + '>Q1</span><p id="away">elsewhere</p></main>';
+        return document.getElementById('c');
+    }
+    afterEach(() => { key(document, 'Escape'); });
+
+    test('qtipAttrs makes a focusable button carrying escaped text, and an optional title', () => {
+        const c = chip('Q1 · "#34" <b>', 'Full text & more');
+        expect(c.getAttribute('data-qtip')).toBe('Q1 · "#34" <b>');
+        expect(c.getAttribute('role')).toBe('button');
+        expect(c.getAttribute('tabindex')).toBe('0');
+        expect(c.getAttribute('title')).toBe('Full text & more');
+        expect(chip().hasAttribute('title')).toBe(false);
+    });
+
+    test('a tap opens it above the chip, centred; a second tap closes it', () => {
+        const c = chip();
+        c.getBoundingClientRect = rect({ left: 200, top: 300, bottom: 316, width: 24, height: 16 });
+        c.click();
+        const b = bubble();
+        expect(b.hidden).toBe(false);
+        expect(b.textContent).toBe('Q1 · graded vs #34');
+        expect(b.getAttribute('role')).toBe('tooltip');
+        expect(c.getAttribute('aria-expanded')).toBe('true');
+        expect(c.getAttribute('aria-describedby')).toBe(b.id);
+        // jsdom lays out nothing, so the bubble measures 0x0: centred on the chip, 8px above.
+        expect(b.style.left).toBe('212px');
+        expect(b.style.top).toBe('292px');
+        c.click();
+        expect(b.hidden).toBe(true);
+        expect(c.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    test('no room above: it opens below; near an edge it stays 8px inside the screen', () => {
+        const c = chip();
+        c.getBoundingClientRect = rect({ left: -50, top: 2, bottom: 18, width: 24, height: 16 });
+        c.click();
+        expect(bubble().style.top).toBe('26px');
+        expect(bubble().style.left).toBe('8px');
+    });
+
+    test('a tap elsewhere, Escape, a scroll or a resize closes it', () => {
+        const c = chip();
+        c.click(); document.getElementById('away').click();
+        expect(bubble().hidden).toBe(true);
+        c.click(); key(document, 'Escape');
+        expect(bubble().hidden).toBe(true);
+        c.click(); window.dispatchEvent(new Event('scroll'));
+        expect(bubble().hidden).toBe(true);
+        c.click(); window.dispatchEvent(new Event('resize'));
+        expect(bubble().hidden).toBe(true);
+    });
+
+    test('Enter or Space opens it from the keyboard; other keys, or keys off a chip, do nothing', () => {
+        const c = chip();
+        key(c, 'a');
+        expect(bubble() && !bubble().hidden).toBeFalsy();
+        key(document.getElementById('away'), 'Enter');
+        expect(bubble() && !bubble().hidden).toBeFalsy();
+        key(c, ' ');
+        expect(bubble().hidden).toBe(false);
+        key(c, 'Enter');
+        expect(bubble().hidden).toBe(true);
+    });
+
+    test('a tap inside a link does not follow it', () => {
+        document.body.innerHTML = '<a href="/hoops/game/1"><span id="c"' + kit.qtipAttrs('Q2 · graded vs #60') + '>Q2</span></a>';
+        const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+        document.getElementById('c').dispatchEvent(ev);
+        expect(ev.defaultPrevented).toBe(true);
+        expect(bubble().textContent).toBe('Q2 · graded vs #60');
+    });
+
+    test('a page that rewrites its body gets a fresh bubble', () => {
+        chip().click();
+        const first = bubble();
+        chip('Q3 · graded vs #150').click();
+        expect(first.isConnected).toBe(false);
+        expect(bubble().textContent).toBe('Q3 · graded vs #150');
+    });
+});
