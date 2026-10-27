@@ -109,3 +109,21 @@ test('never overwrites a season already frozen', async () => {
     const doc = await ScoringConfig.findOne({ league: 'graham-league' }).lean();
     expect(doc.configBySeason['2025'].values.baseWin).toBe(999);
 });
+
+test('skips a config with no model and still freezes the leagues after it', async () => {
+    // The 26 Oct 2026 prod failure: a league that saved game modes before its
+    // scoring rules had a config with no model. Saving it threw, the throw ended
+    // the loop, and every league after it went unfrozen on every pass.
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    // Raw insert: the model would refuse this doc, which is the point.
+    await ScoringConfig.collection.insertOne({ league: 'full-court-depressed', values: {} });
+    await ScoringConfig.create({ league: 'claunts-league', model: 'claunts', values: {} });
+
+    await scoring.freezePriorSeasonConfig(2026);
+
+    const claunts = await ScoringConfig.findOne({ league: 'claunts-league' }).lean();
+    expect(Object.keys(claunts.configBySeason || {})).toEqual(['2025']);
+    const bad = await ScoringConfig.collection.findOne({ league: 'full-court-depressed' });
+    expect(bad.configBySeason).toBeUndefined();
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('skipping full-court-depressed'));
+});

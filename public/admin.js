@@ -2379,7 +2379,7 @@ function renderScoringFields() {
             <label>${toggle}${showPlus ? '+ ' : ''}${f.label}</label>
             <div class="num-stepper">
                 <button type="button" class="step-dn" tabindex="-1" aria-label="Decrease points">&#8722;</button>
-                <input type="number" step="1" min="0" data-key="${f.key}" value="${vals[f.key]}">
+                <input type="number" step="1" ${f.penalty ? 'max="0"' : 'min="0"'} data-key="${f.key}" value="${vals[f.key]}">
                 <button type="button" class="step-up" tabindex="-1" aria-label="Increase points">+</button>
             </div>
         </div>${note}${f.condition === 'nonP5UpsetBonus' ? independentsRow() : ''}`;
@@ -2440,7 +2440,9 @@ function renderScoringFields() {
         function step(delta) {
             var v = parseInt(inp.value, 10);
             if (isNaN(v)) v = 0;
-            inp.value = Math.max(0, v + delta);
+            // A penalty is stored negative (the engine adds it as-is), so its
+            // stepper is bounded above by zero rather than below.
+            inp.value = inp.hasAttribute('max') ? Math.min(0, v + delta) : Math.max(0, v + delta);
             renderShapeExample();
         }
         st.querySelector('.step-up').addEventListener('click', function () { step(1); });

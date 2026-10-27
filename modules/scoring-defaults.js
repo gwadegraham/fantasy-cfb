@@ -166,7 +166,9 @@ const STRUCTURES = {
             { condition: 'q2Win', pointsKey: 'q2Win', label: 'Quadrant 2 win' },
             { condition: 'q3Win', pointsKey: 'q3Win', label: 'Quadrant 3 win' },
             { condition: 'q4Win', pointsKey: 'q4Win', label: 'Quadrant 4 win' },
-            { condition: 'badLoss', pointsKey: 'badLoss', label: 'Quadrant 4 loss (penalty)', toggleable: true, defaultOff: true },
+            // `penalty`: the value is stored NEGATIVE (the engine adds it as-is), so
+            // the admin form must take a value at or below zero, not above.
+            { condition: 'badLoss', pointsKey: 'badLoss', label: 'Quadrant 4 loss (penalty)', toggleable: true, defaultOff: true, penalty: true },
             // A BONUS, stacked on the quadrant win for the same game, not a
             // replacement for it. Winning the final is a real win over a
             // real opponent; the title is the extra. Toggleable, so a league
@@ -234,7 +236,7 @@ function fieldsForModel(model, disabled, enabled) {
     const structure = (MODELS[model] || MODELS.claunts).structure;
     const field = (r, group, extra) => Object.assign({
         key: r.pointsKey, condition: r.condition, label: r.label,
-        additive: !!r.additive, group,
+        additive: !!r.additive, penalty: !!r.penalty, group,
         toggleable: !!r.toggleable, defaultOff: !!r.defaultOff,
         // Mutual-exclusivity hints for the admin: within a rankGroup the flat
         // "vs ranked" rule and the tiered "#1-10 / #11-25" rules can't both be on.
