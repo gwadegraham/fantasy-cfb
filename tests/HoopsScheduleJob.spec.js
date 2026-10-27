@@ -199,7 +199,9 @@ describe('the ESPN tip-time fill', () => {
 
         const out = await job.run({ now: NOW });
 
-        expect(fill).toHaveBeenCalledWith({ season: SEASON, start: NOW, end: new Date(NOW.getTime() + job.LOOKAHEAD_DAYS * DAY_MS) });
+        // From midnight Eastern TODAY (NOW is 07:40 ET on 21 Oct, EDT), so
+        // today's TBD placeholders are included.
+        expect(fill).toHaveBeenCalledWith({ season: SEASON, start: new Date('2026-10-21T04:00:00Z'), end: new Date(NOW.getTime() + job.LOOKAHEAD_DAYS * DAY_MS) });
         expect(out.failed).toBeNull();
         expect(out.summary).toBe(`${SEASON} regular: 0 new, 1 updated | ${SEASON} ESPN tip times: 2 filled, 0 updated, 0 reverted, 1 still TBD`);
     });

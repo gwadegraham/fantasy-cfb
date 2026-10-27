@@ -76,7 +76,9 @@ function decide(game, event, day) {
         $unset: { startTimeSource: '' }
     });
 
-    if (!event) return { kind: 'notOnEspn', update: null };
+    // Missing from a day that answered: ESPN has moved it (it lists a game
+    // only on its own day), so a time we filled is no longer backed.
+    if (!event) return ours ? { kind: 'reverted', update: revert() } : { kind: 'notOnEspn', update: null };
     const when = new Date(event.date);
     if (!event.timeValid || Number.isNaN(when.getTime())) {
         // ESPN pulled the time it gave us: our fill is no longer backed by anything.
@@ -131,8 +133,12 @@ async function fillTipTimes({ season, start, end }) {
             const { kind, update } = decide(g, events.get(String(g.sourceId)), day);
             counts[kind]++;
             if (!update) continue;
-            // "Still TBD, or still ours": a CBBD time written since the read wins.
-            ops.push({ updateOne: { filter: { id: g.id, $or: [{ startTimeTbd: true }, { startTimeSource: SOURCE }] }, update } });
+            // Unchanged since the read: a CBBD time, or a CBBD move to another
+            // day, written in between wins.
+            ops.push({ updateOne: {
+                filter: { id: g.id, startDate: g.startDate, $or: [{ startTimeTbd: true }, { startTimeSource: SOURCE }] },
+                update
+            } });
         }
     }
 
@@ -146,7 +152,8 @@ async function fillTipTimes({ season, start, end }) {
 // For the CBBD ingest: keep an ESPN-filled time when CBBD still says TBD for
 // the same Eastern day. Without this every CBBD pull would put the
 // placeholder back until the next fill. A CBBD time, or a CBBD move to another
-// day, goes through untouched — and its $unset clears our marker.
+// day, or a game no longer scheduled (postponed, cancelled), goes through
+// untouched — and its $unset clears our marker.
 async function keepFilledTipTimes(ops) {
     const tbdIds = ops
         .filter(op => op.updateOne && op.updateOne.update.$set && op.updateOne.update.$set.startTimeTbd === true)
@@ -159,7 +166,7 @@ async function keepFilledTipTimes(ops) {
     return ops.map(op => {
         const u = op.updateOne;
         const set = u.update.$set;
-        if (!set || set.startTimeTbd !== true || !dayById.has(u.filter.id)) return op;
+        if (!set || set.startTimeTbd !== true || set.status !== 'scheduled' || !dayById.has(u.filter.id)) return op;
         if (dayKey(set.startDate) !== dayById.get(u.filter.id)) return op;
         const keptSet = Object.assign({}, set);
         delete keptSet.startDate;

@@ -35,6 +35,7 @@ const HoopsGame = require('../models/hoopsGame');
 // A namespace, so a test can stand in for the CBBD-backed refresh.
 const hoopsGames = require('../routes/hoopsGames');
 const espnTipTimes = require('./hoops-espn-tip-times');
+const calendar = require('./hoops-calendar');
 
 const JOB_NAME = 'hoops-schedule';
 const LABEL = 'Hoops Schedule';
@@ -103,7 +104,10 @@ async function runOnce(now, state) {
         }
         if (!types.length) continue;
         try {
-            const t = await espnTipTimes.fillTipTimes({ season, start, end });
+            // From the start of TODAY's Eastern day: at 06:40 CT `now` is
+            // already past today's midnight-ET placeholders.
+            const today = calendar.easternMidnight(calendar.easternDay(now));
+            const t = await espnTipTimes.fillTipTimes({ season, start: today, end });
             if (!t.candidates) continue;
             const note = t.failedDays ? `, ESPN unreachable for ${t.failedDays} of ${t.calls} day(s)` : '';
             done.push(`${season} ESPN tip times: ${t.filled} filled, ${t.updated} updated, ${t.reverted} reverted, `

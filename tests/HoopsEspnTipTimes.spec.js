@@ -163,6 +163,17 @@ describe('CBBD wins', () => {
         expect((await row(1)).startTimeSource).toBeUndefined();
     });
 
+    test('CBBD moves a TBD game to another day while ESPN is being asked: the move stands', async () => {
+        await HoopsGame.create(stored(1, MON_NOV_2));
+        jest.spyOn(global, 'fetch').mockImplementation(async () => {
+            await HoopsGame.updateOne({ id: 1 }, { $set: { startDate: new Date('2026-11-03T05:00:00Z'), week: 2 } });
+            return { ok: true, status: 200, json: async () => ({ events: [event(1, '2026-11-03T00:00Z')] }) };
+        });
+
+        expect((await tips.fillTipTimes(WINDOW)).lost).toBe(1);
+        expect(await row(1)).toMatchObject({ startTimeTbd: true, startDate: new Date('2026-11-03T05:00:00Z') });
+    });
+
     test('games already on or over are left alone', async () => {
         await HoopsGame.create([
             stored(1, MON_NOV_2, { status: 'in_progress' }),
@@ -207,6 +218,17 @@ describe('keeping it current', () => {
         expect(out.reverted).toBe(1);
         const g = await row(1);
         expect(g).toMatchObject({ startTimeTbd: true, startDate: new Date(placeholder) });
+        expect(g.startTimeSource).toBeUndefined();
+    });
+
+    test('ESPN moves a game it timed off this day: gone from the day\'s list, so back to TBD', async () => {
+        // ESPN lists a game only on its own day, so a moved game is simply absent.
+        await HoopsGame.create(stored(1, '2026-11-03T00:00:00Z', { startTimeTbd: false, startTimeSource: 'espn' }));
+        stubEspn({ 20261102: { events: [] } });
+
+        expect((await tips.fillTipTimes(WINDOW)).reverted).toBe(1);
+        const g = await row(1);
+        expect(g).toMatchObject({ startTimeTbd: true, startDate: new Date(MON_NOV_2) });
         expect(g.startTimeSource).toBeUndefined();
     });
 
@@ -268,6 +290,14 @@ describe('the CBBD ingest keeps a fill until CBBD has its own time', () => {
 
         const g = await row(1);
         expect(g).toMatchObject({ startTimeTbd: false, startDate: new Date('2026-11-03T01:00:00Z') });
+        expect(g.startTimeSource).toBeUndefined();
+    });
+
+    test('CBBD postpones it: the filled time goes with it', async () => {
+        await refresh(cbbdGame({ status: 'postponed' }));
+
+        const g = await row(1);
+        expect(g).toMatchObject({ status: 'postponed', startTimeTbd: true, startDate: new Date(MON_NOV_2) });
         expect(g.startTimeSource).toBeUndefined();
     });
 
