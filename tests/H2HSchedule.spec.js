@@ -240,10 +240,10 @@ describe('GET /standings/h2h schedule', () => {
         expect(weekOf(await get(), 2).upcoming).toBe(true);
     });
 
-    // Deliberate, and unchanged: h2hManagerIds excludes managers with no scored
-    // week, so a league that has never been scored stays empty rather than
-    // showing a table of 0-0-0 rows against a schedule nobody is on yet.
-    test('a league with no scored week at all stays empty', async () => {
+    // Drafted but never scored (the gap before the first game): a roster is
+    // enough to be paired, so the matchups show ahead of kickoff instead of
+    // the page falling back to the plain table.
+    test('a drafted league with no scored week shows its matchups', async () => {
         await ScoringConfig.create({
             league: LEAGUE, model: 'graham', values: {},
             engagementBySeason: { '2026': { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 } }
@@ -251,6 +251,21 @@ describe('GET /standings/h2h schedule', () => {
         await manager('Ann', [team(1, 'Oregon')], []);
         await manager('Bob', [team(2, 'Duke')], []);
         await Game.create([game(101, 1, 1, 99, false), game(102, 1, 2, 98, false)]);
+
+        const body = await get();
+        expect(body.managers.map(m => m.record)).toEqual(['0-0-0', '0-0-0']);
+        expect(weekOf(body, 1)).toMatchObject({ upcoming: true });
+        expect(weekOf(body, 1).games).toHaveLength(1);
+    });
+
+    // Joined but undrafted: nothing to pair yet, so still empty.
+    test('a league nobody has drafted in stays empty', async () => {
+        await ScoringConfig.create({
+            league: LEAGUE, model: 'graham', values: {},
+            engagementBySeason: { '2026': { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 } }
+        });
+        await manager('Ann', [], []);
+        await manager('Bob', [], []);
 
         const body = await get();
         expect(body.schedule).toEqual([]);

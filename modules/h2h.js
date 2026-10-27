@@ -171,14 +171,18 @@ function persistedBonus(season) {
 // The pairing schedule is positional (circle-method round robin), so the id
 // ORDER decides who plays whom. Sorting by id makes that stable regardless of
 // document order — previously the list came back in Mongo's natural order, so
-// an unrelated write could in principle reshuffle a season's matchups. Managers
-// with no scored week yet are excluded (nothing to match up), which is what
-// keeps the preseason empty rather than a table of 0-0-0 rows.
+// an unrelated write could in principle reshuffle a season's matchups. A
+// manager is in once they have a roster OR a scored week: drafted-but-unscored
+// is the whole gap between a basketball draft and the first tip (football's
+// nightly job seeds zero weeks, so it never showed this), and leaving them out
+// hid every matchup until a game was played. A franchise with neither — joined
+// but undrafted — stays out. The scoring passes hand this the same `teams`, so
+// the pairings shown before tip-off are the ones that get banked.
 function h2hManagerIds(users, season) {
     return (users || [])
         .filter(u => {
             const s = seasonEntry(u, season);
-            return !!(s && (s.weeklyScore || []).length);
+            return !!(s && ((s.weeklyScore || []).length || (s.teams || []).length));
         })
         .map(u => String(u._id))
         .sort();

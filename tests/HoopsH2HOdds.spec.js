@@ -427,4 +427,21 @@ describe('GET /standings/h2h on a basketball league', () => {
         const res = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}?standingsOnly=1`);
         res.body.schedule.forEach(w => w.games.forEach(c => expect(c.winP).toBeNull()));
     });
+
+    // Drafted, nothing tipped: the gap between a basketball draft and the
+    // opener. Nobody has a weeklyScore row yet, and that used to drop every
+    // manager, so the page fell back to the plain table with no matchups.
+    test('a drafted league shows its matchups before the first game is scored', async () => {
+        await modes();
+        await manager('Ann', [1]);
+        await manager('Bo', [2]);
+        await HoopsGame.create([game(1, 1, ELITE, later), game(1, 2, NOBODY, later)]);
+        for (const q of ['?standingsOnly=1', '']) {
+            const res = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}${q}`);
+            expect(res.body.managers.map(m => m.record)).toEqual(['0-0-0', '0-0-0']);
+            const wk = res.body.schedule.find(w => w.week === 1);
+            expect(wk.games).toHaveLength(1);
+            expect(wk.upcoming).toBe(true);
+        }
+    });
 });
