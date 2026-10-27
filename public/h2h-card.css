@@ -67,6 +67,9 @@
 /* A dated kickoff stacks day over time, so it is no wider than an undated one. */
 .h2h-tv.sched.dated { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; white-space: nowrap; }
 .h2h-mdcol.right .h2h-tv.sched.dated { align-items: flex-start; }
+/* styles.css colours every element (* { color }), so the day/time spans must
+   inherit explicitly or they lose the link colour. */
+.h2h-tv .kd, .h2h-tv .kt { color: inherit; }
 .h2h-mfoot { grid-column: 1 / -1; margin-top: 0.4rem; padding-top: 0.5rem; border-top: 1px solid var(--cc-border); font-size: 0.66rem; color: var(--cc-muted-2); text-align: center; }
 /* Win-probability bar — always visible (collapsed + expanded), between the
    summary and the detail. Favorite green, underdog red, dead-even neutral. */
