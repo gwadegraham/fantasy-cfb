@@ -258,9 +258,13 @@ describe('h2hManagerIds', () => {
         expect(h2hManagerIds(forward, 2026)).toEqual(['a', 'b', 'c']);
         expect(h2hManagerIds(reversed, 2026)).toEqual(h2hManagerIds(forward, 2026));
     });
-    test('excludes managers with no scored week, and other seasons', () => {
+    test('excludes managers with no scored week and no roster, and other seasons', () => {
         const users = [u('a', 2026, [{ week: 1, score: 5 }]), u('b', 2026, []), u('c', 2025, [{ week: 1, score: 5 }])];
         expect(h2hManagerIds(users, 2026)).toEqual(['a']);
+    });
+    test('includes a drafted manager before their first scored week', () => {
+        const users = [{ _id: 'd', seasons: [{ season: 2026, teams: [{ id: 1 }], weeklyScore: [] }] }, u('b', 2026, [])];
+        expect(h2hManagerIds(users, 2026)).toEqual(['d']);
     });
     test('matches a season passed as a string or a number', () => {
         const users = [u('a', 2026, [{ week: 1, score: 5 }])];

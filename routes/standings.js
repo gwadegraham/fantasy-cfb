@@ -735,7 +735,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const draftedSet = new Set();
         users.forEach(u => {
             const s = (u.seasons || []).find(x => String(x.season) === String(season));
-            if (!s || !(s.weeklyScore || []).length) return;
+            // Same membership rule as h2hManagerIds: a roster is enough, so a
+            // drafted league shows its matchups before the first game.
+            if (!s || !((s.weeklyScore || []).length || (s.teams || []).length)) return;
             const id = String(u._id);
             if (!idSet.has(id)) return;
             // The season's points with EVERY H2H bonus stripped back out (baseWeekScore
