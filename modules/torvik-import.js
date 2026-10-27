@@ -42,13 +42,18 @@ const jsonUrlFor = (season) => `https://barttorvik.com/${season}_team_results.js
 // actually makes to the draft.
 const POOL = require('./draft-defaults').BY_SPORT.basketball.poolSize;
 
+// The fewest games a full projected season can hold. Torvik counts D-I games
+// only, so a full slate runs 26-33 (30 Sep 2026 file: Tennessee St. lowest at
+// 26); a team missing its conference schedule projects ~11-14.
+const MIN_PROJECTED_GAMES = 20;
+
 // Everything that has to be true of a rating set before it can rank a draft.
 //
 // These used to live only in the spec, hard-wired to the committed file — so
 // --file, the path that produces NEXT year's data, skipped all of them. A
 // paste where 183 rows all claimed rank 1 imported cleanly and printed a
 // plausible top ten.
-function problemsWith(rows) {
+function problemsWith(rows, { preseason = true } = {}) {
     const bad = [];
     const ranks = rows.map(r => r.rank);
 
@@ -71,6 +76,25 @@ function problemsWith(rows) {
         bad.push(`ranks run ${sorted[0]}..${sorted[sorted.length - 1]} across ${ranks.length} rows — expected 1..${ranks.length}`);
     }
     if (new Set(rows.map(r => r.school)).size !== rows.length) bad.push('a school is named more than once');
+
+    // A projected record is only a full season once Torvik has the team's
+    // conference schedule. On 26 Oct 2026 the Big 12's was missing: all 16
+    // teams imported at 11-14 games (UCF 10-4) against everyone else's 27-33,
+    // and the projection spread that non-conference win rate over the whole
+    // season mid-draft. Grouped by conference, because that is the unit
+    // Torvik loads a schedule in. Preseason only: the weekly in-season job
+    // (hoops-torvik-job.js) never stores the record, so a short one there
+    // must not block a T-Rank week.
+    const short = !preseason ? [] : rows.filter(r => {
+        const m = /^(\d+)-(\d+)$/.exec(String(r.projectedRecord));
+        return m && Number(m[1]) + Number(m[2]) < MIN_PROJECTED_GAMES;
+    });
+    if (short.length) {
+        const byConf = {};
+        short.forEach(r => { (byConf[r.conference || '?'] = byConf[r.conference || '?'] || []).push(`${r.school} ${r.projectedRecord}`); });
+        const list = Object.entries(byConf).map(([c, teams]) => `${c}: ${teams.join(', ')}`).join('; ');
+        bad.push(`${short.length} team(s) have a projected record under ${MIN_PROJECTED_GAMES} games — Torvik has probably not loaded their conference schedule yet. Re-fetch once it has (${list})`);
+    }
 
     // And the right way up: barthag is win probability, so it falls as the
     // rank number rises. Catches a reversed sort, which otherwise ranks the
@@ -228,13 +252,13 @@ async function current(season) {
 //
 // Returns { ok, problems, matched, ... }. `problems` is a list of one-line
 // reasons, the same lines the CLI prints.
-async function check(season, ratings) {
+async function check(season, ratings, { preseason = true } = {}) {
     const out = { ok: false, problems: [], ratings: ratings.length, teams: 0, matched: [] };
     if (!ratings.length) {
         out.problems.push('parsed 0 rating rows — check the paste actually contains the T-Rank table');
         return out;
     }
-    const bad = problemsWith(ratings);
+    const bad = problemsWith(ratings, { preseason });
     if (bad.length) {
         out.problems.push(...bad.map(b => `BAD  ${b}`));
         return out;

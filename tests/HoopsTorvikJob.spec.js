@@ -147,6 +147,16 @@ describe('run', () => {
         expect(ranked.ranks['1']).toBe(12);
     });
 
+    // 26 Oct 2026: the Big 12's conference schedule was missing from Torvik.
+    // The record is never stored here, so it must not cost a week its ranks.
+    test('a short projected record does not block the week', async () => {
+        const file = JSON.parse(torvikFile(REVERSED));
+        file[0][10] = 10; file[0][11] = 4;
+        const out = await job.run({ now: SATURDAY_NIGHT, fetchImpl: reply(JSON.stringify(file)) });
+        expect(out.status).toBe('success');
+        expect(await HoopsTorvikRank.countDocuments({ season: SEASON, week: 1 })).toBe(12);
+    });
+
     test('the draft\'s preseason numbers are never touched', async () => {
         await job.run({ now: SATURDAY_NIGHT, fetchImpl: reply(torvikFile(REVERSED)) });
         const duke = await HoopsTeam.findOne({ season: SEASON, school: 'Duke' }).lean();

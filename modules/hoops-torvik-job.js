@@ -117,8 +117,9 @@ async function snapshotSeason(season, now, fetchImpl) {
     const { rows, url } = await torvik.fetchFromTorvik(season, { fetchImpl, inSeason: true });
     // The admin import's checks, word for word: unique dense ranks, sane
     // columns, the right way up, and every school matched to exactly one
-    // team with no conference disagreement.
-    const result = await torvik.check(season, rows);
+    // team with no conference disagreement. Less the projected-record floor,
+    // which only matters to the preseason stamp.
+    const result = await torvik.check(season, rows, { preseason: false });
     if (!result.ok) {
         const shown = result.problems.slice(0, 8).join('; ');
         const more = result.problems.length > 8 ? ` … (+${result.problems.length - 8})` : '';
