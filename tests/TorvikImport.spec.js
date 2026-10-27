@@ -73,6 +73,25 @@ describe('problemsWith', () => {
         expect(out).toMatch(/expected 1\.\.12/);
         expect(out).toMatch(/named more than once/);
     });
+
+    // 26 Oct 2026: the Big 12's conference schedule was missing from Torvik,
+    // and UCF imported at 10-4 mid-draft.
+    test('a team missing its conference schedule is refused, grouped by conference', () => {
+        const rows = ratings();
+        rows[3].conference = 'B12'; rows[3].projectedRecord = '10-4';
+        rows[7].conference = 'B12'; rows[7].projectedRecord = '10-9';
+        rows[9].projectedRecord = '14-6';           // exactly the floor: passes
+        const out = torvik.problemsWith(rows).join('\n');
+        expect(out).toMatch(/2 team\(s\) have a projected record under 20 games/);
+        expect(out).toMatch(new RegExp(`B12: ${rows[3].school} 10-4, ${rows[7].school} 10-9`));
+        expect(out).not.toMatch(new RegExp(rows[9].school));
+    });
+
+    test('the projected-record floor is preseason only', () => {
+        const rows = ratings();
+        rows[3].projectedRecord = '10-4';
+        expect(torvik.problemsWith(rows, { preseason: false })).toEqual([]);
+    });
 });
 
 // One row of {season}_team_results.json, in its real positional shape.
