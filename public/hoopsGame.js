@@ -97,7 +97,7 @@
                 : q + 'game for <b>' + esc(t.school) + '</b>';
             var foot = '';
             if (vals) {
-                var who = t.owner ? esc(t.owner.franchiseName || t.owner.firstName || 'a manager') : null;
+                var who = t.owner ? esc(t.owner.franchiseName || t.owner.name || t.owner.firstName || 'a manager') : null;
                 if (!who) foot = 'Not on a roster';
                 // banked null = the nightly scoring has not reached this game
                 // yet, which is not the same as banking 0.
@@ -263,7 +263,7 @@
         var p = d.preview && d.preview.homeWinProb;
         var line = function (t, winP) {
             var v = t.quadrant ? vals[t.quadrant] : null;
-            var owner = t.owner ? esc(t.owner.franchiseName || t.owner.firstName || 'A manager') : null;
+            var owner = t.owner ? esc(t.owner.franchiseName || t.owner.name || t.owner.firstName || 'A manager') : null;
             var q = t.quadrant ? qChip(d, t)
                 : '<span class="hg-q post">' + esc(d.game.tournament || 'Post') + '</span>';
             if (!owner) return '<div class="hg-st-row">' + q + '<span class="who"><b>' + esc(t.school) + '</b> · not on a roster</span></div>';

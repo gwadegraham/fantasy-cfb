@@ -49,11 +49,15 @@
     var DATED_FMT = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: CT });
     var TIME_FMT = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: CT });
     var YMD_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: CT, year: 'numeric', month: '2-digit', day: '2-digit' });
+    // Returns markup: the day and the time are separate spans so a DATED
+    // kickoff ("Mon, 11/2" / "6:00 PM") can stack on two lines and leave the
+    // team name its width. The text is unchanged ("Mon, 11/2 6:00 PM").
     function fmtKick(iso, dated) {
         if (!iso) return 'TBD';
         var d = new Date(iso);
         if (isNaN(d.getTime())) return 'TBD';
-        return (dated ? DATED_FMT : DAY_FMT).format(d) + ' ' + TIME_FMT.format(d);
+        return '<span class="kd">' + esc((dated ? DATED_FMT : DAY_FMT).format(d)) + '</span> '
+            + '<span class="kt">' + esc(TIME_FMT.format(d)) + '</span>';
     }
     // Which football week a kickoff belongs to, in Central. Epoch day 0 was a
     // Thursday, so plain 7-day buckets already run Thu→Wed — which is how a
@@ -107,7 +111,7 @@
                 ? '<span class="h2h-tv live">' + t.score + '</span>'
                 : valLink(t.gameId, '<span class="h2h-tv live">LIVE</span>');
         }
-        return t.status === 'scheduled' ? valLink(t.gameId, '<span class="h2h-tv sched">' + esc(fmtKick(t.kickoff, needsDate(t.kickoff, plan))) + '</span>')
+        return t.status === 'scheduled' ? valLink(t.gameId, '<span class="h2h-tv sched' + (needsDate(t.kickoff, plan) ? ' dated' : '') + '">' + fmtKick(t.kickoff, needsDate(t.kickoff, plan)) + '</span>')
             : '<span class="h2h-tv">' + (t.score != null ? t.score : 0) + '</span>';
     }
     // A ranked opponent, tiered the way the scoring tiers it: rankValue pays

@@ -78,7 +78,7 @@
         var vals = d.quadrantValues || {};
         var table = upcoming.reduce(function (s, g) { return s + (vals[g.quadrant] || 0); }, 0);
         var q1Left = upcoming.filter(function (g) { return g.quadrant === 1; }).length;
-        var name = d.owner.franchiseName || d.owner.firstName || 'A manager';
+        var name = d.owner.franchiseName || d.owner.name || d.owner.firstName || 'A manager';
         return '<div class="ht-own"><div class="who">On <b>' + esc(name) + '</b>’s roster'
             + (upcoming.length ? '<br><span class="sub">' + q1Left + ' Q1 game' + (q1Left === 1 ? '' : 's')
                 + ' left · up to <b>+' + table + '</b> still on the table</span>' : '')
@@ -328,7 +328,10 @@
         if (at === -1) return '';
         var from = Math.max(0, Math.min(at - PEEK, d.standings.length - (PEEK * 2 + 1)));
         var rows = d.standings.slice(from, from + PEEK * 2 + 1);
-        var h = '<h2 class="sp-h">' + esc(d.team.conference) + '<small>' + ordinal(at + 1) + ' of ' + d.standings.length + '</small></h2>'
+        // Before anyone has played, the order is alphabetical, so a place
+        // ("9th of 11" for UConn) would be invented. Say preseason instead.
+        var place = played(d) ? ordinal(at + 1) + ' of ' + d.standings.length : 'Preseason';
+        var h = '<h2 class="sp-h">' + esc(d.team.conference) + '<small>' + place + '</small></h2>'
             + '<div class="sp-card"><table class="ht-st"><thead><tr><th></th><th>Team</th><th>Conf</th><th>Overall</th></tr></thead><tbody>';
         rows.forEach(function (r, i) {
             h += standingsRow(d, r, from + i);
@@ -339,8 +342,11 @@
         var t = n % 100, s = n % 10;
         return n + (t >= 11 && t <= 13 ? 'th' : s === 1 ? 'st' : s === 2 ? 'nd' : s === 3 ? 'rd' : 'th');
     }
+    function played(d) {
+        return (d.standings || []).some(function (r) { return (r.w || 0) + (r.l || 0) > 0; });
+    }
     function standingsRow(d, r, i) {
-        return '<tr' + (r.teamId === d.team.id ? ' class="me"' : '') + '><td class="n">' + (i + 1) + '</td>'
+        return '<tr' + (r.teamId === d.team.id ? ' class="me"' : '') + '><td class="n">' + (played(d) ? i + 1 : '') + '</td>'
             + '<td class="s"><a href="' + teamHref(r.teamId) + '">' + (r.logo ? '<img src="' + esc(r.logo) + '" alt="">' : '') + esc(r.school) + '</a></td>'
             + '<td>' + r.confW + '–' + r.confL + '</td><td>' + r.w + '–' + r.l + '</td></tr>';
     }

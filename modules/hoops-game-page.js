@@ -188,7 +188,7 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
             // Postseason games are paid on the tournament ladder, not as a
             // quadrant (isRegular in hoops-detectors) — same rule as the team page.
             quadrant: paid ? paid.quadrant : postseason ? null : quadrantFor(oppRank, venue),
-            owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName,
+            owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName, name: owner.name,
                 mine: !!viewerId && owner.accountId === String(viewerId) } : null,
             banked: owner && final && Object.prototype.hasOwnProperty.call(owner.points, String(id)) ? owner.points[String(id)] : null
         };

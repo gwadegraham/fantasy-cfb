@@ -35,6 +35,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+    min-width: 0;
 }
 .gg-tier-a { border-left-color: var(--cc-success); }
 .gg-tier-b { border-left-color: var(--cc-info); }
@@ -126,5 +127,8 @@
 .gg-pick-meta { color: var(--cc-muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 600px) {
-    .grades-grid { grid-template-columns: 1fr; }
+    /* minmax(0, …), not 1fr: a bare 1fr column won't shrink below its widest
+       card's min-content, so a long franchise name pushed every card (and the
+       page) past a 375px screen. */
+    .grades-grid { grid-template-columns: minmax(0, 1fr); }
 }

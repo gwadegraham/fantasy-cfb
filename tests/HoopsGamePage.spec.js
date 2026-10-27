@@ -453,7 +453,7 @@ describe('build', () => {
         const a = await Account.create({ firstName: 'Garrett', lastName: 'G', email: 'g2@example.invalid' });
         await Franchise.create({ accountId: a._id, league: LEAGUE, seasons: [{ season: SEASON, franchiseName: 'Hoop Dreams', teamRefs: [{ id: 2, sport: 'basketball' }] }] });
         const p = await gamePage.build(500, { league: LEAGUE, viewerId: String(a._id) });
-        expect(p.away.owner).toEqual({ franchiseName: 'Hoop Dreams', firstName: 'Garrett', mine: true });
+        expect(p.away.owner).toEqual({ franchiseName: 'Hoop Dreams', firstName: 'Garrett', name: 'Garrett G.', mine: true });
         expect((await gamePage.build(500, { league: LEAGUE, viewerId: 'someone-else' })).away.owner.mine).toBe(false);
         expect((await gamePage.build(500, { league: LEAGUE })).away.owner.mine).toBe(false);
         expect(JSON.stringify(p)).not.toContain(String(a._id));

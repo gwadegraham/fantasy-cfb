@@ -320,7 +320,8 @@ describe('build', () => {
         await ScoringConfig.collection.insertOne({ league: LEAGUE, model: 'hoops', values: { q1Win: 7 }, disabled: [], enabled: [] });
         await HoopsGame.create([game(10, 1, 2, 1, { homePoints: 62, awayPoints: 74 })]);
         const p = await teamPage.build(1, { season: SEASON, league: LEAGUE });
-        expect(p.owner).toEqual({ franchiseName: 'Hoop Dreams', firstName: 'Garrett' });
+        // name carries the last initial: a league can have two Garretts.
+        expect(p.owner).toEqual({ franchiseName: 'Hoop Dreams', firstName: 'Garrett', name: 'Garrett G.' });
         expect(p.games[0].points).toBe(5);              // its own row, not team 3's
         expect(p.quadrantValues).toMatchObject({ 1: 7, 2: 3, 3: 1, 4: 0 });
     });

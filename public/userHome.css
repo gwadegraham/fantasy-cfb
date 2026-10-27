@@ -592,7 +592,7 @@
     transition: max-height 0.32s ease;
 }
 .uh-grades.is-open { max-height: 900px; margin-top: 1.1rem; }
-.uh-grades .grades-grid-single { grid-template-columns: 1fr; }
+.uh-grades .grades-grid-single { grid-template-columns: minmax(0, 1fr); }
 @media (prefers-reduced-motion: reduce) {
     .uh-grades { transition: none; }
     .grade-chip-caret { transition: none; }
