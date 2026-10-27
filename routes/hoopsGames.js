@@ -31,6 +31,7 @@ const franchiseRepo = require('../modules/franchise-repo');
 const HoopsTeam = require('../models/hoopsTeam');
 const { pickLogo } = require('../public/logo.js');
 const roster = require('../modules/hoops-roster');
+const espnTipTimes = require('../modules/hoops-espn-tip-times');
 const audit = require('../modules/audit-log');
 // PAGE_CAP only; seasonRange is reached through `cbbd` so it stays stubbable —
 // destructuring it here would re-arm the very trap the note above describes.
@@ -77,6 +78,7 @@ async function writeGames(ops, label) {
         // Inside the try: a failed check must fail the write (a 500 the caller
         // sees), never escape the handler — and never write without the check.
         ops = await keepStoredFinals(ops);
+        ops = await espnTipTimes.keepFilledTipTimes(ops);
         const write = await HoopsGame.bulkWrite(ops, { ordered: false });
         return { created: write.upsertedCount || 0, updated: write.matchedCount || 0, failure: null };
     } catch (err) {
@@ -181,8 +183,10 @@ function buildUpsertOp(g, seasonStart) {
     // skipping the key would leave whatever was there before.
     const unsetWeek = doc.week === null || doc.week === undefined;
     Object.keys(doc).forEach(k => { if (doc[k] === undefined || doc[k] === null) delete doc[k]; });
-    const update = { $set: doc };
-    if (unsetWeek) update.$unset = { week: '' };
+    // CBBD's time is CBBD's: any ESPN marker goes (keepFilledTipTimes puts it
+    // back only while CBBD still says TBD for the same day).
+    const update = { $set: doc, $unset: { startTimeSource: '' } };
+    if (unsetWeek) update.$unset.week = '';
     return { updateOne: { filter: { id: g.id }, update, upsert: true } };
 }
 

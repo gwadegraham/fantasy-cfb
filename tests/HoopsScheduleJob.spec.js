@@ -19,6 +19,7 @@ const League = require('../models/league');
 const SportSeason = require('../models/sportSeason');
 const hoopsGames = require('../routes/hoopsGames');
 const seasons = require('../modules/active-season');
+const espnTipTimes = require('../modules/hoops-espn-tip-times');
 
 useMongo();
 
@@ -57,6 +58,8 @@ beforeEach(async () => {
     jest.spyOn(jobMailer, 'sendJobEmail').mockResolvedValue();
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
+    // The ESPN fill's network side; its behaviour is HoopsEspnTipTimes.spec.js.
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('unexpected network call'));
 });
 
 afterEach(() => { seasons._reset(); jest.restoreAllMocks(); });
@@ -182,5 +185,53 @@ describe('failures are loud', () => {
 
         expect(out.failed).toMatch(/regular 422: CBBD returned no regular games/);
         expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('the ESPN tip-time fill', () => {
+    const counts = (o) => Object.assign({ candidates: 3, filled: 0, updated: 0, unchanged: 0, reverted: 0,
+        espnTbd: 0, dayMismatch: 0, notOnEspn: 0, lost: 0, failedDays: 0, calls: 1 }, o);
+
+    test('runs after the CBBD pull, over the same window, and is in the summary', async () => {
+        await HoopsGame.create([stored(1, '2026-11-03T00:30:00Z'), SEASON_END()]);
+        stubFetch({ regular: [cbbdGame(1, '2026-11-03T00:30:00Z')] });
+        const fill = jest.spyOn(espnTipTimes, 'fillTipTimes').mockResolvedValue(counts({ filled: 2, espnTbd: 1 }));
+
+        const out = await job.run({ now: NOW });
+
+        expect(fill).toHaveBeenCalledWith({ season: SEASON, start: NOW, end: new Date(NOW.getTime() + job.LOOKAHEAD_DAYS * DAY_MS) });
+        expect(out.failed).toBeNull();
+        expect(out.summary).toBe(`${SEASON} regular: 0 new, 1 updated | ${SEASON} ESPN tip times: 2 filled, 0 updated, 0 reverted, 1 still TBD`);
+    });
+
+    test('ESPN down is reported, not a failure: no error JobRun, no email', async () => {
+        await HoopsGame.create([stored(1, '2026-11-03T00:30:00Z'), SEASON_END()]);
+        stubFetch({ regular: [cbbdGame(1, '2026-11-03T00:30:00Z')] });
+        jest.spyOn(espnTipTimes, 'fillTipTimes').mockResolvedValue(counts({ espnTbd: 0, notOnEspn: 0, failedDays: 1 }));
+
+        const out = await job.run({ now: NOW });
+
+        expect(out.failed).toBeNull();
+        expect(out.summary).toMatch(/ESPN unreachable for 1 of 1 day\(s\)/);
+        expect(jobMailer.sendJobEmail).not.toHaveBeenCalled();
+    });
+
+    test('a database error in the fill IS a failure', async () => {
+        await HoopsGame.create([stored(1, '2026-11-03T00:30:00Z'), SEASON_END()]);
+        stubFetch({ regular: [cbbdGame(1, '2026-11-03T00:30:00Z')] });
+        jest.spyOn(espnTipTimes, 'fillTipTimes').mockRejectedValue(new Error('find timed out'));
+
+        const out = await job.run({ now: NOW });
+
+        expect(out.failed).toBe('find timed out');
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+    });
+
+    test('off-season: not called', async () => {
+        const fill = jest.spyOn(espnTipTimes, 'fillTipTimes');
+
+        await job.run({ now: NOW });
+
+        expect(fill).not.toHaveBeenCalled();
     });
 });

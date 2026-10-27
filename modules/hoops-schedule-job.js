@@ -18,6 +18,11 @@
 // the postseason is pulled too. Silent and free with no basketball league,
 // or nothing scheduled in the window.
 //
+// After the CBBD pull, tip times CBBD still has as TBD are filled from ESPN's
+// scoreboard (modules/hoops-espn-tip-times.js) — free, about one call per
+// Eastern day in the window that has a TBD game. ESPN being down is reported
+// in the summary but is not a failure: those games simply stay TBD.
+//
 // It does NOT replace the admin Schedule button: regular games are only
 // asked for when some are already stored in the window, so a new season's
 // first ingest is still the button's job.
@@ -29,6 +34,7 @@ const { basketballLeagues, POSTSEASON_DISCOVERY_MS } = require('./hoops-scores-j
 const HoopsGame = require('../models/hoopsGame');
 // A namespace, so a test can stand in for the CBBD-backed refresh.
 const hoopsGames = require('../routes/hoopsGames');
+const espnTipTimes = require('./hoops-espn-tip-times');
 
 const JOB_NAME = 'hoops-schedule';
 const LABEL = 'Hoops Schedule';
@@ -94,6 +100,17 @@ async function runOnce(now, state) {
                 failed = String((err && err.message) || err);
                 done.push(`${season} ${seasonType}: FAILED ${failed}`);
             }
+        }
+        if (!types.length) continue;
+        try {
+            const t = await espnTipTimes.fillTipTimes({ season, start, end });
+            if (!t.candidates) continue;
+            const note = t.failedDays ? `, ESPN unreachable for ${t.failedDays} of ${t.calls} day(s)` : '';
+            done.push(`${season} ESPN tip times: ${t.filled} filled, ${t.updated} updated, ${t.reverted} reverted, `
+                + `${t.espnTbd + t.notOnEspn + t.dayMismatch} still TBD${note}`);
+        } catch (err) {
+            failed = String((err && err.message) || err);
+            done.push(`${season} ESPN tip times: FAILED ${failed}`);
         }
     }
     if (!done.length) return { skippedReason: 'nothing scheduled' };
