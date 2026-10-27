@@ -204,3 +204,24 @@ describe('a basketball league keeps the hoops model (#500)', () => {
         expect(res.body.model).toBe('graham');
     });
 });
+
+describe('PATCH /scoring-config/:league/engagement — on a league with no config yet', () => {
+    // An upsert skips `required`, so saving game modes first used to create a
+    // config with no model — which the prior-season freeze then failed on.
+    it('creates the config with the league\'s model', async () => {
+        const res = await request(app).patch(`/scoring-config/${LEAGUE}/engagement`)
+            .set('X-Internal-Token', TOKEN)
+            .send({ season: '2026', h2hEnabled: true, captainEnabled: true });
+        expect(res.status).toBe(200);
+        const doc = await ScoringConfig.findOne({ league: LEAGUE }).lean();
+        expect(doc.model).toBe('graham');
+    });
+
+    it('leaves an existing model alone', async () => {
+        await seed({ model: 'claunts' });
+        await request(app).patch(`/scoring-config/${LEAGUE}/engagement`)
+            .set('X-Internal-Token', TOKEN)
+            .send({ season: '2026', h2hEnabled: true });
+        expect((await ScoringConfig.findOne({ league: LEAGUE }).lean()).model).toBe('claunts');
+    });
+});

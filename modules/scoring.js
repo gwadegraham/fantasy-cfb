@@ -115,6 +115,14 @@ async function freezePriorSeasonConfig(currentYear) {
         const docs = await ScoringConfig.find({});
         for (const doc of docs) {
             if (doc.configBySeason && doc.configBySeason[priorYear]) continue;
+            // A config with no model can't be saved (the schema requires it),
+            // and one throw here stopped the loop, so every league after it went
+            // unfrozen and the error repeated on every scoring pass. Skip it,
+            // by name. Saving the league's scoring rules once fills the model in.
+            if (!doc.model) {
+                console.error(`freezePriorSeasonConfig: skipping ${doc.league} — its scoring config has no model; save its scoring rules to fix`);
+                continue;
+            }
             if (!doc.configBySeason) doc.configBySeason = {};
             doc.configBySeason[priorYear] = {
                 model: doc.model,

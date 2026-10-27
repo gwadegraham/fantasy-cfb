@@ -7,7 +7,7 @@ const Game = require('../models/game');
 const HoopsGame = require('../models/hoopsGame');
 const { ranksFor } = require('../modules/hoops-ranks');
 const hoopsTeamPage = require('../modules/hoops-team-page');
-const { resolveConfig, fieldsForModel, engagementForSeason, overridesFromDoc } = require('../modules/scoring-defaults');
+const { resolveConfig, fieldsForModel, engagementForSeason, overridesFromDoc, modelForLeague } = require('../modules/scoring-defaults');
 const { explainRegularWin, explainGame, getScoringConfig, getRankingsForGame, getBracketForGame } = require('../modules/scoring');
 const { POWER_CONFERENCES } = require('../modules/scoring-detectors');
 const { canManageLeague } = require('../modules/league-access');
@@ -259,7 +259,12 @@ router.patch('/:league/engagement', async (req, res) => {
         // settings are preserved.
         const doc = await ScoringConfig.findOneAndUpdate(
             { league },
-            { $set: { league, ['engagementBySeason.' + season]: engagement, updatedAt: new Date() } },
+            // $setOnInsert the model: `required` doesn't fire on an upsert, so
+            // a league that set game modes before ever saving its scoring rules
+            // got a config with no model, and the prior-season freeze then
+            // failed on every scoring pass trying to save it.
+            { $set: { league, ['engagementBySeason.' + season]: engagement, updatedAt: new Date() },
+              $setOnInsert: { model: modelForLeague(league) } },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
         const saved = engagementForSeason(doc.engagementBySeason, season);

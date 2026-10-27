@@ -181,3 +181,14 @@ describe('Football page matches the football engine', () => {
         expect(html).not.toContain('tips off');
     });
 });
+
+describe('fieldsForModel marks penalties', () => {
+    // The admin form bounds a penalty at or below zero (it is stored negative)
+    // and every other value at or above. Unmarked, the -2 default failed the
+    // browser's min="0" check and the hoops scoring form could not be saved.
+    it('flags the Q4 loss penalty and nothing else', () => {
+        const fields = fieldsForModel('hoops', [], ['badLoss']);
+        expect(fields.filter(f => f.penalty).map(f => f.key)).toEqual(['badLoss']);
+        expect(fieldsForModel('graham', [], []).some(f => f.penalty)).toBe(false);
+    });
+});

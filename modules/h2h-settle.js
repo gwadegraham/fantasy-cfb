@@ -11,6 +11,7 @@
 const ScoringConfig = require('../models/scoringConfig');
 const franchiseRepo = require('./franchise-repo');
 const { seasonEntry, applyAwards, H2H_MAX_WEEK } = require('./h2h');
+const { modelForLeague } = require('./scoring-defaults');
 
 // `computed` is computeH2HAwards' result, or null when H2H is off — an empty
 // award map, which strips any bonus a previous pass stored. `maxWeek` bounds
@@ -73,7 +74,10 @@ async function bankLeague({ league, seasonNum, seasonStr, users, eng, pinnedIds,
     if (eng.h2hEnabled && !pinnedIds && computed && computed.finalWeeks.length && computed.ids.length) {
         await ScoringConfig.updateOne(
             { league },
-            { $set: { ['h2hScheduleBySeason.' + seasonStr]: { ids: computed.ids, pinnedAt: new Date() } } },
+            // Same model-on-insert as the engagement route: an upsert skips
+            // `required`, and a config with no model breaks the season freeze.
+            { $set: { ['h2hScheduleBySeason.' + seasonStr]: { ids: computed.ids, pinnedAt: new Date() } },
+              $setOnInsert: { model: modelForLeague(league) } },
             { upsert: true }
         );
         pinned = true;
