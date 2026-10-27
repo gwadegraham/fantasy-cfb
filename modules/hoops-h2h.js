@@ -144,7 +144,7 @@ async function applyHoopsH2H(league, season, { nowMs = Date.now(), weeks, cfgDoc
             maxWeek, weeks: inputs.weeks, weekBase: modeWeekBase
         });
     }
-    const banked = await bankLeague({ league, seasonNum, seasonStr, users, eng, pinnedIds, computed, maxWeek });
+    const banked = await bankLeague({ league, seasonNum, seasonStr, users, eng, pinnedIds, computed, maxWeek, model: 'hoops' });
     return Object.assign({ league, enabled: !!eng.h2hEnabled }, banked);
 }
 

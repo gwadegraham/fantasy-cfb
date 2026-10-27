@@ -15,8 +15,10 @@ const { modelForLeague } = require('./scoring-defaults');
 
 // `computed` is computeH2HAwards' result, or null when H2H is off — an empty
 // award map, which strips any bonus a previous pass stored. `maxWeek` bounds
-// the weeks applyAwards may award (football's is H2H_MAX_WEEK).
-async function bankLeague({ league, seasonNum, seasonStr, users, eng, pinnedIds, computed, maxWeek = H2H_MAX_WEEK }) {
+// the weeks applyAwards may award (football's is H2H_MAX_WEEK). `model` is
+// written only if the pin creates the config; basketball passes 'hoops' because
+// modelForLeague reads a cold season cache as football.
+async function bankLeague({ league, seasonNum, seasonStr, users, eng, pinnedIds, computed, maxWeek = H2H_MAX_WEEK, model }) {
     const awards = computed ? computed.awards : {};
     let updated = 0, awarded = 0;
     for (const user of users) {
@@ -77,7 +79,7 @@ async function bankLeague({ league, seasonNum, seasonStr, users, eng, pinnedIds,
             // Same model-on-insert as the engagement route: an upsert skips
             // `required`, and a config with no model breaks the season freeze.
             { $set: { ['h2hScheduleBySeason.' + seasonStr]: { ids: computed.ids, pinnedAt: new Date() } },
-              $setOnInsert: { model: modelForLeague(league) } },
+              $setOnInsert: { model: model || modelForLeague(league) } },
             { upsert: true }
         );
         pinned = true;

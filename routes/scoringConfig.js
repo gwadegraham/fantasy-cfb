@@ -257,6 +257,13 @@ router.patch('/:league/engagement', async (req, res) => {
         };
         // Set only this season's slot in the map (dot-path) so the other seasons'
         // settings are preserved.
+        //
+        // The sport comes from the league catalog, as in the POST above: a cold
+        // season cache reads every league as football, and this upsert may be
+        // what creates a basketball league's config.
+        const leagueDoc = await League.findOne({ code: league }, { sport: 1, _id: 0 }).lean();
+        const insertModel = (leagueDoc ? leagueDoc.sport : sportForLeague(league)) === 'basketball'
+            ? 'hoops' : modelForLeague(league);
         const doc = await ScoringConfig.findOneAndUpdate(
             { league },
             // $setOnInsert the model: `required` doesn't fire on an upsert, so
@@ -264,7 +271,7 @@ router.patch('/:league/engagement', async (req, res) => {
             // got a config with no model, and the prior-season freeze then
             // failed on every scoring pass trying to save it.
             { $set: { league, ['engagementBySeason.' + season]: engagement, updatedAt: new Date() },
-              $setOnInsert: { model: modelForLeague(league) } },
+              $setOnInsert: { model: insertModel } },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
         const saved = engagementForSeason(doc.engagementBySeason, season);

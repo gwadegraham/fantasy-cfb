@@ -22,3 +22,12 @@ test('a pin that creates the config gives it the league\'s model', async () => {
     expect(doc.model).toBe('graham');
     expect(doc.h2hScheduleBySeason['2026'].ids).toEqual(['a', 'b']);
 });
+
+test('a basketball pin uses the model its caller passes, not the cold cache', async () => {
+    await bankLeague({
+        league: 'full-court-depressed', seasonNum: 2027, seasonStr: '2027', users: [],
+        eng: { h2hEnabled: true }, pinnedIds: null, model: 'hoops',
+        computed: { awards: {}, finalWeeks: [1], ids: ['a', 'b'] }
+    });
+    expect((await ScoringConfig.findOne({ league: 'full-court-depressed' }).lean()).model).toBe('hoops');
+});

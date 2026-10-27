@@ -225,3 +225,17 @@ describe('PATCH /scoring-config/:league/engagement — on a league with no confi
         expect((await ScoringConfig.findOne({ league: LEAGUE }).lean()).model).toBe('claunts');
     });
 });
+
+describe('PATCH /scoring-config/:league/engagement — basketball league, cold cache', () => {
+    // The season cache is unprimed here, so sportForLeague reads every league as
+    // football. The insert must take the sport from the League catalog instead.
+    const League = require('../models/league');
+    it('creates the config as hoops', async () => {
+        await League.create({ code: 'full-court-depressed', name: 'Full Court Depressed', sport: 'basketball' });
+        const res = await request(app).patch('/scoring-config/full-court-depressed/engagement')
+            .set('X-Internal-Token', TOKEN)
+            .send({ season: '2027', h2hEnabled: true });
+        expect(res.status).toBe(200);
+        expect((await ScoringConfig.findOne({ league: 'full-court-depressed' }).lean()).model).toBe('hoops');
+    });
+});
