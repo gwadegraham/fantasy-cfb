@@ -76,6 +76,19 @@ describe('H2H card kickoffs', () => {
         // Still unmistakable: the two USC games read Sat 8/29 and Fri.
     });
 
+    // A dated kickoff is two spans so it can stack day over time on a phone;
+    // the card is otherwise too narrow and squeezed "ISU" down to "I".
+    test('a dated kickoff is marked and split into day and time', () => {
+        document.body.innerHTML = card(
+            [team('USC', USC_SJSU), team('USC2', USC_FRES)],
+            [team('Duke', '2026-09-05T23:30:00.000Z')]);
+        const cells = [...document.querySelectorAll('.h2h-tv.sched')];
+        expect(cells[0].classList.contains('dated')).toBe(true);
+        expect(cells[0].querySelector('.kd').textContent).toBe('Sat, 8/29');
+        expect(cells[0].querySelector('.kt').textContent).toBe('2:00 PM');
+        expect(cells[1].classList.contains('dated')).toBe(false);
+    });
+
     test('dates everything when no weekend carries the card', () => {
         // One game each weekend — neither can be the implicit default.
         const out = kicks(card([team('USC', USC_SJSU)], [team('Duke', USC_FRES)]));

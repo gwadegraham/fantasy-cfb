@@ -152,6 +152,9 @@ async function ownership(league, season, teamId) {
         return {
             franchiseName: entry.franchiseName || null,
             firstName: m.firstName || null,
+            // "Michael B.", the way Standings names a manager: a first name
+            // alone is ambiguous once a league has two Michaels.
+            name: `${m.firstName || ''} ${m.lastName ? m.lastName[0] + '.' : ''}`.trim() || null,
             // The ACCOUNT id (franchise-repo puts it on _id) — what Auth0's
             // metadata.userId names — so a page can tell the viewer's own
             // team. Never sent to the client; only a `mine` flag is.
@@ -321,7 +324,7 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
         turnover: turnover.source && turnover.byTeam[String(id)]
             ? { ...turnover.byTeam[String(id)], ...turnover.source }
             : null,
-        owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName } : null,
+        owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName, name: owner.name } : null,
         quadrantValues: values,
         games: out,
         standings,

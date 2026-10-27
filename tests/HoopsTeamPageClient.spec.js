@@ -208,6 +208,13 @@ test('opens on the best quadrant that has games', async () => {
     expect(document.querySelector('.ht-tile.on').getAttribute('data-q')).toBe('3');
 });
 
+// No franchise name: first name AND last initial, since a league can have
+// two managers called Michael.
+test('an owner without a franchise name is named with a last initial', async () => {
+    await render(payload({ owner: { franchiseName: null, firstName: 'Michael', name: 'Michael B.' } }));
+    expect(document.querySelector('.ht-own').textContent).toContain('On Michael B.’s roster');
+});
+
 test('no owner, no strip — and no point values, no "+N a win"', async () => {
     await render(payload({ owner: null, quadrantValues: null }));
     expect(document.querySelector('.ht-own')).toBeNull();
@@ -507,6 +514,14 @@ describe('standings peek (#506)', () => {
         expect(window.location.hash).toBe('#conference');
         expect(rows()).toHaveLength(15);
         expect(window.scrollTo).toHaveBeenCalled();
+    });
+    // Nobody has played: the order is alphabetical, so no place is claimed.
+    test('preseason: no invented place, and no rank numbers', async () => {
+        const flat = conf(11, 8).map(r => Object.assign(r, { confW: 0, confL: 0, w: 0, l: 0 }));
+        await render(payload({ standings: flat }));
+        expect(txt('.ht-panel h2')).toContain('ACCPreseason');
+        expect(txt('.ht-panel h2')).not.toContain('of 11');
+        expect(rows()).toEqual(['', '', '*', '', '']);
     });
     test('no conference standings: no peek', async () => {
         await render(payload({ standings: [] }));

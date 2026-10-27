@@ -20,6 +20,13 @@
 .h2h-mside.win .h2h-mnm { color: var(--cc-text); font-weight: 700; }
 .h2h-msc { font-size: 1.15rem; font-weight: 800; color: var(--cc-muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .h2h-mside.win .h2h-msc { color: var(--cc-success); }
+/* Phone: a long franchise name gets two lines instead of "Miikka Mo…", and a
+   matchup that hasn't started drops its placeholder dashes to make room. */
+@media (max-width: 560px) {
+    .h2h-mnm { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; }
+    .h2h-mside.r .h2h-mnm { text-align: right; }
+    .h2h-mcard.upcoming .h2h-msc { display: none; }
+}
 .h2h-msep { font-size: 0.56rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cc-muted-2); flex-shrink: 0; min-width: 1.6rem; text-align: center; }
 .h2h-mlive { color: var(--cc-accent); font-weight: 800; }
 .h2h-mcaret { color: var(--cc-muted-2); font-size: 0.72rem; flex-shrink: 0; transition: transform 0.2s ease; }
@@ -50,10 +57,19 @@
 .h2h-trk.top10 { color: var(--cc-amber); }
 /* Full school name on desktop; team abbreviation on mobile (tight columns). */
 .tnm-abbr { display: none; }
-@media (max-width: 560px) { .tnm-full { display: none; } .tnm-abbr { display: inline; } }
+/* On a phone the name is a 2-5 letter abbreviation: never shrink it. The
+   captain badge and a kickoff time used to squeeze "ISU" down to "I"; the
+   opponent sub-line is what gives way now. */
+@media (max-width: 560px) { .tnm-full { display: none; } .tnm-abbr { display: inline; } .h2h-tnm { flex-shrink: 0; } }
 .h2h-tv { font-weight: 700; font-size: 0.78rem; color: var(--cc-muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .h2h-tv.live { color: var(--cc-accent); font-size: 0.58rem; font-weight: 800; }
 .h2h-tv.sched { color: var(--cc-muted-2); font-size: 0.6rem; font-weight: 600; }
+/* A dated kickoff stacks day over time, so it is no wider than an undated one. */
+.h2h-tv.sched.dated { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; white-space: nowrap; }
+.h2h-mdcol.right .h2h-tv.sched.dated { align-items: flex-start; }
+/* styles.css colours every element (* { color }), so the day/time spans must
+   inherit explicitly or they lose the link colour. */
+.h2h-tv .kd, .h2h-tv .kt { color: inherit; }
 .h2h-mfoot { grid-column: 1 / -1; margin-top: 0.4rem; padding-top: 0.5rem; border-top: 1px solid var(--cc-border); font-size: 0.66rem; color: var(--cc-muted-2); text-align: center; }
 /* Win-probability bar — always visible (collapsed + expanded), between the
    summary and the detail. Favorite green, underdog red, dead-even neutral. */

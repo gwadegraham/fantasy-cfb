@@ -65,8 +65,10 @@ test('the basketball picker names the tip-off, the TBD days and the locked week'
     const text = body.textContent.replace(/\s+/g, ' ');
 
     expect(text).toContain('Pick your 2× for Week 2.');
-    // Named by the server, because a TBD tip has no kickoff to match.
-    expect(text).toContain('when Hoops One tips off');
+    // Named by the server, because a TBD tip has no kickoff to match. A TBD
+    // lock is the start of the Eastern game day, not a tip, and says so.
+    expect(text).toContain('Locks Sun 11:00 PM CT, midnight ET on game day for Hoops One (tip time TBD)');
+    expect(text).not.toContain('tips off');
     expect(text).not.toContain('kick');
     // The untimed games say which day they are, in EASTERN time: the lock
     // instant is 23:00 Sunday in Central.
@@ -77,6 +79,20 @@ test('the basketball picker names the tip-off, the TBD days and the locked week'
     // The default for the week being picked, worded as the reminder words it.
     expect(text).toContain('No pick yet — Hoops One goes in by default');
     expect(fetch).toHaveBeenCalledWith('/users/me/captain?season=2027', expect.anything());
+});
+
+test('a firm basketball tip-off still reads "when … tips off"', async () => {
+    const firm = Object.assign({}, STATE, { slate: [
+        { teamId: 1, games: [{ gameId: 10, opp: 'OPP', oppRank: 12, ha: 'vs', kickoff: STATE.lockAt, day: STATE.lockAt }] }
+    ] });
+    global.fetch = jest.fn(url => Promise.resolve({ ok: true, json: () => Promise.resolve(String(url).startsWith('/scoring-config')
+        ? { engagement: { captainEnabled: true } } : firm) }));
+    await hydrateCaptain(USER, '2027');
+    const body = document.createElement('div');
+    uhDrawer.captain(body);
+    const text = body.textContent.replace(/\s+/g, ' ');
+    expect(text).toContain('when Hoops One tips off');
+    expect(text).not.toContain('TBD)');
 });
 
 test("football's state renders as before: no locked-week line, kicks off", async () => {

@@ -1041,6 +1041,15 @@ async function hydrateCaptain(user, activeYear) {
     const lockWho = lockNames.length
         ? `<b>${escapeHtml(uhAndList(lockNames))}</b> ${lockNames.length === 1 ? verb[0] : verb[1]} off`
         : `your first team ${verb[0]} off`;
+    // A basketball lock set by TBD tip-offs (no locking team has a firm
+    // kickoff at the lock instant) is the start of their Eastern game day,
+    // not a tip — "11:00 PM Sunday when West Virginia tips off" read as wrong
+    // for a game played Monday. Say what the time actually is.
+    const lockTbd = hoops && lockNames.length && Array.isArray(state.lockTeamIds)
+        && !state.lockTeamIds.some(id => (slateBy[id] || []).some(gm => gm.kickoff && Date.parse(gm.kickoff) === lockMs));
+    const lockClause = lockTbd
+        ? `, midnight ET on game day for <b>${escapeHtml(uhAndList(lockNames))}</b> (tip time${lockNames.length === 1 ? '' : 's'} TBD)`
+        : ` when ${lockWho}`;
 
     const g = document.getElementById('uh-glance-captain');
     const setGlance = () => {
@@ -1096,7 +1105,7 @@ async function hydrateCaptain(user, activeYear) {
             return;
         }
         const lockLine = state.lockAt
-            ? `<span class="cap-lock">Locks ${uhFmtLock(state.lockAt, { dated: uhNeedsDate(state.lockAt, datePlan) })} CT when ${lockWho}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}</span>`
+            ? `<span class="cap-lock">Locks ${uhFmtLock(state.lockAt, { dated: uhNeedsDate(state.lockAt, datePlan) })} CT${lockClause}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}</span>`
             : `<span class="cap-lock">Locks when your first team ${verb[0]} off</span>`;
         const twoGamers = (season.teams || []).filter(t => (slateBy[t.id] || []).length > 1);
         const twoLine = twoGamers.length
