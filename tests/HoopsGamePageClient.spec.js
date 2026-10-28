@@ -608,3 +608,41 @@ describe('shot chart on a phone', () => {
         expect(q('.hg-shot-tip').classList.contains('on')).toBe(false);
     });
 });
+
+describe('line score by half, live', () => {
+    const live = (lines, o) => payload(Object.assign({
+        game: { id: 500, final: false, live: true, period: 2, clock: '11:42', postseason: false, tournament: null, neutralSite: false,
+            startDate: '2026-11-04T01:00:00.000Z', startTimeTbd: false, status: 'in_progress', lines },
+        home: Object.assign(payload().home, { points: 58 }), away: Object.assign(payload().away, { points: 41 }),
+        box: null, preview: null
+    }, o));
+
+    test('a live game shows each half from the scoreboard, the running score as the total, and marks the half being played', async () => {
+        await render(live({ home: [39, 19], away: [27, 14] }));
+        const rows = Array.from(document.querySelectorAll('.sp-lines tr')).map(r => r.textContent);
+        expect(rows).toEqual(['1st2ndT', 'TEX271441', 'DUKE391958']);
+        expect(Array.from(document.querySelectorAll('.sp-lines .now')).map(n => n.textContent)).toEqual(['2nd', '14', '19']);
+    });
+
+    test('first half only: one column and the total', async () => {
+        await render(live({ home: [12], away: [9] }, { game: Object.assign(live().game, { period: 1, lines: { home: [12], away: [9] } }),
+            home: Object.assign(payload().home, { points: 12 }), away: Object.assign(payload().away, { points: 9 }) }));
+        expect(Array.from(document.querySelectorAll('.sp-lines tr')).map(r => r.textContent)).toEqual(['1stT', 'TEX99', 'DUKE1212']);
+    });
+
+    test('no half scores from the scoreboard: no table, not an empty one', async () => {
+        await render(live(null));
+        expect(q('.sp-lines')).toBeNull();
+    });
+
+    test('a final prefers the box score\'s halves over the scoreboard\'s', async () => {
+        await render(payload({ game: Object.assign(payload().game, { lines: { home: [1, 1], away: [1, 1] } }) }));
+        expect(Array.from(document.querySelectorAll('.sp-lines tr')).map(r => r.textContent)[2]).toBe('DUKE324375');
+        expect(q('.sp-lines .now')).toBeNull();
+    });
+
+    test('a final before its box lands still shows the halves', async () => {
+        await render(payload({ box: null, game: Object.assign(payload().game, { lines: { home: [32, 43], away: [33, 27] } }) }));
+        expect(Array.from(document.querySelectorAll('.sp-lines tr')).map(r => r.textContent)).toEqual(['1st2ndT', 'TEX332760', 'DUKE324375']);
+    });
+});

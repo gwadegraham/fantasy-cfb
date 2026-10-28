@@ -61,16 +61,30 @@
             + lineScore(d) + '</section>';
     }
 
+    // Points by half. The box score's once it lands; before that (a live
+    // game, or a final the batch has not reached) the scoreboard's own
+    // lineScores, with the running score as the total.
     function lineScore(d) {
-        var b = d.box;
-        if (!b || !b.home || !b.home.byPeriod || !b.home.byPeriod.length) return '';
+        var b = d.box, src = null;
+        if (b && b.home && b.home.byPeriod && b.home.byPeriod.length && b.away && b.away.byPeriod) {
+            src = { home: b.home.byPeriod, away: b.away.byPeriod, homeT: b.home.points, awayT: b.away.points };
+        } else if (d.game.lines && (d.game.live || d.game.final)) {
+            src = { home: d.game.lines.home, away: d.game.lines.away, homeT: d.home.points, awayT: d.away.points };
+        }
+        if (!src) return '';
+        var n = Math.max(src.home.length, src.away.length);
+        var cols = []; for (var i = 0; i < n; i++) cols.push(i);
         var label = function (i) { return i === 0 ? '1st' : i === 1 ? '2nd' : 'OT' + (i > 2 ? i - 1 : ''); };
-        var row = function (t, s) {
-            return '<tr><td>' + esc(abbr(t)) + '</td>' + s.byPeriod.map(function (x) { return '<td>' + x + '</td>'; }).join('')
-                + '<td>' + s.points + '</td></tr>';
+        // The half being played, marked while the game is live.
+        var now = d.game.live && d.game.period ? d.game.period - 1 : -1;
+        var row = function (t, per, total) {
+            return '<tr><td>' + esc(abbr(t)) + '</td>' + cols.map(function (i) {
+                return '<td' + (i === now ? ' class="now"' : '') + '>' + (per[i] == null ? '–' : per[i]) + '</td>';
+            }).join('') + '<td>' + (total == null ? '–' : total) + '</td></tr>';
         };
-        return '<table class="sp-lines"><tr><th></th>' + b.home.byPeriod.map(function (_, i) { return '<th>' + label(i) + '</th>'; }).join('')
-            + '<th>T</th></tr>' + row(d.away, b.away) + row(d.home, b.home) + '</table>';
+        return '<table class="sp-lines' + (d.game.live ? ' live' : '') + '"><tr><th></th>'
+            + cols.map(function (i) { return '<th' + (i === now ? ' class="now"' : '') + '>' + label(i) + '</th>'; }).join('')
+            + '<th>T</th></tr>' + row(d.away, src.away, src.awayT) + row(d.home, src.home, src.homeT) + '</table>';
     }
 
     // A side's Q chip. The numbers beside the names are the AP poll; the

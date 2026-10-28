@@ -84,6 +84,13 @@ function previewSide(team, before) {
     };
 }
 
+// Each side's points by period, or null unless both sides have them.
+function periodLines(game) {
+    const clean = (a) => (Array.isArray(a) ? a.map(Number).filter(Number.isFinite) : []);
+    const home = clean(game.homePeriodPoints), away = clean(game.awayPeriodPoints);
+    return home.length && away.length ? { home, away } : null;
+}
+
 async function build(gameId, { league = null, viewerId = null, now = Date.now() } = {}) {
     const id = Number(gameId);
     if (!Number.isFinite(id)) return null;
@@ -202,6 +209,10 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
             status: game.status || null, final, live, postseason,
             period: live && Number.isFinite(Number(game.period)) ? Number(game.period) : null,
             clock: live ? game.clock || null : null,
+            // Points by half (and OT), from the live poller's scoreboard
+            // lineScores — so a live game shows WHEN the points came, before
+            // any box score exists. Null when either side has none.
+            lines: (live || final) ? periodLines(game) : null,
             tournament: postseason ? (String(game.tournament || '').trim() || 'Postseason') : null,
             notes: game.gameNotes || null, neutralSite: !!game.neutralSite,
             conferenceGame: !!game.conferenceGame && !teamPage.isConfTournament(game),
@@ -218,4 +229,4 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
     };
 }
 
-module.exports = { build, recordThrough };
+module.exports = { build, recordThrough, periodLines };

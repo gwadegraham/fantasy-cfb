@@ -124,3 +124,6 @@ a.hg-meet { grid-template-columns: 52px 1fr; }
 .hg-sz small { font-size: 11px; color: var(--cc-muted-2); }
 .hg-shot-foot { margin: 10px 0 0; font-size: 11px; color: var(--cc-muted-2); }
 
+/* Live line score: the half being played reads in the live green. */
+.sp-lines.live .now { color: var(--cc-success); }
+

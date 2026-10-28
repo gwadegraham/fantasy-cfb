@@ -276,3 +276,21 @@ describe('the game page', () => {
         expect((await gamePage.build(2)).shots).toBeNull();
     });
 });
+
+describe('the game page: points by half before any box score', () => {
+    test('a live game carries the scoreboard\'s half scores', async () => {
+        await HoopsGame.create(game(1, { status: 'in_progress', homePoints: 58, awayPoints: 41, period: 2, clock: '11:42',
+            homePeriodPoints: [39, 19], awayPeriodPoints: [27, 14] }));
+        const page = await gamePage.build(1);
+        expect(page.game).toMatchObject({ live: true, lines: { home: [39, 19], away: [27, 14] } });
+    });
+
+    test('a game still to play, or a side with none: null', async () => {
+        await HoopsGame.create([
+            game(1, { status: 'scheduled', homePoints: null, awayPoints: null, homePeriodPoints: [0], awayPeriodPoints: [0] }),
+            game(2, { status: 'in_progress', homePeriodPoints: [12], awayPeriodPoints: [] })
+        ]);
+        expect((await gamePage.build(1)).game.lines).toBeNull();
+        expect((await gamePage.build(2)).game.lines).toBeNull();
+    });
+});
