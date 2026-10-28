@@ -44,6 +44,11 @@ const franchiseRepo = require('./franchise-repo');
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LOOKBACK_MS = 3 * DAY_MS;
 const MAX_FETCHES = 3;
+// "Not posted yet" answers, counted apart from MAX_FETCHES: the poller asks
+// minutes after the final, often before CBBD has the plays, and that must not
+// use up the tries a real answer needs. Each is still a billable call, so
+// they are capped too; the 3-day lookback bounds them as well.
+const MAX_EMPTIES = 5;
 const MAX_PER_RUN = 60;
 // Half of the 940-tenths court.
 const MIDCOURT = 470;
@@ -145,7 +150,11 @@ async function fetchGame(game, now) {
         { $inc: { fetches: 1 }, $set: { season: game.season, fetchedAt: new Date(now) }, $setOnInsert: { complete: false } },
         { upsert: true });
     const { data } = await cbbd.cbbdGet(`/plays/game/${id}`);
-    if (!data.length) return 'empty';
+    if (!data.length) {
+        // Moved from the real-answer count to the not-posted-yet one.
+        await HoopsShots.updateOne({ gameId: id }, { $inc: { fetches: -1, empties: 1 } });
+        return 'empty';
+    }
     const chart = chartFrom(data, game);
     // Complete only when the box score agrees. No box yet is NOT proof:
     // plays posted part-way would otherwise be frozen as whole. The 05:00 job
@@ -171,11 +180,11 @@ async function ingestShots(season, { now = Date.now(), gameIds = null, teamIds =
     if (!ours.length) return { season: yr, games: 0, stored: 0, skippedReason: 'no drafted team played' };
 
     const done = await HoopsShots.find({ gameId: { $in: ours.map(g => Number(g.id)) } },
-        { gameId: 1, complete: 1, fetches: 1, _id: 0 }).lean();
+        { gameId: 1, complete: 1, fetches: 1, empties: 1, _id: 0 }).lean();
     const byId = new Map(done.map(d => [Number(d.gameId), d]));
     const due = ours.filter(g => {
         const d = byId.get(Number(g.id));
-        return !d || (!d.complete && (d.fetches || 0) < MAX_FETCHES);
+        return !d || (!d.complete && (d.fetches || 0) < MAX_FETCHES && (d.empties || 0) < MAX_EMPTIES);
     });
     if (!due.length) return { season: yr, games: ours.length, stored: 0, skippedReason: 'all charted' };
 
@@ -212,4 +221,4 @@ async function forGame(game) {
     };
 }
 
-module.exports = { ingestShots, forGame, chartFrom, rosteredTeamIds, fetchGame, MAX_FETCHES, MAX_PER_RUN, LOOKBACK_MS };
+module.exports = { ingestShots, forGame, chartFrom, rosteredTeamIds, fetchGame, MAX_FETCHES, MAX_EMPTIES, MAX_PER_RUN, LOOKBACK_MS };

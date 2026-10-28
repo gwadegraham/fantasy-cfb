@@ -588,8 +588,10 @@ describe('shot chart on a phone', () => {
     async function tapAt(feetX, feetY) {
         const svg = q('.hg-shot-floor');
         // A 312-px-wide chart: the viewBox is 52 x 49 court feet from (-1, -1).
-        svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 312, height: 294 });
-        const px = (feetX + 1) * 6, py = (feetY + 1) * 6;
+        // Deliberately NOT to scale (6 px/ft across, 3 px/ft down), so a
+        // swapped width and height in the tap maths cannot pass.
+        svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 312, height: 147 });
+        const px = (feetX + 1) * 6, py = (feetY + 1) * 3;
         svg.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: px, clientY: py }));
     }
 
@@ -711,6 +713,14 @@ describe('box score: Basic and Advanced', () => {
             expect(q('.hg-box').classList.contains('hl')).toBe(false);
         });
 
+        test('the "Player" header lights nothing, and does not swallow the next tap', async () => {
+            await advanced();
+            q('.hg-box th').click();
+            expect(q('.hg-box').classList.contains('hl')).toBe(false);
+            cellOf('Boozer', 3).click();
+            expect(lit('hl-x')).toHaveLength(1);
+        });
+
         test('Basic is untouched by taps', async () => {
             await render(boxed());
             tab('box');
@@ -764,3 +774,70 @@ describe('line score by half, live', () => {
         expect(Array.from(document.querySelectorAll('.sp-lines tr')).map(r => r.textContent)).toEqual(['1st2ndT', 'TEX332760', 'DUKE324375']);
     });
 });
+
+describe('a live game refreshes itself', () => {
+    const livePage = (o) => payload(Object.assign({
+        game: { id: 500, final: false, live: true, period: 2, clock: '11:42', postseason: false, tournament: null, neutralSite: false,
+            startDate: '2026-11-04T01:00:00.000Z', startTimeTbd: false, status: 'in_progress', lines: { home: [39, 19], away: [27, 14] } },
+        home: Object.assign(payload().home, { points: 58 }), away: Object.assign(payload().away, { points: 41 }), box: null, preview: null
+    }, o));
+    beforeEach(() => jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] }));
+    afterEach(() => jest.useRealTimers());
+    const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+
+    test('every 15s while live: the score and halves move with no reload', async () => {
+        window.history.replaceState(null, '', window.location.pathname);
+        document.body.innerHTML = '<title data-league-title="Game">Game</title><main id="hoops-game" data-game-id="500"></main>';
+        window.ccLeague = { paint: jest.fn() };
+        const answers = [livePage(), livePage({ game: Object.assign(livePage().game, { clock: '9:58', lines: { home: [39, 23], away: [27, 16] } }),
+            home: Object.assign(payload().home, { points: 62 }), away: Object.assign(payload().away, { points: 43 }) })];
+        global.fetch = jest.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(answers.shift() || livePage()) }));
+        (0, eval)(SRC);
+        await flush();
+        expect(q('.hg-meta').textContent).toMatch(/11:42/);
+        jest.advanceTimersByTime(15000);
+        await flush();
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+        expect(q('.hg-meta').textContent).toMatch(/9:58/);
+        expect(Array.from(document.querySelectorAll('.sp-lines tr')).map(r => r.textContent)[2]).toBe('DUKE392362');
+    });
+
+    test('a refresh keeps the viewer\'s tab, team and box mode; a final stops the refreshing', async () => {
+        window.history.replaceState(null, '', window.location.pathname);
+        document.body.innerHTML = '<title data-league-title="Game">Game</title><main id="hoops-game" data-game-id="500"></main>';
+        window.ccLeague = { paint: jest.fn() };
+        // Live, but the box has landed (a final the poller has not flipped yet is the realistic case).
+        const withBox = () => livePage({ game: Object.assign(livePage().game, { final: true, live: true }), box: payload().box });
+        const answers = [withBox(), withBox(), payload()];
+        global.fetch = jest.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(answers.shift()) }));
+        (0, eval)(SRC);
+        await flush();
+        tab('box');
+        q('[data-side="away"]').click();
+        q('[data-adv="1"]').click();
+        jest.advanceTimersByTime(15000);
+        await flush();
+        expect(q('.sp-tab.on').getAttribute('data-tab')).toBe('box');
+        expect(q('[data-side="away"]').classList.contains('on')).toBe(true);
+        expect(q('.hg-box.adv')).not.toBeNull();
+        jest.advanceTimersByTime(15000);                                     // this answer is the final
+        await flush();
+        jest.advanceTimersByTime(60000);
+        await flush();
+        expect(global.fetch).toHaveBeenCalledTimes(3);
+    });
+
+    test('a final never schedules a refresh', async () => {
+        window.history.replaceState(null, '', window.location.pathname);
+        document.body.innerHTML = '<title data-league-title="Game">Game</title><main id="hoops-game" data-game-id="500"></main>';
+        window.ccLeague = { paint: jest.fn() };
+        global.fetch = jest.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(payload()) }));
+        (0, eval)(SRC);
+        await flush();
+        expect(q('.hg-meta').textContent).toMatch(/Final/);
+        jest.advanceTimersByTime(60000);
+        await flush();
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+});
+

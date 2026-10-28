@@ -153,13 +153,24 @@ describe('ingestShots: what gets fetched', () => {
         expect(get).toHaveBeenCalledTimes(1);
     });
 
-    test('not posted yet (empty): tried again, up to MAX_FETCHES, then left alone', async () => {
+    test('not posted yet (empty): tried again, up to MAX_EMPTIES, then left alone', async () => {
         await HoopsGame.create(game(1));
         const get = stubPlays({ 1: [] });
-        for (let i = 0; i < shots.MAX_FETCHES + 2; i++) await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));
+        for (let i = 0; i < shots.MAX_EMPTIES + 2; i++) await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));
 
-        expect(get).toHaveBeenCalledTimes(shots.MAX_FETCHES);
-        expect(await HoopsShots.findOne({ gameId: 1 }).lean()).toMatchObject({ complete: false, fetches: shots.MAX_FETCHES });
+        expect(get).toHaveBeenCalledTimes(shots.MAX_EMPTIES);
+        expect(await HoopsShots.findOne({ gameId: 1 }).lean()).toMatchObject({ complete: false, fetches: 0, empties: shots.MAX_EMPTIES });
+    });
+
+    test('an early "not posted yet" does not use up the tries a real answer needs', async () => {
+        await HoopsGame.create(game(1));
+        await boxFor(1, 2, 0);
+        let answer = [];
+        const get = jest.spyOn(cbbd, 'cbbdGet').mockImplementation(async () => ({ data: answer }));
+        for (let i = 0; i < shots.MAX_FETCHES; i++) await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));   // all empty
+        answer = [shot(HOME, 1, 60, 250), shot(HOME, 1, 70, 250)];
+        expect((await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted))).stored).toBe(1);
+        expect(get).toHaveBeenCalledTimes(shots.MAX_FETCHES + 1);
     });
 
     test('no box score yet: stored and shown, but NOT complete — part-posted plays must not freeze', async () => {
@@ -283,6 +294,20 @@ describe('the game page: points by half before any box score', () => {
             homePeriodPoints: [39, 19], awayPeriodPoints: [27, 14] }));
         const page = await gamePage.build(1);
         expect(page.game).toMatchObject({ live: true, lines: { home: [39, 19], away: [27, 14] } });
+    });
+
+    test('a missing half keeps its place as null — never 0, never shifting later halves', async () => {
+        expect(gamePage.periodLines({ homePeriodPoints: [39, null, 7], awayPeriodPoints: [27, 'x', 5] }))
+            .toEqual({ home: [39, null, 7], away: [27, null, 5] });
+        expect(gamePage.periodLines({ homePeriodPoints: [null], awayPeriodPoints: [12] })).toBeNull();
+    });
+
+    test('a shot chart that fails to load costs the tab, not the page', async () => {
+        await HoopsGame.create(game(1));
+        jest.spyOn(shots, 'forGame').mockRejectedValue(new Error('bad document'));
+        const page = await gamePage.build(1);
+        expect(page.game.final).toBe(true);
+        expect(page.shots).toBeNull();
     });
 
     test('a game still to play, or a side with none: null', async () => {

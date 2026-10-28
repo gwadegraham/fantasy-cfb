@@ -84,11 +84,14 @@ function previewSide(team, before) {
     };
 }
 
-// Each side's points by period, or null unless both sides have them.
+// Each side's points by period, or null unless both sides have some. A
+// missing half stays in its place as null (shown "–"), never 0 — and never
+// dropped, which would slide every later half one column left.
 function periodLines(game) {
-    const clean = (a) => (Array.isArray(a) ? a.map(Number).filter(Number.isFinite) : []);
+    const clean = (a) => (Array.isArray(a) ? a.map(v => (v === null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v))) : []);
     const home = clean(game.homePeriodPoints), away = clean(game.awayPeriodPoints);
-    return home.length && away.length ? { home, away } : null;
+    const some = (a) => a.some(v => v !== null);
+    return some(home) && some(away) ? { home, away } : null;
 }
 
 async function build(gameId, { league = null, viewerId = null, now = Date.now() } = {}) {
@@ -126,7 +129,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         final ? boxScore.getBox(id) : null,
         latestNet(yr, [homeId, awayId]),
         hoopsAp.cachedPolls(yr).catch(() => []),
-        final ? shotCharts.forGame(game) : null
+        // A chart is optional: a bad one costs the tab, never the page.
+        final ? shotCharts.forGame(game).catch(() => null) : null
     ]);
     const byId = new Map(teams.map(t => [Number(t.id), t]));
     // Jersey numbers on the box, from the once-a-season roster import (the

@@ -544,17 +544,24 @@
         root.querySelector('.hg-panel').innerHTML = panel(data);
     }
 
-    function render(d) {
+    // `keep`: a live refresh repaints with the viewer's tab, team and box
+    // mode left as they were, rather than snapping back to the defaults.
+    function render(d, keep) {
+        var refreshing = keep === true && !!data;
         data = d;
         var h = (window.location.hash || '').replace('#', '');
-        state.tab = h === 'box' && d.box ? 'box' : h === 'shots' && d.shots ? 'shots' : 'summary';
+        if (!refreshing || (state.tab === 'box' && !d.box) || (state.tab === 'shots' && !d.shots)) {
+            state.tab = h === 'box' && d.box ? 'box' : h === 'shots' && d.shots ? 'shots' : 'summary';
+        }
         // Open the box on the viewer's own team; failing that, the one side
         // somebody rosters; otherwise the left-hand (away) side, so the toggle
         // reads in the scoreboard's order.
         var mine = function (t) { return !!(t.owner && t.owner.mine); };
         state.colors = kit.matchColors(d.away, d.home);
-        state.side = mine(d.home) ? 'home' : mine(d.away) ? 'away'
-            : (d.home.owner && !d.away.owner ? 'home' : 'away');
+        if (!refreshing) {
+            state.side = mine(d.home) ? 'home' : mine(d.away) ? 'away'
+                : (d.home.owner && !d.away.owner ? 'home' : 'away');
+        }
         root.innerHTML = d.game.final
             ? hero(d) + fantasy(d) + netCard(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
             : hero(d) + '<div class="hg-preview">' + preview(d) + '</div>';
@@ -611,15 +618,14 @@
         label.innerHTML = esc(who) + (s.shooter ? '<small>' + esc(what) + '</small>' : '');
         // Where the dot is, as a share of the chart; kept inside its edges.
         var vb = (svg.getAttribute('viewBox') || '-1 -1 52 49').split(/\s+/).map(Number);
-        label.style.left = (100 * (s.x - vb[0]) / vb[2]) + '%';
+        var at = (100 * (s.x - vb[0]) / vb[2]) + '%';
+        label.style.left = at;
         label.style.top = (100 * (s.y - vb[1]) / vb[3]) + '%';
         wrap.appendChild(label);
-        var w = label.offsetWidth, W = wrap.clientWidth;
-        if (w && W) {
-            var px = W * (s.x - vb[0]) / vb[2];
-            var clamped = Math.min(Math.max(px, w / 2 + 4), W - w / 2 - 4);
-            label.style.left = clamped + 'px';
-        }
+        // Kept inside the court's edges — in percent and px together, so it
+        // stays beside the dot when the phone rotates.
+        var half = Math.ceil(label.offsetWidth / 2) + 4;
+        if (half > 4) label.style.left = 'clamp(' + half + 'px, ' + at + ', calc(100% - ' + half + 'px))';
     }
 
     // Advanced box: a tap on a value lights its row and column (a name, just
@@ -637,6 +643,8 @@
         var row = cell.parentNode;
         if (row.classList.contains('grp')) return;            // Starters / Bench
         var col = cell.cellIndex, header = cell.tagName === 'TH';
+        if (header && col === 0) return;                      // "Player": nothing to light
+                              // "Player": nothing to light
         var rows = Array.prototype.filter.call(table.rows, function (r) { return !r.classList.contains('grp'); });
         if (col > 0) rows.forEach(function (r) { if (r.cells[col]) r.cells[col].classList.add('hl-col'); });
         if (!header) row.classList.add('hl-row');
@@ -670,10 +678,33 @@
         }
     });
 
+    function url() { return '/hoops/games/' + encodeURIComponent(root.getAttribute('data-game-id')) + '/page'; }
     function load() {
-        var id = root.getAttribute('data-game-id');
-        return kit.load('/hoops/games/' + encodeURIComponent(id) + '/page', render, root, 'game');
+        return kit.load(url(), function (d) { render(d); schedule(d); }, root, 'game');
     }
+
+    // A live game refreshes itself, as football's game page does: the score,
+    // the clock and points by half come from the live poller, so this reads
+    // our own API only — no CBBD call. Paused while the tab is hidden, and
+    // caught up the moment it is shown again. Stops once the game is final.
+    var LIVE_MS = 15000;
+    var timer = null;
+    function schedule(d) {
+        clearTimeout(timer);
+        if (!d || !d.game || !d.game.live || document.hidden) return;
+        timer = setTimeout(refresh, LIVE_MS);
+    }
+    function refresh() {
+        return window.fetch(url(), { headers: { Accept: 'application/json' } })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) { if (d && d.game) { render(d, true); schedule(d); } else schedule(data); })
+            // A failed refresh keeps the page as it was and tries again.
+            .catch(function () { schedule(data); });
+    }
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) { clearTimeout(timer); return; }
+        if (data && data.game && data.game.live) refresh();
+    });
 
     window.ccHoopsGame = { render: render, load: load, state: state, shortNames: shortNames, countdown: countdown, netDay: netDay };
     load();

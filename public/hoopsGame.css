@@ -142,7 +142,7 @@ a.hg-meet { grid-template-columns: 52px 1fr; }
    a phone, so its card scrolls sideways with the player pinned on the left. */
 .hg-box-mode { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; }
 .hg-box-mode button { font: inherit; font-size: 12px; font-weight: 600; color: var(--cc-muted); background: transparent;
-    border: 1px solid var(--cc-border); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+    border: 1px solid var(--cc-border); border-radius: 999px; padding: 5px 14px; min-height: 36px; cursor: pointer; }
 .hg-box-mode button.on { background: var(--cc-surface-3); color: var(--cc-text); border-color: var(--cc-border-2); }
 .hg-box-mode .hint { margin-left: auto; font-size: 11px; color: var(--cc-muted-2); }
 .hg-box-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
@@ -171,6 +171,9 @@ a.hg-meet { grid-template-columns: 52px 1fr; }
    over each cell's own background (the pinned name cell is opaque), and
    the cell where they cross a step brighter. */
 .hg-box.adv { cursor: pointer; }
+/* Two quick taps (light, then clear) must not read as Safari's double-tap
+   zoom, here or on the shot chart. */
+.hg-box.adv, .hg-shot-floor { touch-action: manipulation; }
 .hg-box.adv tr.hl-row td, .hg-box.adv .hl-col { background-image: linear-gradient(rgba(255, 255, 255, .10), rgba(255, 255, 255, .10)); }
 /* Specific enough to beat the row rule above, which also matches it. */
 .hg-box.adv tr.hl-row td.hl-x { background-image: linear-gradient(rgba(255, 255, 255, .24), rgba(255, 255, 255, .24));

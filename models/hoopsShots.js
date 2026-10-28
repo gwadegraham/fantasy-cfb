@@ -30,11 +30,12 @@ const hoopsShotsSchema = new mongoose.Schema({
     // "102 of 110 charted" rather than passing a partial chart off as whole.
     attempts: { home: Number, away: Number },
     shots: [shotSchema],
-    // False until the plays match the box score's attempts (or there is no
-    // box to check against). An incomplete game is fetched again, up to
-    // MAX_FETCHES times.
+    // False until the plays match a stored box score's attempts. An
+    // incomplete game is fetched again, up to MAX_FETCHES real answers.
     complete: { type: Boolean, default: false },
     fetches: { type: Number, default: 0 },
+    // "Not posted yet" answers, capped apart (MAX_EMPTIES).
+    empties: { type: Number, default: 0 },
     fetchedAt: { type: Date, default: Date.now }
 }, { collection: 'hoopsshots' });
 
