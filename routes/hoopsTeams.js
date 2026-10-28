@@ -12,6 +12,7 @@ const { activeSeason } = require('../modules/active-season');
 const seasons = require('../modules/active-season');
 const leagueSelection = require('../modules/league-selection');
 const teamPage = require('../modules/hoops-team-page');
+const teamNews = require('../modules/team-news');
 const roster = require('../modules/hoops-roster');
 const visibility = require('../modules/hoops-visibility');
 const Draft = require('../models/draft');
@@ -365,6 +366,24 @@ router.get('/:id/page', async (req, res) => {
     } catch (err) {
         console.error(`hoops team page ${req.params.id}: ${err && err.message}`);
         return res.status(500).json({ message: 'Could not load this team' });
+    }
+});
+
+// A basketball team's ESPN headlines (modules/team-news.js), keyed on the
+// ESPN id CBBD carries as sourceId. Any season's row will do: the ESPN id
+// does not change between seasons. Always 200 with { items, error } once the
+// team is known.
+router.get('/:id/news', async (req, res) => {
+    try {
+        if (!(await visibility.seesBasketball(req))) return res.status(404).json({ message: 'Not found' });
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id)) return res.status(400).json({ message: 'team id must be a number' });
+        const team = await HoopsTeam.findOne({ id, sourceId: { $nin: [null, ''] } }, { sourceId: 1, _id: 0 }).sort({ season: -1 }).lean();
+        if (!team) return res.status(404).json({ message: 'No such basketball team' });
+        return res.json(await teamNews.newsFor('basketball', team.sourceId));
+    } catch (err) {
+        console.error(`hoops team news ${req.params.id}: ${err && err.message}`);
+        return res.status(500).json({ message: 'Could not load this team\'s news' });
     }
 });
 

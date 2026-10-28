@@ -12,6 +12,7 @@ const { parseOdds, americanToProb, buildTeamMatcher } = require('../modules/cfp-
 const MarketSnapshot = require('../models/marketSnapshot');
 const { buildSnapshotTeams } = require('../modules/market-snapshot');
 const { teamsById, applyTeamFields } = require('../modules/team-refresh');
+const teamNews = require('../modules/team-news');
 
 // Getting All — FBS only, and that scoping is load-bearing, not tidiness.
 //
@@ -120,6 +121,21 @@ router.get('/:id', async (req, res) => {
 
     } catch (err) {
         res.status(500).json({message: err.message});
+    }
+});
+
+// A team's ESPN headlines (modules/team-news.js). A football team's id IS
+// its ESPN id. Only ids we have a team for are passed on, so this is not an
+// open relay to ESPN's feed. Always 200 with { items, error }: no news is
+// an empty tab, never a broken page.
+router.get('/:id/news', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id)) return res.status(400).json({ message: 'team id must be a number' });
+        if (!(await Team.exists({ id }))) return res.status(404).json({ message: 'No such team' });
+        return res.json(await teamNews.newsFor('football', id));
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
     }
 });
 

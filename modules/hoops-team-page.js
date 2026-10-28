@@ -242,6 +242,8 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
         const opp = oppById.get(oppId);
         return {
             id: g.id,
+            // ESPN's game id: what a news preview names its game by (modules/team-news.js).
+            espnId: g.sourceId ? String(g.sourceId) : null,
             startDate: g.startDate,
             startTimeTbd: !!g.startTimeTbd,
             week: g.week,

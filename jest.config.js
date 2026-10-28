@@ -42,7 +42,8 @@ module.exports = {
         "public/standings.js",
         "public/weekByWeek.js",
         "public/search-match.js",
-        "public/sport-page.js"
+        "public/sport-page.js",
+        "public/team-news.js"
     ],
     coveragePathIgnorePatterns: [
         "/node_modules/",
@@ -359,6 +360,22 @@ module.exports = {
             statements: 98,
             branches: 84,
             functions: 96,
+            lines: 100
+        },
+        // A team's ESPN headlines: the roundup filter, the cache, and never
+        // throwing for ESPN. The feed is undocumented, so its failure paths
+        // are the ones that matter.
+        "./modules/team-news.js": {
+            statements: 100,
+            branches: 90,
+            functions: 100,
+            lines: 100
+        },
+        // The News tab and the next game's preview row, on both team pages.
+        "./public/team-news.js": {
+            statements: 100,
+            branches: 90,
+            functions: 100,
             lines: 100
         },
         // The football game page's fantasy read (#506 Phase 3): which owner,

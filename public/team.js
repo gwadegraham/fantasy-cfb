@@ -586,7 +586,7 @@ function formatDate(isTbd, dateStr) {
 //   Stats       team stats and season leaders
 //   <Conf>      the full conference table (not for an independent)
 // ---------------------------------------------------------------------------
-var FT_TABS = ['overview', 'schedule', 'stats', 'conference'];
+var FT_TABS = ['overview', 'schedule', 'stats', 'conference', 'news'];
 var ftPage = { data: null, tab: 'overview', bound: false };
 
 function ftEsc(s) { return window.ccSportPage.esc(s); }
@@ -882,8 +882,7 @@ function ftNextUp(d, now) {
     if (g.outlet) note.push(ftIcon('broadcast') + ' ' + ftEsc(g.outlet));
     if (g.neutralSite && g.venue) note.push(ftEsc(g.venue));
     if (g.notes) note.push(ftEsc(g.notes));
-    return '<h2 class="sp-h">Next up</h2>'
-        + '<a class="sp-card sp-next" href="' + (g.id != null ? '/game/' + encodeURIComponent(g.id) : '/team?team=' + encodeURIComponent(o.id)) + '">'
+    var card = '<a class="sp-card sp-next" href="' + (g.id != null ? '/game/' + encodeURIComponent(g.id) : '/team?team=' + encodeURIComponent(o.id)) + '">'
         + '<div class="sp-next-when">' + (started ? 'Under way' : ftEsc(formatDate(g.startTimeTbd, g.startDate))) + '</div>'
         + '<div class="sp-next-row"><span class="sp-next-opp"><span class="ft-v">' + o.mark + '</span>'
         + (rank ? '<span class="ft-rk">' + ftEsc(rank) + '</span> ' : '')
@@ -892,6 +891,8 @@ function ftNextUp(d, now) {
         + (spread ? '<span class="sp-next-pay" title="Spread">' + ftEsc(spread) + '</span>' : '') + '</div>'
         + (note.length ? '<div class="sp-next-note">' + note.join(' · ') + '</div>' : '')
         + '</a>';
+    // A football game's id IS ESPN's, so its preview finds it (public/team-news.js).
+    return '<h2 class="sp-h">Next up</h2>' + (window.ccTeamNews ? window.ccTeamNews.nextWrap(card, g.id) : card);
 }
 
 // The season in three numbers: fantasy points (and where that ranks
@@ -1143,14 +1144,22 @@ function ftTabFromHash(d) {
     return ftTabList(d).indexOf(h) !== -1 ? h : 'overview';
 }
 function ftTabs(d) {
-    var label = { overview: 'Overview', schedule: 'Schedule', stats: 'Stats', conference: ftConfShort(d.seasonObj.conference) };
+    var label = { overview: 'Overview', schedule: 'Schedule', stats: 'Stats', conference: ftConfShort(d.seasonObj.conference), news: 'News' };
     return window.ccSportPage.tabs(ftTabList(d).map(function (t) { return [t, label[t]]; }), ftPage.tab);
 }
 function ftPanel(d) {
     if (ftPage.tab === 'schedule') return ftSchedule(d);
     if (ftPage.tab === 'stats') return ftStats(d);
     if (ftPage.tab === 'conference') return ftStandings(d);
+    if (ftPage.tab === 'news') return window.ccTeamNews ? window.ccTeamNews.panel() : '';
     return ftOverview(d);
+}
+
+// ESPN headlines into whatever news slots the page has open: the News tab,
+// or the next game's preview row on the Overview.
+function ftNews(root) {
+    if (!window.ccTeamNews || !ftPage.data) return;
+    window.ccTeamNews.paint(root, '/teams/' + encodeURIComponent(ftPage.data.team.id) + '/news');
 }
 
 // Names in the leaders card get whatever width the stat columns leave, and
@@ -1171,6 +1180,7 @@ function ftPaintPanel() {
     panel.innerHTML = ftPanel(d);
     ftAfterPanel(panel);
     window.ccSportPage.countUp(panel);
+    ftNews(panel);
 }
 
 // Scroll so the panel starts just under the sticky navbar and tabs.
@@ -1200,6 +1210,7 @@ function renderTeamPage(d) {
 
     ftAfterPanel(root);
     window.ccSportPage.countUp(root);
+    ftNews(root);
 
     if (ftPage.bound) return;
     ftPage.bound = true;
