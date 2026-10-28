@@ -167,3 +167,12 @@ a.hg-meet { grid-template-columns: 52px 1fr; }
 .hg-shot-label.below { transform: translate(-50%, 12px); }
 .hg-shot-label small { display: block; font-weight: 500; color: var(--cc-muted); font-size: 11px; }
 
+/* Advanced box: the tapped value's row and column, as a light wash laid
+   over each cell's own background (the pinned name cell is opaque), and
+   the cell where they cross a step brighter. */
+.hg-box.adv { cursor: pointer; }
+.hg-box.adv tr.hl-row td, .hg-box.adv .hl-col { background-image: linear-gradient(rgba(255, 255, 255, .10), rgba(255, 255, 255, .10)); }
+/* Specific enough to beat the row rule above, which also matches it. */
+.hg-box.adv tr.hl-row td.hl-x { background-image: linear-gradient(rgba(255, 255, 255, .24), rgba(255, 255, 255, .24));
+    color: var(--cc-text); font-weight: 700; }
+

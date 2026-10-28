@@ -622,10 +622,34 @@
         }
     }
 
+    // Advanced box: a tap on a value lights its row and column (a name, just
+    // the row; a header, just the column) so a number can be read across 21
+    // columns. The NEXT tap anywhere in the table only clears it — never
+    // moves it — so there is always a way back to a clean table.
+    function highlight(cell) {
+        var table = cell.closest('table');
+        var lit = table.querySelectorAll('.hl-col, .hl-row, .hl-x');
+        if (table.classList.contains('hl')) {
+            table.classList.remove('hl');
+            Array.prototype.forEach.call(lit, function (n) { n.classList.remove('hl-col', 'hl-row', 'hl-x'); });
+            return;
+        }
+        var row = cell.parentNode;
+        if (row.classList.contains('grp')) return;            // Starters / Bench
+        var col = cell.cellIndex, header = cell.tagName === 'TH';
+        var rows = Array.prototype.filter.call(table.rows, function (r) { return !r.classList.contains('grp'); });
+        if (col > 0) rows.forEach(function (r) { if (r.cells[col]) r.cells[col].classList.add('hl-col'); });
+        if (!header) row.classList.add('hl-row');
+        if (col > 0 && !header) cell.classList.add('hl-x');
+        table.classList.add('hl');
+    }
+
     root.addEventListener('click', function (e) {
         if (!data) return;
         var floor = e.target.closest('.hg-shot-floor');
         if (floor) { tapShot(e, floor); return; }
+        var advCell = e.target.closest('.hg-box.adv th, .hg-box.adv td');
+        if (advCell) { highlight(advCell); return; }
         var adv = e.target.closest('[data-adv]');
         if (adv) {
             state.adv = adv.getAttribute('data-adv') === '1';

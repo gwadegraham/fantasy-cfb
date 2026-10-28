@@ -667,6 +667,58 @@ describe('box score: Basic and Advanced', () => {
         expect(q('.hg-box.adv')).toBeNull();
     });
 
+    describe('tap to highlight', () => {
+        const lit = (cls) => Array.from(document.querySelectorAll('.hg-box .' + cls));
+        const cellOf = (name, col) => Array.from(document.querySelectorAll('.hg-box tr')).find(r => r.textContent.indexOf(name) > -1).cells[col];
+        async function advanced() {
+            await render(Object.assign(boxed(), {}));
+            tab('box');
+            q('[data-adv="1"]').click();
+        }
+
+        test('a value lights its whole column and its row, the crossing a step brighter', async () => {
+            await advanced();
+            cellOf('Boozer', 3).click();                                         // Reb
+            expect(lit('hl-col').map(c => c.textContent)).toEqual(['Reb', '5']);  // header + the one player; no Starters row
+            expect(lit('hl-row')).toHaveLength(1);
+            expect(lit('hl-x').map(c => c.textContent)).toEqual(['5']);
+            expect(q('.hg-box').classList.contains('hl')).toBe(true);
+        });
+
+        test('the NEXT tap anywhere in the table only clears it — even on another value', async () => {
+            await advanced();
+            cellOf('Boozer', 3).click();
+            cellOf('Boozer', 7).click();                                         // a different cell
+            expect(lit('hl-col')).toHaveLength(0);
+            expect(lit('hl-row')).toHaveLength(0);
+            expect(lit('hl-x')).toHaveLength(0);
+            expect(q('.hg-box').classList.contains('hl')).toBe(false);
+            cellOf('Boozer', 7).click();                                         // and the tap after starts afresh
+            expect(lit('hl-x').map(c => c.textContent)).toEqual(['1']);
+        });
+
+        test('a name lights just the row; a header just the column; Starters nothing', async () => {
+            await advanced();
+            cellOf('Boozer', 0).click();
+            expect(lit('hl-row')).toHaveLength(1);
+            expect(lit('hl-col')).toHaveLength(0);
+            cellOf('Boozer', 0).click();                                         // clear
+            q('.hg-box tr:first-child th:nth-child(5)').click();                 // OR header
+            expect(lit('hl-col').map(c => c.textContent)).toEqual(['OR', '2']);
+            expect(lit('hl-row')).toHaveLength(0);
+            q('.hg-box th').click();                                             // clear
+            q('.grp td').click();
+            expect(q('.hg-box').classList.contains('hl')).toBe(false);
+        });
+
+        test('Basic is untouched by taps', async () => {
+            await render(boxed());
+            tab('box');
+            document.querySelector('.hg-box tr:nth-child(3) td:nth-child(3)').click();
+            expect(q('.hg-box').classList.contains('hl')).toBe(false);
+        });
+    });
+
     test('team stats: offensive rebounds, steals, blocks and fouls too', async () => {
         await render(payload({ box: Object.assign({}, payload().box, {
             home: side({ offRebounds: 9, steals: 8, blocks: 2, fouls: 16 }), away: side({ points: 60, offRebounds: 11, steals: 5, blocks: 4, fouls: 19 }) }) }));
