@@ -222,6 +222,14 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // ESPN tip times for games CBBD still has TBD: the branches are the
+        // same-Eastern-day guard, CBBD-wins, and ESPN failing safe.
+        "./modules/hoops-espn-tip-times.js": {
+            statements: 94,
+            branches: 85,
+            functions: 100,
+            lines: 100
+        },
         // The basketball AP poll: display only, beside team names. ONE billable
         // call a day; the branches that matter are the dropped rows (receiving
         // votes, other polls) and which poll is in force on a given night.

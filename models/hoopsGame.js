@@ -61,6 +61,9 @@ const hoopsGameSchema = new mongoose.Schema({
     // anyway — a claim with no code and no test behind it.
     week: { type: Number },
     startTimeTbd: { type: Boolean, default: false },
+    // 'espn' when the tip time came from ESPN's scoreboard because CBBD still
+    // had it TBD (modules/hoops-espn-tip-times.js); absent means CBBD's own.
+    startTimeSource: { type: String },
 
     // 'scheduled' | 'in_progress' | 'final' | 'postponed' | 'cancelled' (CBBD's
     // GameStatus enum). NOT derived from the points — see the note on homePoints.
