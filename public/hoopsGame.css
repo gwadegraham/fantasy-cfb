@@ -34,6 +34,17 @@
 .hg-box td { padding: 7px 5px; border-top: 1px solid var(--cc-border); text-align: right; white-space: nowrap; }
 .hg-box .grp td { background: var(--cc-surface-2); font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
     color: var(--cc-muted); text-align: left; padding: 5px 12px; }
+/* The name column takes what the six stat columns leave and trims a long
+   name ("#33 S. Williams-Adams") with an ellipsis, instead of widening the
+   table past the card on a phone — it ran 21px off at 375px. */
+.hg-box td:first-child { max-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.hg-box .grp td { max-width: none; }
+@media (max-width: 400px) {
+    .hg-box th:not(:first-child):not(:last-child),
+    .hg-box td:not(:first-child):not(:last-child) { padding-left: 4px; padding-right: 4px; }
+    /* A gap the eye reads between "1" (AST) and "0-5" (3PT). */
+    .hg-box th:nth-child(6), .hg-box td:nth-child(6) { padding-left: 10px; }
+}
 .hg-box .pos { color: var(--cc-muted-2); font-size: 10px; margin-left: 4px; }
 .hg-box .hi { color: var(--cc-accent); }
 
