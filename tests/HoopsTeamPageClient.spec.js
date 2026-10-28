@@ -589,3 +589,53 @@ test('Next up keeps a game with no date yet rather than treating it as 1970', as
     expect(document.querySelector('.ht-next').getAttribute('href')).toBe('/hoops/game/4');
 });
 
+
+describe('ESPN news (public/team-news.js)', () => {
+    const NEWS = fs.readFileSync(path.join(__dirname, '..', 'public', 'team-news.js'), 'utf8');
+    const flush = () => new Promise(r => setTimeout(r, 0));
+    const PV = {
+        headline: 'No. 3 Virginia visits Duke', description: '', published: '2026-11-08T10:00:00.000Z', kind: 'preview',
+        image: null, link: 'https://www.espn.com/pv', premium: false, eventId: '401800004'
+    };
+    beforeAll(() => { (0, eval)(NEWS); });
+    afterAll(() => { delete window.ccTeamNews; });
+
+    // The page and the news feed, each answered by its own URL.
+    async function renderWithNews(body) {
+        Object.keys(window.ccTeamNews._loads).forEach(k => delete window.ccTeamNews._loads[k]);
+        window.history.replaceState(null, '', window.location.pathname);
+        document.body.innerHTML = '<title data-league-title="Team">Team</title><main id="hoops-team" data-team-id="72"></main>';
+        window.ccLeague = { paint: jest.fn() };
+        global.fetch = jest.fn((url) => Promise.resolve({
+            ok: true, status: 200, json: () => Promise.resolve(/\/news$/.test(url) ? { items: [PV] } : body)
+        }));
+        (0, eval)(SRC);
+        for (let i = 0; i < 4; i++) await flush();
+    }
+
+    test('the next game gets its preview by ESPN\'s game id (espnId), not CBBD\'s', async () => {
+        const p = payload();
+        p.games[3].espnId = '401800004';
+        await renderWithNews(p);
+        expect(global.fetch).toHaveBeenCalledWith('/hoops/teams/72/news', expect.any(Object));
+        expect(document.querySelector('.sp-next-wrap.has-pv > a.sp-next-pv').textContent).toContain('No. 3 Virginia visits Duke');
+        expect(document.querySelector('.ht-next').getAttribute('href')).toBe('/hoops/game/4');
+    });
+
+    test('a next game with no ESPN id: no preview slot, and no ESPN call for it', async () => {
+        await renderWithNews(payload());
+        expect(document.querySelector('.sp-next-pv')).toBeNull();
+        expect(global.fetch.mock.calls.filter(c => /\/news$/.test(c[0]))).toHaveLength(0);
+    });
+
+    test('News is the fifth tab; the Mountain West tab reads MWC so all five fit a phone', async () => {
+        const p = payload();
+        p.team.conference = 'Mountain West';
+        await renderWithNews(p);
+        expect(txt('.sp-tab')).toBe('Resume | Schedule | Stats | MWC | News');
+        expect(document.querySelector('.sp-tabs').classList.contains('many')).toBe(true);
+        document.querySelector('[data-tab="news"]').click();
+        for (let i = 0; i < 3; i++) await flush();
+        expect(document.querySelector('.ht-panel a.sp-news-row').getAttribute('href')).toBe('https://www.espn.com/pv');
+    });
+});

@@ -89,7 +89,8 @@
 
     // list: [[key, label], …]. Buttons carry data-tab; the page owns the click.
     function tabs(list, active) {
-        return '<nav class="sp-tabs" role="tablist">' + list.map(function (t) {
+        // Five tabs only fit a 375px phone with tighter padding (.many).
+        return '<nav class="sp-tabs' + (list.length >= 5 ? ' many' : '') + '" role="tablist">' + list.map(function (t) {
             return '<button type="button" role="tab" data-tab="' + esc(t[0]) + '" class="sp-tab' + (active === t[0] ? ' on' : '') + '"'
                 + ' aria-selected="' + (active === t[0]) + '">' + esc(t[1]) + '</button>';
         }).join('') + '</nav>';

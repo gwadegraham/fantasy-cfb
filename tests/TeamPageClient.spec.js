@@ -154,9 +154,9 @@ describe('the owner strip', () => {
 });
 
 describe('the tabs replace the collapse carets', () => {
-    test('Overview · Schedule · Stats · <Conference>, sticky, Overview first', () => {
+    test('Overview · Schedule · Stats · <Conference> · News, sticky, Overview first', () => {
         render(model());
-        expect(txt('.sp-tabs .sp-tab')).toBe('Overview | Schedule | Stats | ACC');
+        expect(txt('.sp-tabs .sp-tab')).toBe('Overview | Schedule | Stats | ACC | News');
         expect(document.querySelector('.sp-tab.on').getAttribute('data-tab')).toBe('overview');
         expect(document.querySelector('.drop, .fa-caret-down')).toBeNull();
     });
@@ -435,5 +435,55 @@ describe('fits a phone (#506 click-through)', () => {
         m.seasonObj.conference = 'Big Ten';
         render(m);
         expect(txt('.sp-tab[data-tab="conference"]')).toBe('Big Ten');
+    });
+});
+
+describe('ESPN news (public/team-news.js)', () => {
+    const NEWS = fs.readFileSync(path.join(__dirname, '..', 'public', 'team-news.js'), 'utf8');
+    const flush = () => new Promise(r => setTimeout(r, 0));
+    const PV = {
+        headline: 'Duke visits Georgia Tech', description: '', published: '2026-10-25T10:00:00.000Z', kind: 'preview',
+        image: null, link: 'https://www.espn.com/pv', premium: false, eventId: '3'
+    };
+    // With fetch stubbed, team.js's own boot (window.onload) would run its
+    // real loader against the stub and repaint the page under the test.
+    beforeAll(() => { (0, eval)(NEWS); window.onload = null; });
+    beforeEach(() => {
+        Object.keys(window.ccTeamNews._loads).forEach(k => delete window.ccTeamNews._loads[k]);
+        global.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [PV] }) }));
+    });
+    afterAll(() => { delete window.ccTeamNews; delete global.fetch; });
+
+    test('News is the fifth tab, and five tabs get the tighter bar', () => {
+        render(model());
+        expect(txt('.sp-tabs .sp-tab')).toBe('Overview | Schedule | Stats | ACC | News');
+        expect(document.querySelector('.sp-tabs').classList.contains('many')).toBe(true);
+    });
+
+    test('the next game (id 3) gets its own preview as a row under the Next up card', async () => {
+        render(model());
+        await flush();
+        expect(global.fetch).toHaveBeenCalledWith('/teams/150/news', expect.any(Object));
+        const row = document.querySelector('.sp-next-wrap.has-pv > a.sp-next-pv');
+        expect(row.textContent).toContain('Duke visits Georgia Tech');
+        expect(document.querySelector('.sp-next').getAttribute('href')).toBe('/game/3');
+    });
+
+    test('the News tab lists the headlines, without asking ESPN twice', async () => {
+        render(model());
+        await flush();
+        tab('news');
+        expect(txt('.ft-panel .sp-h')).toBe('Latest news');
+        await flush();
+        expect(document.querySelector('.ft-panel a.sp-news-row').getAttribute('href')).toBe('https://www.espn.com/pv');
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    test('season over (no next game) and News shut: ESPN is not asked', async () => {
+        const m = model();
+        m.schedule = m.schedule.filter(g => g.completed);
+        render(m);
+        await flush();
+        expect(global.fetch).not.toHaveBeenCalled();
     });
 });

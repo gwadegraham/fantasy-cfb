@@ -52,6 +52,9 @@
 .sp-tab { flex: 1 0 auto; border: 0; background: transparent; color: var(--cc-muted); font: 600 13px Poppins, sans-serif;
     padding: 8px 12px; border-radius: var(--cc-r-pill); white-space: nowrap; }
 .sp-tab.on { background: var(--cc-surface-3); color: var(--cc-text); }
+/* Five tabs (News joined the four): 7px is what fits every conference
+   label at 375px, measured; 8px clipped Sun Belt, American and Southland. */
+.sp-tabs.many .sp-tab { padding: 8px 7px; }
 /* A two-way switch inside a panel (which team's box score). */
 .sp-seg { display: flex; gap: 6px; margin-bottom: 8px; }
 .sp-seg button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0;
@@ -183,3 +186,37 @@
     padding: 6px 10px; border-radius: 6px; background: var(--cc-surface-3); color: var(--cc-text);
     border: 1px solid var(--cc-border-2); box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
     font: 600 12px/1.35 Poppins, sans-serif; pointer-events: none; }
+
+/* ---- team news (public/team-news.js) ------------------------------------ */
+/* The News tab: ESPN headlines, each a link out to espn.com. */
+.sp-news { overflow: hidden; }
+.sp-news-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 12px;
+    border-bottom: 1px solid var(--cc-border); }
+.sp-news-row:last-child { border-bottom: 0; }
+.sp-news-row:hover { background: var(--cc-surface-2); }
+.sp-news-row img, .sp-news-noimg { width: 96px; height: 54px; object-fit: cover; border-radius: var(--cc-r-sm); background: var(--cc-surface-3); display: block; }
+.sp-news-txt { min-width: 0; }
+.sp-news-hl { font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--cc-text);
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.sp-news-meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 11px; color: var(--cc-muted-2); }
+.sp-news-kind { font-size: 9px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; padding: 1px 6px; border-radius: 4px;
+    background: var(--cc-surface-3); color: var(--cc-muted-bright); white-space: nowrap; flex: 0 0 auto; }
+.sp-news-kind.recap { background: color-mix(in srgb, var(--cc-success) 22%, var(--cc-surface)); color: var(--cc-success); }
+.sp-news-kind.preview { background: color-mix(in srgb, var(--cc-info) 22%, var(--cc-surface)); color: var(--cc-info); }
+.sp-news-kind.video { background: rgba(var(--cc-accent-rgb), .22); color: var(--cc-accent); }
+/* ESPN+ (paywalled): ESPN's own gold, so it reads as theirs, not ours. */
+.sp-news-plus { font-size: 9px; font-weight: 800; letter-spacing: .4px; padding: 1px 6px; border-radius: 4px; white-space: nowrap; flex: 0 0 auto;
+    background: color-mix(in srgb, var(--cc-amber) 22%, var(--cc-surface)); color: var(--cc-amber); }
+.sp-news-src { font-size: 11px; color: var(--cc-muted-2); text-align: center; margin: 10px 0 0; }
+
+/* The Next up card with its game's preview as one row underneath, drawn as
+   one card: the card keeps its own link, the row is a second one. */
+.sp-next-wrap { margin-bottom: 12px; }
+.sp-next-wrap > .sp-card { margin-bottom: 0; }
+.sp-next-wrap.has-pv > .sp-card { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.sp-next-pv { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 12px; color: var(--cc-muted-bright);
+    background: var(--cc-surface); border: 1px solid var(--cc-border); border-top-color: transparent; border-left: 3px solid var(--cc-accent);
+    border-radius: 0 0 var(--cc-r-md) var(--cc-r-md); box-shadow: inset 0 1px 0 var(--cc-border); }
+.sp-next-pv:hover { background: var(--cc-surface-2); }
+.sp-next-pv-hl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-next-pv-ar { color: var(--cc-muted-2); }

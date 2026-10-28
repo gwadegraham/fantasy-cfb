@@ -305,7 +305,7 @@
         var vals = d.quadrantValues || {};
         var o = g.opponent;
         var pay = g.quadrant && vals[g.quadrant] ? '+' + vals[g.quadrant] + ' if won' : '';
-        return '<a class="sp-card ht-next" href="/hoops/game/' + encodeURIComponent(g.id) + '">'
+        var card = '<a class="sp-card ht-next" href="/hoops/game/' + encodeURIComponent(g.id) + '">'
             // Tipped and not final: it is being played, not "awaiting" anything.
             + '<div class="ht-next-when">' + (!g.startTimeTbd && now >= startOf(g) ? 'Under way' : 'Next up · ' + esc(kit.countdown(g, now))) + '</div>'
             + '<div class="ht-next-row"><span class="ht-next-opp"><span class="ht-v">' + venueMark(g.venue) + '</span>'
@@ -316,6 +316,15 @@
                 : '<span class="ht-qt post">' + esc(g.tournament || 'Post') + '</span>')
             + (pay ? '<span class="ht-next-pay">' + pay + '</span>' : '') + '</div>'
             + (g.notes ? '<div class="ht-next-note">' + esc(g.notes) + '</div>' : '') + '</a>';
+        // Its ESPN preview finds it by ESPN's game id (public/team-news.js).
+        return window.ccTeamNews ? window.ccTeamNews.nextWrap(card, g.espnId) : card;
+    }
+
+    // ESPN headlines into whatever news slots are open: the News tab, or the
+    // next game's preview row on the Resume.
+    function news() {
+        if (!window.ccTeamNews) return;
+        window.ccTeamNews.paint(root, '/hoops/teams/' + encodeURIComponent(root.getAttribute('data-team-id')) + '/news');
     }
 
     // Where they sit in the conference, at a glance: the rows either side of
@@ -426,7 +435,7 @@
     // Page state: which tab, which quadrant, whether the full schedule is
     // open. The tab rides in the URL hash so back, refresh and a shared link
     // land where the reader was.
-    var TABS = ['resume', 'schedule', 'stats', 'conference'];
+    var TABS = ['resume', 'schedule', 'stats', 'conference', 'news'];
     var state = { tab: 'resume', q: 1, allGames: false, school: '' };
     var data = null;
 
@@ -435,8 +444,14 @@
         return TABS.indexOf(h) !== -1 ? h : 'resume';
     }
 
+    // With News as a fifth tab, the one conference whose name pushed the last
+    // tab off a 375px phone (measured against all 32) is shortened, as
+    // football's tab and the scoreboard filter already do.
+    var CONF_SHORT = { 'Mountain West': 'MWC' };
+    function confShort(conf) { return CONF_SHORT[conf] || conf || 'Conference'; }
+
     function tabs(d) {
-        var label = { resume: 'Resume', schedule: 'Schedule', stats: 'Stats', conference: d.team.conference || 'Conference' };
+        var label = { resume: 'Resume', schedule: 'Schedule', stats: 'Stats', conference: confShort(d.team.conference), news: 'News' };
         var list = TABS.filter(function (t) { return t !== 'conference' || (d.standings && d.standings.length && d.team.conference); });
         return kit.tabs(list.map(function (t) { return [t, label[t]]; }), state.tab);
     }
@@ -445,6 +460,7 @@
         if (state.tab === 'schedule') return schedule(d);
         if (state.tab === 'stats') return efficiency(d) + stats(d);
         if (state.tab === 'conference') return standings(d);
+        if (state.tab === 'news') return window.ccTeamNews ? window.ccTeamNews.panel() : '';
         return nextUp(d) + sheet(d) + netSheet(d) + turnover(d) + splits(done) + standingsPeek(d);
     }
 
@@ -462,6 +478,7 @@
         if (tabsEl) tabsEl.outerHTML = tabs(data);
         root.querySelector('.ht-panel').innerHTML = panel(data, done);
         fitSchools();
+        news();
     }
 
     // A school name that would be cut off becomes its abbreviation.
@@ -484,6 +501,7 @@
         if (window.ccLeague && window.ccLeague.paint) window.ccLeague.paint();
         fitSchools();
         kit.countUp(root);
+        news();
     }
 
     root.addEventListener('click', function (e) {
