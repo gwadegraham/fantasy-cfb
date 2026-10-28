@@ -34,6 +34,17 @@
 .hg-box td { padding: 7px 5px; border-top: 1px solid var(--cc-border); text-align: right; white-space: nowrap; }
 .hg-box .grp td { background: var(--cc-surface-2); font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
     color: var(--cc-muted); text-align: left; padding: 5px 12px; }
+/* The name column takes what the six stat columns leave and trims a long
+   name ("#33 S. Williams-Adams") with an ellipsis, instead of widening the
+   table past the card on a phone — it ran 21px off at 375px. */
+.hg-box td:first-child { max-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.hg-box .grp td { max-width: none; overflow: visible; }
+@media (max-width: 400px) {
+    .hg-box th:not(:first-child):not(:last-child),
+    .hg-box td:not(:first-child):not(:last-child) { padding-left: 4px; padding-right: 4px; }
+    /* A gap the eye reads between "1" (AST) and "0-5" (3PT). */
+    .hg-box:not(.adv) th:nth-child(6), .hg-box:not(.adv) td:nth-child(6) { padding-left: 10px; }
+}
 .hg-box .pos { color: var(--cc-muted-2); font-size: 10px; margin-left: 4px; }
 .hg-box .hi { color: var(--cc-accent); }
 
@@ -98,3 +109,73 @@ a.hg-meet { grid-template-columns: 52px 1fr; }
     .hg-score { font-size: 32px; }
     .hg-nm { font-size: 15px; }
 }
+
+/* Shot chart: one team's attempts on a half court, basket at the top.
+   A dark floor rather than the preview's wood, so every team colour reads. */
+.hg-shots { padding: 12px 14px 14px; }
+.hg-shot-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13px; color: var(--cc-muted); margin-bottom: 8px; }
+.hg-shot-head b { color: var(--cc-text); font-size: 15px; }
+.hg-shot-floor { display: block; width: 100%; aspect-ratio: 52 / 49; border-radius: 6px; background: var(--cc-surface-2); }
+.hg-shot-floor .ln { stroke: rgba(255, 255, 255, .28); stroke-width: .2; }
+/* Makes carry a white edge so a dark team colour (Auburn's navy, lifted to
+   slate) still separates from the rings; misses stay small and dim. */
+.hg-shot-floor .mk { stroke: #fff; stroke-width: .22; }
+.hg-shot-floor .ms { fill: none; stroke: var(--cc-muted-2); stroke-width: .2; opacity: .7; }
+.hg-shot-tip { margin: 8px 0 0; min-height: 18px; font-size: 12px; color: var(--cc-muted-2); }
+.hg-shot-tip.on { color: var(--cc-text); font-weight: 600; }
+.hg-shot-key { display: flex; gap: 14px; font-size: 11px; color: var(--cc-muted); margin: 8px 0 10px; }
+.hg-shot-key span { display: inline-flex; align-items: center; gap: 5px; }
+.hg-shot-key i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.hg-shot-key i.mk { box-shadow: 0 0 0 1.5px #fff inset; }
+.hg-shot-key i.ms { width: 7px; height: 7px; border: 1.5px solid var(--cc-muted-2); opacity: .8; }
+.hg-szs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.hg-sz { background: var(--cc-surface-2); border-radius: var(--cc-r-sm, 6px); padding: 8px 6px; text-align: center; }
+.hg-sz span { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: var(--cc-muted); }
+.hg-sz b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.hg-sz small { font-size: 11px; color: var(--cc-muted-2); }
+.hg-shot-foot { margin: 10px 0 0; font-size: 11px; color: var(--cc-muted-2); }
+
+/* Live line score: the half being played reads in the live green. */
+.sp-lines.live .now { color: var(--cc-success); }
+
+/* Box score: Basic / Advanced. Advanced is every per-game line, wider than
+   a phone, so its card scrolls sideways with the player pinned on the left. */
+.hg-box-mode { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; }
+.hg-box-mode button { font: inherit; font-size: 12px; font-weight: 600; color: var(--cc-muted); background: transparent;
+    border: 1px solid var(--cc-border); border-radius: 999px; padding: 5px 14px; min-height: 36px; cursor: pointer; }
+.hg-box-mode button.on { background: var(--cc-surface-3); color: var(--cc-text); border-color: var(--cc-border-2); }
+.hg-box-mode .hint { margin-left: auto; font-size: 11px; color: var(--cc-muted-2); }
+.hg-box-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.hg-box.adv { width: auto; min-width: 100%; }
+.hg-box.adv th:first-child, .hg-box.adv td:first-child { position: sticky; left: 0; z-index: 1;
+    width: 128px; min-width: 128px; max-width: 128px; background: var(--cc-surface);
+    box-shadow: 1px 0 0 var(--cc-border); }
+/* The group row spans the whole scroll width, so the CELL cannot pin; its
+   label does, or "Starters" scrolls away and leaves an empty bar. */
+.hg-box.adv .grp td { position: static; overflow: visible; width: auto; min-width: 0; max-width: none; background: var(--cc-surface-2); box-shadow: none; }
+.hg-box.adv .grp td span { display: inline-block; position: sticky; left: 12px; }
+
+/* Shot chart: a tapped shot is ringed, everything else dims, and a label
+   sits beside the dot — where the eye already is. */
+.hg-shot-wrap { position: relative; }
+.hg-shot-floor.picked circle.mk, .hg-shot-floor.picked circle.ms { opacity: .3; }
+.hg-shot-floor.picked circle.sel { opacity: 1; }
+.hg-shot-floor .ring { fill: none; stroke: #fff; stroke-width: .3; }
+.hg-shot-label { position: absolute; transform: translate(-50%, calc(-100% - 10px)); pointer-events: none; white-space: nowrap;
+    background: var(--cc-surface-3); color: var(--cc-text); border: 1px solid var(--cc-border-2); border-radius: 8px;
+    padding: 5px 9px; font-size: 12px; font-weight: 600; box-shadow: 0 4px 14px rgba(0, 0, 0, .45); }
+.hg-shot-label.below { transform: translate(-50%, 12px); }
+.hg-shot-label small { display: block; font-weight: 500; color: var(--cc-muted); font-size: 11px; }
+
+/* Advanced box: the tapped value's row and column, as a light wash laid
+   over each cell's own background (the pinned name cell is opaque), and
+   the cell where they cross a step brighter. */
+.hg-box.adv { cursor: pointer; }
+/* Two quick taps (light, then clear) must not read as Safari's double-tap
+   zoom, here or on the shot chart. */
+.hg-box.adv, .hg-shot-floor { touch-action: manipulation; }
+.hg-box.adv tr.hl-row td, .hg-box.adv .hl-col { background-image: linear-gradient(rgba(255, 255, 255, .10), rgba(255, 255, 255, .10)); }
+/* Specific enough to beat the row rule above, which also matches it. */
+.hg-box.adv tr.hl-row td.hl-x { background-image: linear-gradient(rgba(255, 255, 255, .24), rgba(255, 255, 255, .24));
+    color: var(--cc-text); font-weight: 700; }
+

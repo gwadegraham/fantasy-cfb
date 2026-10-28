@@ -20,7 +20,14 @@ const playerSchema = new mongoose.Schema({
     fouls: Number,
     fgMade: Number, fgAtt: Number,
     threeMade: Number, threeAtt: Number,
-    ftMade: Number, ftAtt: Number
+    ftMade: Number, ftAtt: Number,
+    // The Advanced view's lines (#624), as CBBD sends them per game.
+    ejected: Boolean,
+    offRebounds: Number, defRebounds: Number,
+    twoMade: Number, twoAtt: Number,
+    efgPct: Number, tsPct: Number, usage: Number,
+    offRating: Number, defRating: Number, netRating: Number,
+    gameScore: Number
 }, { _id: false });
 
 const side = {
@@ -34,6 +41,8 @@ const side = {
     threeMade: Number, threeAtt: Number,
     ftMade: Number, ftAtt: Number,
     rebounds: Number, assists: Number, steals: Number, blocks: Number, turnovers: Number,
+    offRebounds: Number, defRebounds: Number, twoMade: Number, twoAtt: Number,
+    fouls: Number, technicals: Number, tsPct: Number, rating: Number, gameScore: Number,
     paintPoints: Number, fastBreakPoints: Number, pointsOffTurnovers: Number, largestLead: Number,
     players: [playerSchema]
 };

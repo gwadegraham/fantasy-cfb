@@ -18,6 +18,7 @@ const { useMongo } = require('./helpers/mongo');
 const scoreboard = require('../modules/hoops-scoreboard');
 const livePoll = require('../modules/hoops-live-poll');
 const boxScore = require('../modules/hoops-box-score');
+const shotCharts = require('../modules/hoops-shots');
 const scoringPass = require('../modules/hoops-scoring-pass');
 const scoresJob = require('../modules/hoops-scores-job');
 const hoopsGames = require('../routes/hoopsGames');
@@ -60,6 +61,9 @@ beforeEach(async () => {
     jest.spyOn(console, 'log').mockImplementation(() => {});
     pushNotify.notifyHoopsEvents.mockReset().mockResolvedValue({ sent: 0 });
     pushNotify.notifyHoopsFinals.mockReset().mockResolvedValue({ sent: 0 });
+    // Shot charts have their own tests (HoopsShots.spec.js); here they must
+    // never reach CBBD or the roster lookup.
+    jest.spyOn(shotCharts, 'ingestShots').mockResolvedValue({ games: 1, stored: 1 });
 });
 afterEach(() => { seasons._reset(); jest.restoreAllMocks(); delete process.env.LIVE_POLL_ENABLED; });
 
@@ -180,7 +184,33 @@ describe('the live poller', () => {
         const later = new Date(DURING.getTime() + 3 * 60 * 1000);           // past the 2-minute quiet window
         const out = await livePoll.run({ now: later });
         expect(score).toHaveBeenCalledWith(LEAGUE, { season: SEASON, week: 3 });
-        expect(out.summary).toContain('settled · boxes 1/1 | hoops-league wk3: 1 game(s)');
+        expect(out.summary).toContain('settled · boxes 1/1 | shots 1/1 | hoops-league wk3: 1 game(s)');
+    });
+
+    test('a shot-chart failure is noted, and costs neither the boxes nor the scoring', async () => {
+        await HoopsGame.create([game(10), game(11)]);
+        stubBoard([row(10, 'final', 75, 60), row(11, 'in_progress', 40, 41)]);
+        jest.spyOn(boxScore, 'ingestRecent').mockResolvedValue({ games: 1, stored: 1 });
+        shotCharts.ingestShots.mockRejectedValue(new Error('Could not reach CBBD'));
+        const score = jest.spyOn(scoringPass, 'scoreHoopsWeek').mockResolvedValue({ games: 1 });
+        await livePoll.run({ now: DURING });
+        const out = await livePoll.run({ now: new Date(DURING.getTime() + 3 * 60 * 1000) });
+        expect(score).toHaveBeenCalled();
+        expect(out.summary).toContain('boxes 1/1 | shots FAILED Could not reach CBBD | hoops-league wk3');
+    });
+
+    test('shots: a skip and a partly failed batch both say so', async () => {
+        await HoopsGame.create([game(10), game(11)]);
+        stubBoard([row(10, 'final', 75, 60), row(11, 'in_progress', 40, 41)]);
+        jest.spyOn(boxScore, 'ingestRecent').mockResolvedValue({ games: 1, stored: 1 });
+        shotCharts.ingestShots.mockResolvedValue({ games: 2, stored: 1, failed: 1, error: 'CBBD 500' });
+        jest.spyOn(scoringPass, 'scoreHoopsWeek').mockResolvedValue({ games: 1 });
+        await livePoll.run({ now: DURING });
+        const out = await livePoll.run({ now: new Date(DURING.getTime() + 3 * 60 * 1000) });
+        expect(out.summary).toContain('shots 1/2 | shots: 1 failed (CBBD 500)');
+
+        shotCharts.ingestShots.mockResolvedValue({ games: 0, stored: 0, skippedReason: 'no drafted team played' });
+        expect(livePoll._flush.pendingCount()).toBe(0);
     });
 
     test('the slate ends with finals still queued: it drains', async () => {

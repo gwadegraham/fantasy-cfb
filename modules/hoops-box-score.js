@@ -36,6 +36,7 @@ function num(v) {
 function slimSide(teamId, s, players) {
     s = s || {};
     const fg = s.fieldGoals || {}, three = s.threePointFieldGoals || {}, ft = s.freeThrows || {};
+    const two = s.twoPointFieldGoals || {}, reb = s.rebounds || {}, fouls = s.fouls || {};
     const pts = s.points || {}, ff = s.fourFactors || {};
     return {
         teamId,
@@ -48,19 +49,32 @@ function slimSide(teamId, s, players) {
         fgMade: num(fg.made), fgAtt: num(fg.attempted),
         threeMade: num(three.made), threeAtt: num(three.attempted),
         ftMade: num(ft.made), ftAtt: num(ft.attempted),
-        rebounds: num((s.rebounds || {}).total),
+        twoMade: num(two.made), twoAtt: num(two.attempted),
+        rebounds: num(reb.total), offRebounds: num(reb.offensive), defRebounds: num(reb.defensive),
         assists: num(s.assists), steals: num(s.steals), blocks: num(s.blocks),
         turnovers: num((s.turnovers || {}).total),
+        fouls: num(fouls.total), technicals: num(fouls.technical),
+        tsPct: num(s.trueShooting), rating: num(s.rating), gameScore: num(s.gameScore),
         paintPoints: num(pts.inPaint), fastBreakPoints: num(pts.fastBreak),
         pointsOffTurnovers: num(pts.offTurnovers), largestLead: num(pts.largestLead),
+        // Every per-game line CBBD sends (#624): the box's Advanced view
+        // shows them all. Percents and ratings are stored as sent — per GAME
+        // they are percents (eFG 63.9), see the note at the top.
         players: (players || []).filter(p => p && p.name).map(p => ({
             athleteId: num(p.athleteId), name: p.name, position: p.position || undefined,
-            starter: !!p.starter, minutes: num(p.minutes), points: num(p.points),
-            rebounds: num((p.rebounds || {}).total), assists: num(p.assists),
+            starter: !!p.starter, ejected: p.ejected ? true : undefined,
+            minutes: num(p.minutes), points: num(p.points),
+            rebounds: num((p.rebounds || {}).total),
+            offRebounds: num((p.rebounds || {}).offensive), defRebounds: num((p.rebounds || {}).defensive),
+            assists: num(p.assists),
             steals: num(p.steals), blocks: num(p.blocks), turnovers: num(p.turnovers), fouls: num(p.fouls),
             fgMade: num((p.fieldGoals || {}).made), fgAtt: num((p.fieldGoals || {}).attempted),
+            twoMade: num((p.twoPointFieldGoals || {}).made), twoAtt: num((p.twoPointFieldGoals || {}).attempted),
             threeMade: num((p.threePointFieldGoals || {}).made), threeAtt: num((p.threePointFieldGoals || {}).attempted),
-            ftMade: num((p.freeThrows || {}).made), ftAtt: num((p.freeThrows || {}).attempted)
+            ftMade: num((p.freeThrows || {}).made), ftAtt: num((p.freeThrows || {}).attempted),
+            efgPct: num(p.effectiveFieldGoalPct), tsPct: num(p.trueShootingPct), usage: num(p.usage),
+            offRating: num(p.offensiveRating), defRating: num(p.defensiveRating), netRating: num(p.netRating),
+            gameScore: num(p.gameScore)
         }))
     };
 }

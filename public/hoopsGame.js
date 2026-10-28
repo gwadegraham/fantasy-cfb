@@ -17,7 +17,7 @@
         return t.hasPage ? '<a href="/hoops/team/' + encodeURIComponent(t.id) + '">' + inner + '</a>' : inner;
     }
 
-    var state = { tab: 'summary', side: 'away' };
+    var state = { tab: 'summary', side: 'away', adv: false };
     var data = null;
 
     function when(g) {
@@ -61,16 +61,30 @@
             + lineScore(d) + '</section>';
     }
 
+    // Points by half. The box score's once it lands; before that (a live
+    // game, or a final the batch has not reached) the scoreboard's own
+    // lineScores, with the running score as the total.
     function lineScore(d) {
-        var b = d.box;
-        if (!b || !b.home || !b.home.byPeriod || !b.home.byPeriod.length) return '';
+        var b = d.box, src = null;
+        if (b && b.home && b.home.byPeriod && b.home.byPeriod.length && b.away && b.away.byPeriod) {
+            src = { home: b.home.byPeriod, away: b.away.byPeriod, homeT: b.home.points, awayT: b.away.points };
+        } else if (d.game.lines && (d.game.live || d.game.final)) {
+            src = { home: d.game.lines.home, away: d.game.lines.away, homeT: d.home.points, awayT: d.away.points };
+        }
+        if (!src) return '';
+        var n = Math.max(src.home.length, src.away.length);
+        var cols = []; for (var i = 0; i < n; i++) cols.push(i);
         var label = function (i) { return i === 0 ? '1st' : i === 1 ? '2nd' : 'OT' + (i > 2 ? i - 1 : ''); };
-        var row = function (t, s) {
-            return '<tr><td>' + esc(abbr(t)) + '</td>' + s.byPeriod.map(function (x) { return '<td>' + x + '</td>'; }).join('')
-                + '<td>' + s.points + '</td></tr>';
+        // The half being played, marked while the game is live.
+        var now = d.game.live && d.game.period ? d.game.period - 1 : -1;
+        var row = function (t, per, total) {
+            return '<tr><td>' + esc(abbr(t)) + '</td>' + cols.map(function (i) {
+                return '<td' + (i === now ? ' class="now"' : '') + '>' + (per[i] == null ? '–' : per[i]) + '</td>';
+            }).join('') + '<td>' + (total == null ? '–' : total) + '</td></tr>';
         };
-        return '<table class="sp-lines"><tr><th></th>' + b.home.byPeriod.map(function (_, i) { return '<th>' + label(i) + '</th>'; }).join('')
-            + '<th>T</th></tr>' + row(d.away, b.away) + row(d.home, b.home) + '</table>';
+        return '<table class="sp-lines' + (d.game.live ? ' live' : '') + '"><tr><th></th>'
+            + cols.map(function (i) { return '<th' + (i === now ? ' class="now"' : '') + '>' + label(i) + '</th>'; }).join('')
+            + '<th>T</th></tr>' + row(d.away, src.away, src.awayT) + row(d.home, src.home, src.homeT) + '</table>';
     }
 
     // A side's Q chip. The numbers beside the names are the AP poll; the
@@ -166,7 +180,11 @@
         ['Points in the paint', null, 'paintPoints', 'high'],
         ['Fast-break points', null, 'fastBreakPoints', 'high'],
         ['Points off turnovers', null, 'pointsOffTurnovers', 'high'],
-        ['Largest lead', null, 'largestLead', 'high']
+        ['Largest lead', null, 'largestLead', 'high'],
+        ['Offensive rebounds', null, 'offRebounds', 'high'],
+        ['Steals', null, 'steals', 'high'],
+        ['Blocks', null, 'blocks', 'high'],
+        ['Fouls', null, 'fouls', 'low']
     ];
     function teamStats(d) {
         return TEAM_STATS.map(function (r) {
@@ -194,23 +212,106 @@
         return h + '</div>';
     }
 
+    // The box's columns. Basic fits a phone; Advanced is every per-game
+    // line CBBD sends and scrolls sideways, the name pinned on the left.
+    // [header, value(p) -> text, title]. Percents and ratings arrive as
+    // percents per game (modules/hoops-box-score.js), shown as sent.
+    var n0 = function (k) { return function (p) { return fixed(p[k], 0); }; };
+    var n1 = function (k) { return function (p) { return fixed(p[k], 1); }; };
+    var BASIC = [['Min', n0('minutes')], ['Pts', n0('points')], ['Reb', n0('rebounds')], ['Ast', n0('assists')],
+        ['3PT', function (p) { return ma(p.threeMade, p.threeAtt); }], ['FG', function (p) { return ma(p.fgMade, p.fgAtt); }]];
+    var ADVANCED = [['Min', n0('minutes')], ['Pts', n0('points')], ['Reb', n0('rebounds')],
+        ['OR', n0('offRebounds'), 'Offensive rebounds'], ['DR', n0('defRebounds'), 'Defensive rebounds'],
+        ['Ast', n0('assists')], ['Stl', n0('steals')], ['Blk', n0('blocks')], ['TO', n0('turnovers'), 'Turnovers'],
+        ['PF', n0('fouls'), 'Personal fouls'],
+        ['FG', function (p) { return ma(p.fgMade, p.fgAtt); }], ['2PT', function (p) { return ma(p.twoMade, p.twoAtt); }],
+        ['3PT', function (p) { return ma(p.threeMade, p.threeAtt); }], ['FT', function (p) { return ma(p.ftMade, p.ftAtt); }],
+        ['eFG%', n1('efgPct'), 'Effective field-goal %'], ['TS%', n1('tsPct'), 'True shooting %'],
+        ['Usg%', n1('usage'), 'Usage: share of possessions used'],
+        ['ORtg', n1('offRating'), 'Points produced per 100 possessions'], ['DRtg', n1('defRating'), 'Points allowed per 100 possessions'],
+        ['Net', n1('netRating'), 'Offensive minus defensive rating'], ['GmSc', n1('gameScore'), 'Game score: one-number performance']];
+
     function boxTable(d) {
         var team = d[state.side], s = d.box[state.side];
         var ps = (s.players || []).slice().sort(function (a, b) { return (b.starter - a.starter) || ((b.minutes || 0) - (a.minutes || 0)); });
         if (!ps.length) return '<div class="sp-card sp-empty">No player lines for ' + esc(team.school) + '.</div>';
         var names = shortNames(ps);
         var high = Math.max.apply(null, ps.map(function (p) { return p.points || 0; }));
-        var h = '<div class="sp-card"><table class="hg-box"><tr><th>Player</th><th>Min</th><th>Pts</th><th>Reb</th><th>Ast</th><th>3PT</th><th>FG</th></tr>';
+        var cols = state.adv ? ADVANCED : BASIC, span = cols.length + 1;
+        var mode = function (adv, label) {
+            return '<button type="button" data-adv="' + (adv ? 1 : 0) + '" class="' + (state.adv === adv ? 'on' : '') + '">' + label + '</button>';
+        };
+        var h = '<div class="hg-box-mode">' + mode(false, 'Basic') + mode(true, 'Advanced')
+            + (state.adv ? '<span class="hint">Scroll sideways for more →</span>' : '') + '</div>'
+            + '<div class="sp-card' + (state.adv ? ' hg-box-scroll' : '') + '"><table class="hg-box' + (state.adv ? ' adv' : '') + '"><tr><th>Player</th>'
+            + cols.map(function (c) { return '<th' + (c[2] ? ' title="' + esc(c[2]) + '"' : '') + '>' + c[0] + '</th>'; }).join('') + '</tr>';
         var bench = false;
-        if (ps[0].starter) h += '<tr class="grp"><td colspan="7">Starters</td></tr>';
+        if (ps[0].starter) h += '<tr class="grp"><td colspan="' + span + '"><span>Starters</span></td></tr>';
         ps.forEach(function (p) {
-            if (!p.starter && !bench) { bench = true; h += '<tr class="grp"><td colspan="7">Bench</td></tr>'; }
+            if (!p.starter && !bench) { bench = true; h += '<tr class="grp"><td colspan="' + span + '"><span>Bench</span></td></tr>'; }
             h += '<tr><td>' + esc(kit.numbered(p, names[p.name])) + (p.position ? '<span class="pos">' + esc(p.position) + '</span>' : '') + '</td>'
-                + '<td>' + fixed(p.minutes, 0) + '</td><td' + (p.points === high && high > 0 ? ' class="hi"' : '') + '>' + fixed(p.points, 0) + '</td>'
-                + '<td>' + fixed(p.rebounds, 0) + '</td><td>' + fixed(p.assists, 0) + '</td>'
-                + '<td>' + ma(p.threeMade, p.threeAtt) + '</td><td>' + ma(p.fgMade, p.fgAtt) + '</td></tr>';
+                + cols.map(function (c) {
+                    return '<td' + (c[0] === 'Pts' && p.points === high && high > 0 ? ' class="hi"' : '') + '>' + c[1](p) + '</td>';
+                }).join('') + '</tr>';
         });
         return h + '</table></div>';
+    }
+
+    // ---- shot chart: a played game -------------------------------------
+
+    // One team's field-goal attempts on a half court, basket at the top, to
+    // scale (feet; 50 wide, 47 deep; the men's 22.15-ft arc and 22-ft
+    // corners, as the preview court draws them). Made shots are the team's
+    // colour, misses an open ring. Server-side the attempts are already
+    // folded onto this end (modules/hoops-shots.js).
+    var ZONES = [['rim', 'At the rim'], ['jumper', 'Jumpers'], ['three_pointer', 'Threes']];
+    function halfCourt() {
+        return '<path d="M0 0H50M0 0V47M50 0V47M0 47H50"/>'
+            + '<rect x="19" y="0" width="12" height="19"/>'
+            + '<path d="M19 19A6 6 0 0 0 31 19"/><path d="M19 19A6 6 0 0 1 31 19" stroke-dasharray="1 1"/>'
+            + '<path d="M3 0V7.79M47 0V7.79M3 7.79A22.15 22.15 0 0 0 47 7.79"/>'
+            + '<path d="M21 5.25A4 4 0 0 0 29 5.25"/>'
+            + '<path d="M22 4H28"/><circle cx="25" cy="5.25" r=".75"/>'
+            + '<path d="M19 47A6 6 0 0 1 31 47"/>';
+    }
+    function shotTip(s, names) {
+        var half = function (p) { return p === 1 ? '1st' : p === 2 ? '2nd' : p > 2 ? (p === 3 ? 'OT' : (p - 2) + 'OT') : ''; };
+        return (s.shooter ? (names[s.shooter] || s.shooter) + ' · ' : '') + (s.made ? 'made' : 'missed')
+            + (s.range === 'three_pointer' ? ' 3' : '') + (s.period ? ' · ' + half(s.period) + (s.clock ? ' ' + s.clock : '') : '');
+    }
+    function shotChart(d) {
+        var team = d[state.side], list = d.shots[state.side] || [];
+        var color = (state.colors && state.colors[state.side]) || '#F4F6FB';
+        var names = shortNames(list.map(function (s) { return { name: s.shooter || '' }; }));
+        // Misses drawn first, so a make on the same spot sits on top.
+        var idx = list.map(function (s, i) { return i; });
+        var ordered = idx.filter(function (i) { return !list[i].made; }).concat(idx.filter(function (i) { return list[i].made; }));
+        var dots = ordered.map(function (i) {
+            var s = list[i], tip = shotTip(s, names);
+            return s.made
+                ? '<circle class="mk" data-k="' + i + '" cx="' + s.x + '" cy="' + s.y + '" r=".95" fill="' + esc(color) + '"><title>' + esc(tip) + '</title></circle>'
+                : '<circle class="ms" data-k="' + i + '" cx="' + s.x + '" cy="' + s.y + '" r=".6"><title>' + esc(tip) + '</title></circle>';
+        }).join('');
+        var made = list.filter(function (s) { return s.made; }).length;
+        var rows = ZONES.map(function (z) {
+            var att = list.filter(function (s) { return s.range === z[0]; });
+            var m = att.filter(function (s) { return s.made; }).length;
+            return '<div class="hg-sz"><span>' + z[1] + '</span><b>' + m + '-' + att.length + '</b><small>'
+                + (att.length ? Math.round(100 * m / att.length) + '%' : '—') + '</small></div>';
+        }).join('');
+        var total = d.shots.attempts && d.shots.attempts[state.side];
+        var foot = total && total > list.length
+            ? '<p class="hg-shot-foot">' + list.length + ' of ' + total + ' attempts charted.</p>' : '';
+        return '<div class="sp-card hg-shots">'
+            + '<div class="hg-shot-head"><b>' + esc(team.school) + '</b><span>' + made + '-' + list.length + ' FG'
+            + (list.length ? ' · ' + Math.round(100 * made / list.length) + '%' : '') + '</span></div>'
+            + '<div class="hg-shot-wrap"><svg class="hg-shot-floor" viewBox="-1 -1 52 49" role="img" aria-label="' + esc(team.school) + ' shot chart: '
+            + made + ' of ' + list.length + ' made">'
+            + '<g class="ln" fill="none">' + halfCourt() + '</g>' + dots + '</svg></div>'
+            // Phones have no hover: a tap names the nearest shot here.
+            + '<p class="hg-shot-tip" aria-live="polite">Tap a dot to see the shot.</p>'
+            + '<div class="hg-shot-key"><span><i class="mk" style="background:' + esc(color) + '"></i>Made</span><span><i class="ms"></i>Missed</span></div>'
+            + '<div class="hg-szs">' + rows + '</div>' + foot + '</div>';
     }
 
     // ---- preview: a game still to play ----------------------------------
@@ -415,20 +516,23 @@
     }
 
     function tabs(d) {
-        if (!d.box) return '';
-        return kit.tabs([['summary', 'Summary'], ['box', 'Box score']], state.tab);
+        if (!d.box && !d.shots) return '';
+        var list = [['summary', 'Summary']];
+        if (d.box) list.push(['box', 'Box score']);
+        if (d.shots) list.push(['shots', 'Shot chart']);
+        return kit.tabs(list, state.tab);
     }
 
     function panel(d) {
+        var seg = function (key) {
+            var t = d[key];
+            return '<button type="button" data-side="' + key + '" class="' + (state.side === key ? 'on' : '') + '">'
+                + (t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '') + esc(t.school) + '</button>';
+        };
+        var segs = '<div class="sp-seg">' + seg('away') + seg('home') + '</div>';
+        if (state.tab === 'shots' && d.shots) return segs + shotChart(d);
         if (!d.box) return noBox(d);
-        if (state.tab === 'box') {
-            var seg = function (key) {
-                var t = d[key];
-                return '<button type="button" data-side="' + key + '" class="' + (state.side === key ? 'on' : '') + '">'
-                    + (t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '') + esc(t.school) + '</button>';
-            };
-            return '<div class="sp-seg">' + seg('away') + seg('home') + '</div>' + boxTable(d);
-        }
+        if (state.tab === 'box') return segs + boxTable(d);
         return '<h2 class="sp-h">Keys to the game<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="sp-card">' + factors(d) + '</div>'
             + '<h2 class="sp-h">Team stats' + (d.box.pace ? '<small>' + fixed(d.box.pace, 0) + ' possessions</small>' : '') + '</h2><div class="sp-card">' + teamStats(d) + '</div>'
             + '<h2 class="sp-h">Leaders</h2>' + leaders(d);
@@ -440,17 +544,24 @@
         root.querySelector('.hg-panel').innerHTML = panel(data);
     }
 
-    function render(d) {
+    // `keep`: a live refresh repaints with the viewer's tab, team and box
+    // mode left as they were, rather than snapping back to the defaults.
+    function render(d, keep) {
+        var refreshing = keep === true && !!data;
         data = d;
         var h = (window.location.hash || '').replace('#', '');
-        state.tab = h === 'box' ? 'box' : 'summary';
+        if (!refreshing || (state.tab === 'box' && !d.box) || (state.tab === 'shots' && !d.shots)) {
+            state.tab = h === 'box' && d.box ? 'box' : h === 'shots' && d.shots ? 'shots' : 'summary';
+        }
         // Open the box on the viewer's own team; failing that, the one side
         // somebody rosters; otherwise the left-hand (away) side, so the toggle
         // reads in the scoreboard's order.
         var mine = function (t) { return !!(t.owner && t.owner.mine); };
         state.colors = kit.matchColors(d.away, d.home);
-        state.side = mine(d.home) ? 'home' : mine(d.away) ? 'away'
-            : (d.home.owner && !d.away.owner ? 'home' : 'away');
+        if (!refreshing) {
+            state.side = mine(d.home) ? 'home' : mine(d.away) ? 'away'
+                : (d.home.owner && !d.away.owner ? 'home' : 'away');
+        }
         root.innerHTML = d.game.final
             ? hero(d) + fantasy(d) + netCard(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
             : hero(d) + '<div class="hg-preview">' + preview(d) + '</div>';
@@ -460,8 +571,99 @@
         kit.countUp(root);
     }
 
+    // A tap on the chart: the nearest shot within a few feet, since a dot is
+    // far smaller than a fingertip. Measured in court feet off the SVG's own
+    // box, so it holds at any width.
+    function tapShot(e, svg) {
+        var list = (data.shots && data.shots[state.side]) || [];
+        var box = svg.getBoundingClientRect();
+        if (!list.length || !box.width) return;
+        var vb = (svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);   // x y w h
+        var x = vb[0] + (e.clientX - box.left) * vb[2] / box.width;
+        var y = vb[1] + (e.clientY - box.top) * vb[3] / box.height;
+        var best = -1, bestD = 3;
+        list.forEach(function (s, i) {
+            var dd = Math.sqrt((s.x - x) * (s.x - x) + (s.y - y) * (s.y - y));
+            if (dd <= bestD) { best = i; bestD = dd; }
+        });
+        pickShot(svg, best);
+    }
+
+    // Mark one shot (or none): ring it, dim the rest, and label it beside the
+    // dot, with the same words under the court for screen readers.
+    function pickShot(svg, k) {
+        var list = (data.shots && data.shots[state.side]) || [];
+        var wrap = svg.parentNode, out = root.querySelector('.hg-shot-tip');
+        Array.prototype.forEach.call(svg.querySelectorAll('.sel, .ring'), function (n) {
+            if (n.classList.contains('ring')) n.parentNode.removeChild(n); else n.classList.remove('sel');
+        });
+        var old = wrap.querySelector('.hg-shot-label');
+        if (old) wrap.removeChild(old);
+        var s = list[k];
+        svg.classList.toggle('picked', !!s);
+        if (out) out.classList.toggle('on', !!s);
+        if (!s) { if (out) out.textContent = 'Tap a dot to see the shot.'; return; }
+        var names = shortNames(list.map(function (p) { return { name: p.shooter || '' }; }));
+        var dot = svg.querySelector('[data-k="' + k + '"]');
+        if (dot) dot.classList.add('sel');
+        var ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        ring.setAttribute('class', 'ring'); ring.setAttribute('cx', s.x); ring.setAttribute('cy', s.y); ring.setAttribute('r', '1.9');
+        svg.appendChild(ring);
+        var tip = shotTip(s, names);
+        if (out) out.textContent = tip;
+        var who = s.shooter ? (names[s.shooter] || s.shooter) : (s.made ? 'Made' : 'Missed');
+        var what = tip.indexOf(' · ') > -1 && s.shooter ? tip.slice(tip.indexOf(' · ') + 3) : tip;
+        var label = document.createElement('div');
+        label.className = 'hg-shot-label' + (s.y < 9 ? ' below' : '');
+        label.innerHTML = esc(who) + (s.shooter ? '<small>' + esc(what) + '</small>' : '');
+        // Where the dot is, as a share of the chart; kept inside its edges.
+        var vb = (svg.getAttribute('viewBox') || '-1 -1 52 49').split(/\s+/).map(Number);
+        var at = (100 * (s.x - vb[0]) / vb[2]) + '%';
+        label.style.left = at;
+        label.style.top = (100 * (s.y - vb[1]) / vb[3]) + '%';
+        wrap.appendChild(label);
+        // Kept inside the court's edges — in percent and px together, so it
+        // stays beside the dot when the phone rotates.
+        var half = Math.ceil(label.offsetWidth / 2) + 4;
+        if (half > 4) label.style.left = 'clamp(' + half + 'px, ' + at + ', calc(100% - ' + half + 'px))';
+    }
+
+    // Advanced box: a tap on a value lights its row and column (a name, just
+    // the row; a header, just the column) so a number can be read across 21
+    // columns. The NEXT tap anywhere in the table only clears it — never
+    // moves it — so there is always a way back to a clean table.
+    function highlight(cell) {
+        var table = cell.closest('table');
+        var lit = table.querySelectorAll('.hl-col, .hl-row, .hl-x');
+        if (table.classList.contains('hl')) {
+            table.classList.remove('hl');
+            Array.prototype.forEach.call(lit, function (n) { n.classList.remove('hl-col', 'hl-row', 'hl-x'); });
+            return;
+        }
+        var row = cell.parentNode;
+        if (row.classList.contains('grp')) return;            // Starters / Bench
+        var col = cell.cellIndex, header = cell.tagName === 'TH';
+        if (header && col === 0) return;                      // "Player": nothing to light
+                              // "Player": nothing to light
+        var rows = Array.prototype.filter.call(table.rows, function (r) { return !r.classList.contains('grp'); });
+        if (col > 0) rows.forEach(function (r) { if (r.cells[col]) r.cells[col].classList.add('hl-col'); });
+        if (!header) row.classList.add('hl-row');
+        if (col > 0 && !header) cell.classList.add('hl-x');
+        table.classList.add('hl');
+    }
+
     root.addEventListener('click', function (e) {
         if (!data) return;
+        var floor = e.target.closest('.hg-shot-floor');
+        if (floor) { tapShot(e, floor); return; }
+        var advCell = e.target.closest('.hg-box.adv th, .hg-box.adv td');
+        if (advCell) { highlight(advCell); return; }
+        var adv = e.target.closest('[data-adv]');
+        if (adv) {
+            state.adv = adv.getAttribute('data-adv') === '1';
+            paintPanel();
+            return;
+        }
         var tab = e.target.closest('[data-tab]');
         if (tab) {
             state.tab = tab.getAttribute('data-tab');
@@ -476,10 +678,33 @@
         }
     });
 
+    function url() { return '/hoops/games/' + encodeURIComponent(root.getAttribute('data-game-id')) + '/page'; }
     function load() {
-        var id = root.getAttribute('data-game-id');
-        return kit.load('/hoops/games/' + encodeURIComponent(id) + '/page', render, root, 'game');
+        return kit.load(url(), function (d) { render(d); schedule(d); }, root, 'game');
     }
+
+    // A live game refreshes itself, as football's game page does: the score,
+    // the clock and points by half come from the live poller, so this reads
+    // our own API only — no CBBD call. Paused while the tab is hidden, and
+    // caught up the moment it is shown again. Stops once the game is final.
+    var LIVE_MS = 15000;
+    var timer = null;
+    function schedule(d) {
+        clearTimeout(timer);
+        if (!d || !d.game || !d.game.live || document.hidden) return;
+        timer = setTimeout(refresh, LIVE_MS);
+    }
+    function refresh() {
+        return window.fetch(url(), { headers: { Accept: 'application/json' } })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) { if (d && d.game) { render(d, true); schedule(d); } else schedule(data); })
+            // A failed refresh keeps the page as it was and tries again.
+            .catch(function () { schedule(data); });
+    }
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) { clearTimeout(timer); return; }
+        if (data && data.game && data.game.live) refresh();
+    });
 
     window.ccHoopsGame = { render: render, load: load, state: state, shortNames: shortNames, countdown: countdown, netDay: netDay };
     load();

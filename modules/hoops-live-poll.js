@@ -28,6 +28,7 @@ const cbbd = require('./cbbd-client');
 const seasons = require('./active-season');
 const scoreboard = require('./hoops-scoreboard');
 const boxScore = require('./hoops-box-score');
+const shotCharts = require('./hoops-shots');
 const scoringPass = require('./hoops-scoring-pass');
 const hoopsScoresJob = require('./hoops-scores-job');
 const jobLogger = require('./job-logger');
@@ -55,6 +56,16 @@ async function completionWork(season, groups, nowMs) {
     } catch (err) {
         failed = `boxes: ${err.message}`;
         notes.push(`boxes FAILED ${err.message}`);
+    }
+    // Shot charts after the boxes (their completeness is checked against
+    // the box). Billable, one call a game, drafted teams only; its own try,
+    // so a chart never costs a box or a score.
+    try {
+        const shots = await shotCharts.ingestShots(season, { now: nowMs, gameIds });
+        notes.push(shots.skippedReason ? `shots: ${shots.skippedReason}` : `shots ${shots.stored}/${shots.games}`);
+        if (shots.error) notes.push(`shots: ${shots.failed} failed (${shots.error})`);
+    } catch (err) {
+        notes.push(`shots FAILED ${err.message}`);
     }
     const weeks = [...new Set(groups.map(g => Number(g.week)).filter(Number.isFinite))];
     let leagues = [];
