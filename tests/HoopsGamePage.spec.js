@@ -106,6 +106,23 @@ describe('buildBox', () => {
         expect(box.away).toMatchObject({ teamId: 2, points: 60 });
     });
 
+    test('keeps every per-game line CBBD sends, for the Advanced view', () => {
+        const p = { name: 'Darius Acuff Jr.', athleteId: 198012, position: 'G', starter: true, ejected: false, minutes: 38, points: 31,
+            turnovers: 1, fouls: 0, assists: 7, steals: 0, blocks: 0, gameScore: 29, offensiveRating: 177.5, defensiveRating: 127.4,
+            netRating: 50.1, usage: 26.4, effectiveFieldGoalPct: 90, trueShootingPct: 90.1,
+            fieldGoals: { made: 10, attempted: 15 }, twoPointFieldGoals: { made: 3, attempted: 5 },
+            threePointFieldGoals: { made: 7, attempted: 10 }, freeThrows: { made: 4, attempted: 5 },
+            rebounds: { offensive: 1, defensive: 1, total: 2 } };
+        const side = boxScore.slimSide(1, sideStats(88, [38, 50], { trueShooting: 65.1, rating: 135.4, gameScore: 84.3,
+            twoPointFieldGoals: { made: 27, attempted: 40 }, rebounds: { offensive: 7, defensive: 24, total: 31 },
+            fouls: { total: 16, technical: 0 } }), [p]);
+        expect(side).toMatchObject({ offRebounds: 7, defRebounds: 24, twoMade: 27, twoAtt: 40, fouls: 16, technicals: 0,
+            tsPct: 65.1, rating: 135.4, gameScore: 84.3 });
+        expect(side.players[0]).toMatchObject({ offRebounds: 1, defRebounds: 1, twoMade: 3, twoAtt: 5, ftMade: 4, ftAtt: 5,
+            efgPct: 90, tsPct: 90.1, usage: 26.4, offRating: 177.5, defRating: 127.4, netRating: 50.1, gameScore: 29 });
+        expect(side.players[0].ejected).toBeUndefined();
+    });
+
     test('a side with no stats at all comes out empty, not broken', () => {
         expect(boxScore.slimSide(1, undefined, undefined)).toMatchObject({ teamId: 1, byPeriod: [], points: undefined, players: [] });
         expect(boxScore.slimSide(1, { points: { total: '' } }, [{ name: '' }, null, { name: 'X', rebounds: null }]))

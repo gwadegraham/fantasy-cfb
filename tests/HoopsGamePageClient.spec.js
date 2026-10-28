@@ -597,15 +597,81 @@ describe('shot chart on a phone', () => {
         await render(payload({ shots: { complete: true, attempts: { home: 2, away: 0 }, away: [],
             home: [s(true, { x: 25, y: 20 }), s(false, { x: 10, y: 30, range: 'three_pointer', period: 1, clock: '18:01' })] } }));
         tab('shots');
-        expect(q('.hg-shot-tip').textContent).toBe('Tap a shot to see who took it.');
+        expect(q('.hg-shot-tip').textContent).toBe('Tap a dot to see the shot.');
         await tapAt(26, 21);                                                      // 1.4 ft from the make
         expect(q('.hg-shot-tip').textContent).toBe('Isaiah Evans · made · 2nd 4:12');
         expect(q('.hg-shot-tip').classList.contains('on')).toBe(true);
         await tapAt(11, 31);
         expect(q('.hg-shot-tip').textContent).toBe('Isaiah Evans · missed 3 · 1st 18:01');
+        // The tapped dot is ringed, the rest dim, and a label sits beside it.
+        expect(q('.hg-shot-floor').classList.contains('picked')).toBe(true);
+        expect(document.querySelectorAll('.hg-shot-floor .ring')).toHaveLength(1);
+        expect(q('.hg-shot-floor .sel').getAttribute('cx')).toBe('10');
+        expect(q('.hg-shot-label').innerHTML).toBe('Isaiah Evans<small>missed 3 · 1st 18:01</small>');
         await tapAt(45, 44);                                                      // nothing within 3 ft
-        expect(q('.hg-shot-tip').textContent).toBe('Tap a shot to see who took it.');
+        expect(q('.hg-shot-tip').textContent).toBe('Tap a dot to see the shot.');
         expect(q('.hg-shot-tip').classList.contains('on')).toBe(false);
+        expect(q('.hg-shot-label')).toBeNull();
+        expect(q('.hg-shot-floor .ring')).toBeNull();
+        expect(q('.hg-shot-floor').classList.contains('picked')).toBe(false);
+    });
+
+    test('a shot near the baseline is labelled BELOW the dot, so the label stays on the court', async () => {
+        await render(payload({ shots: { complete: true, attempts: { home: 1, away: 0 }, away: [], home: [s(true, { x: 25, y: 5 })] } }));
+        tab('shots');
+        await tapAt(25, 5);
+        expect(q('.hg-shot-label').className).toBe('hg-shot-label below');
+    });
+});
+
+describe('box score: Basic and Advanced', () => {
+    const full = (name, o) => player(name, Object.assign({ offRebounds: 2, defRebounds: 3, steals: 1, blocks: 0, turnovers: 4, fouls: 2,
+        twoMade: 3, twoAtt: 6, ftMade: 5, ftAtt: 6, efgPct: 52.3, tsPct: 58.1, usage: 24.6, offRating: 118.2, defRating: 101.4,
+        netRating: 16.8, gameScore: 14.5 }, o));
+    const boxed = () => payload({ box: Object.assign({}, payload().box, {
+        home: side({ players: [full('Cameron Boozer', { points: 15 })] }),
+        away: side({ points: 60, players: [full('Dailyn Swain', { points: 16 })] }) }) });
+    const heads = () => Array.from(document.querySelectorAll('.hg-box tr:first-child th')).map(t => t.textContent);
+
+    test('Basic by default: six stat columns that fit a phone, no scrolling', async () => {
+        await render(boxed());
+        tab('box');
+        expect(heads()).toEqual(['Player', 'Min', 'Pts', 'Reb', 'Ast', '3PT', 'FG']);
+        expect(q('.hg-box-scroll')).toBeNull();
+        expect(q('[data-adv="0"]').classList.contains('on')).toBe(true);
+    });
+
+    test('Advanced: every per-game line, in a card that scrolls sideways', async () => {
+        await render(boxed());
+        tab('box');
+        q('[data-adv="1"]').click();
+        expect(heads()).toEqual(['Player', 'Min', 'Pts', 'Reb', 'OR', 'DR', 'Ast', 'Stl', 'Blk', 'TO', 'PF',
+            'FG', '2PT', '3PT', 'FT', 'eFG%', 'TS%', 'Usg%', 'ORtg', 'DRtg', 'Net', 'GmSc']);
+        expect(q('.hg-box-scroll .hg-box.adv')).not.toBeNull();
+        const row = Array.from(document.querySelectorAll('.hg-box tr')).find(r => /Boozer/.test(r.textContent));
+        expect(Array.from(row.cells).slice(1).map(c => c.textContent)).toEqual(
+            ['30', '15', '5', '2', '3', '2', '1', '0', '4', '2', '4-9', '3-6', '1-3', '5-6', '52.3', '58.1', '24.6', '118.2', '101.4', '16.8', '14.5']);
+        expect(q('.grp td').getAttribute('colspan')).toBe('22');
+        expect(q('.hg-box-mode .hint').textContent).toMatch(/Scroll sideways/);
+    });
+
+    test('the choice holds across the team toggle; an old box without the new lines shows dashes, not "undefined"', async () => {
+        await render(payload());
+        tab('box');
+        q('[data-adv="1"]').click();
+        q('[data-side="away"]').click();
+        expect(q('.hg-box.adv')).not.toBeNull();
+        expect(document.querySelector('.hg-box').textContent).not.toMatch(/undefined|NaN/);
+        expect(document.querySelector('.hg-box').textContent).toMatch(/—/);
+        q('[data-adv="0"]').click();
+        expect(q('.hg-box.adv')).toBeNull();
+    });
+
+    test('team stats: offensive rebounds, steals, blocks and fouls too', async () => {
+        await render(payload({ box: Object.assign({}, payload().box, {
+            home: side({ offRebounds: 9, steals: 8, blocks: 2, fouls: 16 }), away: side({ points: 60, offRebounds: 11, steals: 5, blocks: 4, fouls: 19 }) }) }));
+        const labels = Array.from(document.querySelectorAll('.sp-vs')).map(r => r.textContent);
+        ['Offensive rebounds', 'Steals', 'Blocks', 'Fouls'].forEach(l => expect(labels.some(t => t.indexOf(l) > -1)).toBe(true));
     });
 });
 

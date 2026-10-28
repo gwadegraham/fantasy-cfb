@@ -38,12 +38,12 @@
    name ("#33 S. Williams-Adams") with an ellipsis, instead of widening the
    table past the card on a phone — it ran 21px off at 375px. */
 .hg-box td:first-child { max-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.hg-box .grp td { max-width: none; }
+.hg-box .grp td { max-width: none; overflow: visible; }
 @media (max-width: 400px) {
     .hg-box th:not(:first-child):not(:last-child),
     .hg-box td:not(:first-child):not(:last-child) { padding-left: 4px; padding-right: 4px; }
     /* A gap the eye reads between "1" (AST) and "0-5" (3PT). */
-    .hg-box th:nth-child(6), .hg-box td:nth-child(6) { padding-left: 10px; }
+    .hg-box:not(.adv) th:nth-child(6), .hg-box:not(.adv) td:nth-child(6) { padding-left: 10px; }
 }
 .hg-box .pos { color: var(--cc-muted-2); font-size: 10px; margin-left: 4px; }
 .hg-box .hi { color: var(--cc-accent); }
@@ -137,4 +137,33 @@ a.hg-meet { grid-template-columns: 52px 1fr; }
 
 /* Live line score: the half being played reads in the live green. */
 .sp-lines.live .now { color: var(--cc-success); }
+
+/* Box score: Basic / Advanced. Advanced is every per-game line, wider than
+   a phone, so its card scrolls sideways with the player pinned on the left. */
+.hg-box-mode { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; }
+.hg-box-mode button { font: inherit; font-size: 12px; font-weight: 600; color: var(--cc-muted); background: transparent;
+    border: 1px solid var(--cc-border); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.hg-box-mode button.on { background: var(--cc-surface-3); color: var(--cc-text); border-color: var(--cc-border-2); }
+.hg-box-mode .hint { margin-left: auto; font-size: 11px; color: var(--cc-muted-2); }
+.hg-box-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.hg-box.adv { width: auto; min-width: 100%; }
+.hg-box.adv th:first-child, .hg-box.adv td:first-child { position: sticky; left: 0; z-index: 1;
+    width: 128px; min-width: 128px; max-width: 128px; background: var(--cc-surface);
+    box-shadow: 1px 0 0 var(--cc-border); }
+/* The group row spans the whole scroll width, so the CELL cannot pin; its
+   label does, or "Starters" scrolls away and leaves an empty bar. */
+.hg-box.adv .grp td { position: static; overflow: visible; width: auto; min-width: 0; max-width: none; background: var(--cc-surface-2); box-shadow: none; }
+.hg-box.adv .grp td span { display: inline-block; position: sticky; left: 12px; }
+
+/* Shot chart: a tapped shot is ringed, everything else dims, and a label
+   sits beside the dot — where the eye already is. */
+.hg-shot-wrap { position: relative; }
+.hg-shot-floor.picked circle.mk, .hg-shot-floor.picked circle.ms { opacity: .3; }
+.hg-shot-floor.picked circle.sel { opacity: 1; }
+.hg-shot-floor .ring { fill: none; stroke: #fff; stroke-width: .3; }
+.hg-shot-label { position: absolute; transform: translate(-50%, calc(-100% - 10px)); pointer-events: none; white-space: nowrap;
+    background: var(--cc-surface-3); color: var(--cc-text); border: 1px solid var(--cc-border-2); border-radius: 8px;
+    padding: 5px 9px; font-size: 12px; font-weight: 600; box-shadow: 0 4px 14px rgba(0, 0, 0, .45); }
+.hg-shot-label.below { transform: translate(-50%, 12px); }
+.hg-shot-label small { display: block; font-weight: 500; color: var(--cc-muted); font-size: 11px; }
 

@@ -17,7 +17,7 @@
         return t.hasPage ? '<a href="/hoops/team/' + encodeURIComponent(t.id) + '">' + inner + '</a>' : inner;
     }
 
-    var state = { tab: 'summary', side: 'away' };
+    var state = { tab: 'summary', side: 'away', adv: false };
     var data = null;
 
     function when(g) {
@@ -180,7 +180,11 @@
         ['Points in the paint', null, 'paintPoints', 'high'],
         ['Fast-break points', null, 'fastBreakPoints', 'high'],
         ['Points off turnovers', null, 'pointsOffTurnovers', 'high'],
-        ['Largest lead', null, 'largestLead', 'high']
+        ['Largest lead', null, 'largestLead', 'high'],
+        ['Offensive rebounds', null, 'offRebounds', 'high'],
+        ['Steals', null, 'steals', 'high'],
+        ['Blocks', null, 'blocks', 'high'],
+        ['Fouls', null, 'fouls', 'low']
     ];
     function teamStats(d) {
         return TEAM_STATS.map(function (r) {
@@ -208,21 +212,47 @@
         return h + '</div>';
     }
 
+    // The box's columns. Basic fits a phone; Advanced is every per-game
+    // line CBBD sends and scrolls sideways, the name pinned on the left.
+    // [header, value(p) -> text, title]. Percents and ratings arrive as
+    // percents per game (modules/hoops-box-score.js), shown as sent.
+    var n0 = function (k) { return function (p) { return fixed(p[k], 0); }; };
+    var n1 = function (k) { return function (p) { return fixed(p[k], 1); }; };
+    var BASIC = [['Min', n0('minutes')], ['Pts', n0('points')], ['Reb', n0('rebounds')], ['Ast', n0('assists')],
+        ['3PT', function (p) { return ma(p.threeMade, p.threeAtt); }], ['FG', function (p) { return ma(p.fgMade, p.fgAtt); }]];
+    var ADVANCED = [['Min', n0('minutes')], ['Pts', n0('points')], ['Reb', n0('rebounds')],
+        ['OR', n0('offRebounds'), 'Offensive rebounds'], ['DR', n0('defRebounds'), 'Defensive rebounds'],
+        ['Ast', n0('assists')], ['Stl', n0('steals')], ['Blk', n0('blocks')], ['TO', n0('turnovers'), 'Turnovers'],
+        ['PF', n0('fouls'), 'Personal fouls'],
+        ['FG', function (p) { return ma(p.fgMade, p.fgAtt); }], ['2PT', function (p) { return ma(p.twoMade, p.twoAtt); }],
+        ['3PT', function (p) { return ma(p.threeMade, p.threeAtt); }], ['FT', function (p) { return ma(p.ftMade, p.ftAtt); }],
+        ['eFG%', n1('efgPct'), 'Effective field-goal %'], ['TS%', n1('tsPct'), 'True shooting %'],
+        ['Usg%', n1('usage'), 'Usage: share of possessions used'],
+        ['ORtg', n1('offRating'), 'Points produced per 100 possessions'], ['DRtg', n1('defRating'), 'Points allowed per 100 possessions'],
+        ['Net', n1('netRating'), 'Offensive minus defensive rating'], ['GmSc', n1('gameScore'), 'Game score: one-number performance']];
+
     function boxTable(d) {
         var team = d[state.side], s = d.box[state.side];
         var ps = (s.players || []).slice().sort(function (a, b) { return (b.starter - a.starter) || ((b.minutes || 0) - (a.minutes || 0)); });
         if (!ps.length) return '<div class="sp-card sp-empty">No player lines for ' + esc(team.school) + '.</div>';
         var names = shortNames(ps);
         var high = Math.max.apply(null, ps.map(function (p) { return p.points || 0; }));
-        var h = '<div class="sp-card"><table class="hg-box"><tr><th>Player</th><th>Min</th><th>Pts</th><th>Reb</th><th>Ast</th><th>3PT</th><th>FG</th></tr>';
+        var cols = state.adv ? ADVANCED : BASIC, span = cols.length + 1;
+        var mode = function (adv, label) {
+            return '<button type="button" data-adv="' + (adv ? 1 : 0) + '" class="' + (state.adv === adv ? 'on' : '') + '">' + label + '</button>';
+        };
+        var h = '<div class="hg-box-mode">' + mode(false, 'Basic') + mode(true, 'Advanced')
+            + (state.adv ? '<span class="hint">Scroll sideways for more →</span>' : '') + '</div>'
+            + '<div class="sp-card' + (state.adv ? ' hg-box-scroll' : '') + '"><table class="hg-box' + (state.adv ? ' adv' : '') + '"><tr><th>Player</th>'
+            + cols.map(function (c) { return '<th' + (c[2] ? ' title="' + esc(c[2]) + '"' : '') + '>' + c[0] + '</th>'; }).join('') + '</tr>';
         var bench = false;
-        if (ps[0].starter) h += '<tr class="grp"><td colspan="7">Starters</td></tr>';
+        if (ps[0].starter) h += '<tr class="grp"><td colspan="' + span + '"><span>Starters</span></td></tr>';
         ps.forEach(function (p) {
-            if (!p.starter && !bench) { bench = true; h += '<tr class="grp"><td colspan="7">Bench</td></tr>'; }
+            if (!p.starter && !bench) { bench = true; h += '<tr class="grp"><td colspan="' + span + '"><span>Bench</span></td></tr>'; }
             h += '<tr><td>' + esc(kit.numbered(p, names[p.name])) + (p.position ? '<span class="pos">' + esc(p.position) + '</span>' : '') + '</td>'
-                + '<td>' + fixed(p.minutes, 0) + '</td><td' + (p.points === high && high > 0 ? ' class="hi"' : '') + '>' + fixed(p.points, 0) + '</td>'
-                + '<td>' + fixed(p.rebounds, 0) + '</td><td>' + fixed(p.assists, 0) + '</td>'
-                + '<td>' + ma(p.threeMade, p.threeAtt) + '</td><td>' + ma(p.fgMade, p.fgAtt) + '</td></tr>';
+                + cols.map(function (c) {
+                    return '<td' + (c[0] === 'Pts' && p.points === high && high > 0 ? ' class="hi"' : '') + '>' + c[1](p) + '</td>';
+                }).join('') + '</tr>';
         });
         return h + '</table></div>';
     }
@@ -254,12 +284,13 @@
         var color = (state.colors && state.colors[state.side]) || '#F4F6FB';
         var names = shortNames(list.map(function (s) { return { name: s.shooter || '' }; }));
         // Misses drawn first, so a make on the same spot sits on top.
-        var ordered = list.filter(function (s) { return !s.made; }).concat(list.filter(function (s) { return s.made; }));
-        var dots = ordered.map(function (s) {
-            var tip = shotTip(s, names);
+        var idx = list.map(function (s, i) { return i; });
+        var ordered = idx.filter(function (i) { return !list[i].made; }).concat(idx.filter(function (i) { return list[i].made; }));
+        var dots = ordered.map(function (i) {
+            var s = list[i], tip = shotTip(s, names);
             return s.made
-                ? '<circle class="mk" cx="' + s.x + '" cy="' + s.y + '" r=".95" fill="' + esc(color) + '"><title>' + esc(tip) + '</title></circle>'
-                : '<circle class="ms" cx="' + s.x + '" cy="' + s.y + '" r=".6"><title>' + esc(tip) + '</title></circle>';
+                ? '<circle class="mk" data-k="' + i + '" cx="' + s.x + '" cy="' + s.y + '" r=".95" fill="' + esc(color) + '"><title>' + esc(tip) + '</title></circle>'
+                : '<circle class="ms" data-k="' + i + '" cx="' + s.x + '" cy="' + s.y + '" r=".6"><title>' + esc(tip) + '</title></circle>';
         }).join('');
         var made = list.filter(function (s) { return s.made; }).length;
         var rows = ZONES.map(function (z) {
@@ -274,11 +305,11 @@
         return '<div class="sp-card hg-shots">'
             + '<div class="hg-shot-head"><b>' + esc(team.school) + '</b><span>' + made + '-' + list.length + ' FG'
             + (list.length ? ' · ' + Math.round(100 * made / list.length) + '%' : '') + '</span></div>'
-            + '<svg class="hg-shot-floor" viewBox="-1 -1 52 49" role="img" aria-label="' + esc(team.school) + ' shot chart: '
+            + '<div class="hg-shot-wrap"><svg class="hg-shot-floor" viewBox="-1 -1 52 49" role="img" aria-label="' + esc(team.school) + ' shot chart: '
             + made + ' of ' + list.length + ' made">'
-            + '<g class="ln" fill="none">' + halfCourt() + '</g>' + dots + '</svg>'
+            + '<g class="ln" fill="none">' + halfCourt() + '</g>' + dots + '</svg></div>'
             // Phones have no hover: a tap names the nearest shot here.
-            + '<p class="hg-shot-tip" aria-live="polite">Tap a shot to see who took it.</p>'
+            + '<p class="hg-shot-tip" aria-live="polite">Tap a dot to see the shot.</p>'
             + '<div class="hg-shot-key"><span><i class="mk" style="background:' + esc(color) + '"></i>Made</span><span><i class="ms"></i>Missed</span></div>'
             + '<div class="hg-szs">' + rows + '</div>' + foot + '</div>';
     }
@@ -543,22 +574,64 @@
         var vb = (svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);   // x y w h
         var x = vb[0] + (e.clientX - box.left) * vb[2] / box.width;
         var y = vb[1] + (e.clientY - box.top) * vb[3] / box.height;
-        var best = null, bestD = 3;
-        list.forEach(function (s) {
+        var best = -1, bestD = 3;
+        list.forEach(function (s, i) {
             var dd = Math.sqrt((s.x - x) * (s.x - x) + (s.y - y) * (s.y - y));
-            if (dd <= bestD) { best = s; bestD = dd; }
+            if (dd <= bestD) { best = i; bestD = dd; }
         });
-        var out = root.querySelector('.hg-shot-tip');
-        if (!out) return;
-        var names = shortNames(list.map(function (s) { return { name: s.shooter || '' }; }));
-        out.textContent = best ? shotTip(best, names) : 'Tap a shot to see who took it.';
-        out.classList.toggle('on', !!best);
+        pickShot(svg, best);
+    }
+
+    // Mark one shot (or none): ring it, dim the rest, and label it beside the
+    // dot, with the same words under the court for screen readers.
+    function pickShot(svg, k) {
+        var list = (data.shots && data.shots[state.side]) || [];
+        var wrap = svg.parentNode, out = root.querySelector('.hg-shot-tip');
+        Array.prototype.forEach.call(svg.querySelectorAll('.sel, .ring'), function (n) {
+            if (n.classList.contains('ring')) n.parentNode.removeChild(n); else n.classList.remove('sel');
+        });
+        var old = wrap.querySelector('.hg-shot-label');
+        if (old) wrap.removeChild(old);
+        var s = list[k];
+        svg.classList.toggle('picked', !!s);
+        if (out) out.classList.toggle('on', !!s);
+        if (!s) { if (out) out.textContent = 'Tap a dot to see the shot.'; return; }
+        var names = shortNames(list.map(function (p) { return { name: p.shooter || '' }; }));
+        var dot = svg.querySelector('[data-k="' + k + '"]');
+        if (dot) dot.classList.add('sel');
+        var ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        ring.setAttribute('class', 'ring'); ring.setAttribute('cx', s.x); ring.setAttribute('cy', s.y); ring.setAttribute('r', '1.9');
+        svg.appendChild(ring);
+        var tip = shotTip(s, names);
+        if (out) out.textContent = tip;
+        var who = s.shooter ? (names[s.shooter] || s.shooter) : (s.made ? 'Made' : 'Missed');
+        var what = tip.indexOf(' · ') > -1 && s.shooter ? tip.slice(tip.indexOf(' · ') + 3) : tip;
+        var label = document.createElement('div');
+        label.className = 'hg-shot-label' + (s.y < 9 ? ' below' : '');
+        label.innerHTML = esc(who) + (s.shooter ? '<small>' + esc(what) + '</small>' : '');
+        // Where the dot is, as a share of the chart; kept inside its edges.
+        var vb = (svg.getAttribute('viewBox') || '-1 -1 52 49').split(/\s+/).map(Number);
+        label.style.left = (100 * (s.x - vb[0]) / vb[2]) + '%';
+        label.style.top = (100 * (s.y - vb[1]) / vb[3]) + '%';
+        wrap.appendChild(label);
+        var w = label.offsetWidth, W = wrap.clientWidth;
+        if (w && W) {
+            var px = W * (s.x - vb[0]) / vb[2];
+            var clamped = Math.min(Math.max(px, w / 2 + 4), W - w / 2 - 4);
+            label.style.left = clamped + 'px';
+        }
     }
 
     root.addEventListener('click', function (e) {
         if (!data) return;
         var floor = e.target.closest('.hg-shot-floor');
         if (floor) { tapShot(e, floor); return; }
+        var adv = e.target.closest('[data-adv]');
+        if (adv) {
+            state.adv = adv.getAttribute('data-adv') === '1';
+            paintPanel();
+            return;
+        }
         var tab = e.target.closest('[data-tab]');
         if (tab) {
             state.tab = tab.getAttribute('data-tab');
