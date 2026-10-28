@@ -39,6 +39,10 @@ const shot = (teamId, period, x, y, o = {}) => Object.assign({
     assisted: !!o.assisted, location: o.location === undefined ? { x, y } : o.location }) });
 const freeThrow = (teamId) => ({ teamId, period: 1, shootingPlay: true, shotInfo: { range: 'free_throw', made: true, location: { x: null, y: null } } });
 
+// The box the chart is checked against: field-goal attempts per side.
+const boxFor = (gameId, home, away) => HoopsBoxScore.create({ gameId, season: SEASON,
+    home: { teamId: HOME, fgAtt: home }, away: { teamId: AWAY, fgAtt: away } });
+
 function stubPlays(byGame) {
     return jest.spyOn(cbbd, 'cbbdGet').mockImplementation(async (path) => {
         const id = Number(path.split('/').pop());
@@ -81,6 +85,24 @@ describe('chartFrom: one half court, in feet', () => {
         expect(s[2]).toMatchObject({ y: 47 });
     });
 
+    test('overtime is played toward the second half\'s end, even on one shot plus a heave', async () => {
+        const { shots: s } = shots.chartFrom([
+            shot(HOME, 2, 860, 250), shot(HOME, 2, 870, 240), shot(HOME, 2, 850, 260),        // 2nd half: far end
+            shot(HOME, 3, 880, 250, { range: 'rim' }), shot(HOME, 3, 40, 250)                // OT: a rim shot and a heave
+        ], game(1));
+        expect(s[3]).toMatchObject({ y: 6 });                                                // the rim shot stays at the rim
+        expect(s[4]).toMatchObject({ y: 47 });                                               // the heave is the long one
+    });
+
+    test('a half with too few attempts takes the opposite of the other half\'s end', async () => {
+        const { shots: s } = shots.chartFrom([
+            shot(AWAY, 1, 60, 250, { range: 'rim' }), shot(AWAY, 1, 900, 250),               // 1st half: 2 attempts, median mid-court
+            shot(AWAY, 2, 860, 250), shot(AWAY, 2, 870, 240), shot(AWAY, 2, 850, 260)        // 2nd half: far end, so 1st was near
+        ], game(1));
+        expect(s[0]).toMatchObject({ y: 6 });
+        expect(s[1]).toMatchObject({ y: 47 });
+    });
+
     test('free throws are left out; unlocated attempts count but are not drawn; other games\' plays ignored', () => {
         const out = shots.chartFrom([
             shot(HOME, 1, 60, 250), shot(HOME, 1, 0, 0, { location: { x: null, y: null } }),
@@ -102,6 +124,7 @@ describe('ingestShots: what gets fetched', () => {
 
     test('a final with a drafted team: one call, stored complete', async () => {
         await HoopsGame.create(game(1));
+        await boxFor(1, 1, 1);
         const get = stubPlays({ 1: [shot(HOME, 1, 60, 250, { made: true }), shot(AWAY, 1, 880, 250)] });
 
         const out = await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));
@@ -122,6 +145,7 @@ describe('ingestShots: what gets fetched', () => {
 
     test('complete once: never fetched again', async () => {
         await HoopsGame.create(game(1));
+        await boxFor(1, 1, 0);
         const get = stubPlays({ 1: [shot(HOME, 1, 60, 250)] });
         await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));
         await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));
@@ -132,6 +156,26 @@ describe('ingestShots: what gets fetched', () => {
     test('not posted yet (empty): tried again, up to MAX_FETCHES, then left alone', async () => {
         await HoopsGame.create(game(1));
         const get = stubPlays({ 1: [] });
+        for (let i = 0; i < shots.MAX_FETCHES + 2; i++) await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));
+
+        expect(get).toHaveBeenCalledTimes(shots.MAX_FETCHES);
+        expect(await HoopsShots.findOne({ gameId: 1 }).lean()).toMatchObject({ complete: false, fetches: shots.MAX_FETCHES });
+    });
+
+    test('no box score yet: stored and shown, but NOT complete — part-posted plays must not freeze', async () => {
+        await HoopsGame.create(game(1));
+        const get = stubPlays({ 1: [shot(HOME, 1, 60, 250)] });
+
+        expect((await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted))).partial).toBe(1);
+        expect(await HoopsShots.findOne({ gameId: 1 }).lean()).toMatchObject({ complete: false, fetches: 1 });
+        await boxFor(1, 1, 0);
+        expect((await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted))).stored).toBe(1);
+        expect(get).toHaveBeenCalledTimes(2);
+    });
+
+    test('a CBBD error still uses one of the game\'s fetches: no endless re-billing', async () => {
+        await HoopsGame.create(game(1));
+        const get = stubPlays({ 1: Object.assign(new Error('CBBD /plays/game/1 503'), { status: 503 }) });
         for (let i = 0; i < shots.MAX_FETCHES + 2; i++) await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));
 
         expect(get).toHaveBeenCalledTimes(shots.MAX_FETCHES);
@@ -180,6 +224,7 @@ describe('ingestShots: what gets fetched', () => {
 
     test('CBBD refusing one game does not cost the others', async () => {
         await HoopsGame.create([game(1), game(2)]);
+        await boxFor(2, 1, 0);
         stubPlays({ 1: Object.assign(new Error('CBBD /plays/game/1 500'), { status: 500 }), 2: [shot(HOME, 1, 60, 250)] });
 
         const out = await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));

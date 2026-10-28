@@ -22,7 +22,9 @@
 // threes started at ~21.6 ft, matching the men's arc. Teams change ends at
 // half, so each team's attempts in a period are folded onto one basket —
 // the end that period's attempts cluster at, so one heave from the far end
-// still lands as a long miss rather than flipping the half.
+// still lands as a long miss rather than flipping the half. Overtime keeps
+// the second half's end (teams do not change ends for OT), and a period
+// with too few attempts to vote takes the opposite of the other half's.
 //
 // ---- complete or not ----
 //
@@ -62,19 +64,36 @@ function chartFrom(plays, game) {
     const fga = (plays || []).filter(p => p && p.shootingPlay && p.shotInfo
         && p.shotInfo.range !== 'free_throw' && (Number(p.teamId) === homeId || Number(p.teamId) === awayId));
 
-    // Which end each team attacked in each period: where its attempts cluster.
+    // Which end each team attacked in each half: where its attempts cluster.
+    // Overtime is played toward the second half's end.
+    const half = (period) => (Number(period) >= 2 ? 2 : 1);
     const xs = new Map();
     for (const p of fga.filter(located)) {
-        const k = `${p.teamId}|${p.period}`;
+        const k = `${p.teamId}|${half(p.period)}`;
         if (!xs.has(k)) xs.set(k, []);
         xs.get(k).push(Number(p.shotInfo.location.x));
     }
-    const farEnd = new Map([...xs].map(([k, a]) => [k, median(a) > MIDCOURT]));
+    // A half needs a few attempts to vote; one rim shot plus one heave has a
+    // median at mid-court. Too few, and the other half's end, turned round,
+    // decides — teams change ends at the half.
+    const VOTE = 3;
+    const vote = (team, h) => {
+        const a = xs.get(`${team}|${h}`) || [];
+        return a.length >= VOTE ? median(a) > MIDCOURT : null;
+    };
+    const farEnd = (team, period) => {
+        const h = half(period);
+        const own = vote(team, h), other = vote(team, 3 - h);
+        if (own !== null) return own;
+        if (other !== null) return !other;
+        const a = xs.get(`${team}|${h}`) || [];
+        return a.length ? median(a) > MIDCOURT : false;
+    };
 
     const shots = fga.filter(located).map(p => {
         let x = Number(p.shotInfo.location.x), y = Number(p.shotInfo.location.y);
         // A 180-degree turn, not a mirror: the shooter's left stays left.
-        if (farEnd.get(`${p.teamId}|${p.period}`)) { x = 940 - x; y = 500 - y; }
+        if (farEnd(p.teamId, p.period)) { x = 940 - x; y = 500 - y; }
         const s = p.shotInfo;
         return {
             teamId: Number(p.teamId),
@@ -116,22 +135,24 @@ function boxAttempts(box) {
 }
 
 // Fetch and store one game. Returns 'stored' | 'partial' | 'empty'.
+//
+// The fetch is COUNTED before the billable call, atomically: a CBBD error
+// still uses one of the game's MAX_FETCHES, and the poller and the 05:00 job
+// landing on the same game cannot both count it as their first.
 async function fetchGame(game, now) {
-    const { data } = await cbbd.cbbdGet(`/plays/game/${Number(game.id)}`);
-    const prev = await HoopsShots.findOne({ gameId: Number(game.id) }, { fetches: 1, _id: 0 }).lean();
-    const fetches = ((prev && prev.fetches) || 0) + 1;
-    if (!data.length) {
-        await HoopsShots.updateOne({ gameId: Number(game.id) },
-            { $set: { season: game.season, fetches, fetchedAt: new Date(now) }, $setOnInsert: { complete: false } },
-            { upsert: true });
-        return 'empty';
-    }
-    const chart = chartFrom(data, game);
-    const box = boxAttempts(await HoopsBoxScore.findOne({ gameId: Number(game.id) }, { home: 1, away: 1, _id: 0 }).lean());
-    const complete = !box || (chart.attempts.home >= box.home && chart.attempts.away >= box.away);
-    await HoopsShots.updateOne({ gameId: Number(game.id) },
-        { $set: Object.assign({ season: game.season, complete, fetches, fetchedAt: new Date(now) }, chart) },
+    const id = Number(game.id);
+    await HoopsShots.updateOne({ gameId: id },
+        { $inc: { fetches: 1 }, $set: { season: game.season, fetchedAt: new Date(now) }, $setOnInsert: { complete: false } },
         { upsert: true });
+    const { data } = await cbbd.cbbdGet(`/plays/game/${id}`);
+    if (!data.length) return 'empty';
+    const chart = chartFrom(data, game);
+    // Complete only when the box score agrees. No box yet is NOT proof:
+    // plays posted part-way would otherwise be frozen as whole. The 05:00 job
+    // runs the box batch first, so the next pass has one to check against.
+    const box = boxAttempts(await HoopsBoxScore.findOne({ gameId: id }, { home: 1, away: 1, _id: 0 }).lean());
+    const complete = !!box && chart.attempts.home >= box.home && chart.attempts.away >= box.away;
+    await HoopsShots.updateOne({ gameId: id }, { $set: Object.assign({ complete }, chart) });
     return complete ? 'stored' : 'partial';
 }
 
