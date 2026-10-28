@@ -513,3 +513,98 @@ test('a white line marks the ball on the court, at the same place', async () => 
     expect(floor.querySelector('.hg-mark').nextElementSibling.className).toBe('hg-ball');   // drawn under the ball
 });
 
+
+describe('shot chart', () => {
+    const s = (made, range, o) => Object.assign({ made, range, x: 25, y: 6, shooter: 'Isaiah Evans', period: 1, clock: '12:00' }, o);
+    const charted = (o) => payload(Object.assign({ shots: {
+        complete: true, attempts: { home: 4, away: 2 },
+        home: [s(true, 'rim'), s(false, 'rim'), s(true, 'three_pointer', { x: 3, y: 4 }), s(false, 'jumper', { period: 2 })],
+        away: [s(true, 'jumper', { shooter: 'Dailyn Swain' })]
+    } }, o));
+
+    test('no chart: no tab', async () => {
+        await render(payload());
+        expect(q('[data-tab="shots"]')).toBeNull();
+    });
+
+    test('a tab of its own: makes in the team colour, misses as rings, by zone', async () => {
+        await render(charted());
+        tab('shots');
+        // Opens on the rostered side, as the box does.
+        expect(q('.hg-shot-head').textContent).toBe('Duke2-4 FG · 50%');
+        expect(document.querySelectorAll('.hg-shot-floor circle.mk')).toHaveLength(2);
+        expect(document.querySelectorAll('.hg-shot-floor circle.ms')).toHaveLength(2);
+        // The team colour lifted to read on the dark floor (matchColors), as the bars do.
+        expect(q('.hg-shot-floor circle.mk').getAttribute('fill')).toBe('#738dbd');
+        expect(txt('.hg-sz')).toBe('At the rim1-250% | Jumpers0-10% | Threes1-1100%');
+        q('[data-side="away"]').click();
+        expect(q('.hg-shot-head').textContent).toBe('Texas1-1 FG · 100%');
+        expect(q('.hg-shot-floor circle.mk').getAttribute('fill')).toBe('#cb752e');
+    });
+
+    test('misses are drawn first, so a make on the same spot sits on top', async () => {
+        await render(charted());
+        tab('shots');
+        q('[data-side="home"]').click();
+        const order = Array.from(document.querySelectorAll('.hg-shot-floor > circle')).map(c => c.getAttribute('class'));
+        expect(order).toEqual(['ms', 'ms', 'mk', 'mk']);
+    });
+
+    test('each dot names the shot: short name, made or missed, half and clock', async () => {
+        await render(charted());
+        tab('shots');
+        q('[data-side="home"]').click();
+        const tips = Array.from(document.querySelectorAll('.hg-shot-floor title')).map(t => t.textContent);
+        expect(tips).toContain('Isaiah Evans · missed · 2nd 12:00');
+        expect(tips).toContain('Isaiah Evans · made 3 · 1st 12:00');
+    });
+
+    test('a partial chart says so: "1 of 2 attempts charted"', async () => {
+        await render(charted());
+        tab('shots');
+        expect(q('.hg-shot-foot')).toBeNull();                               // home: 4 of 4
+        q('[data-side="away"]').click();
+        expect(q('.hg-shot-foot').textContent).toBe('1 of 2 attempts charted.');
+    });
+
+    test('#shots opens straight onto it; a box-less final still offers the chart', async () => {
+        window.history.replaceState(null, '', '#shots');
+        const body = charted({ box: null });
+        document.body.innerHTML = '<title data-league-title="Game">Game</title><main id="hoops-game" data-game-id="500"></main>';
+        window.ccLeague = { paint: jest.fn() };
+        global.fetch = jest.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) }));
+        (0, eval)(SRC);
+        await new Promise(r => setTimeout(r, 0));
+        await new Promise(r => setTimeout(r, 0));
+        expect(txt('.sp-tab')).toBe('Summary | Shot chart');
+        expect(q('.hg-shot-floor')).not.toBeNull();
+        tab('summary');
+        expect(q('.sp-empty').textContent).toMatch(/box score/i);
+    });
+});
+
+describe('shot chart on a phone', () => {
+    const s = (made, o) => Object.assign({ made, range: 'jumper', x: 25, y: 20, shooter: 'Isaiah Evans', period: 2, clock: '4:12' }, o);
+    async function tapAt(feetX, feetY) {
+        const svg = q('.hg-shot-floor');
+        // A 312-px-wide chart: the viewBox is 52 x 49 court feet from (-1, -1).
+        svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 312, height: 294 });
+        const px = (feetX + 1) * 6, py = (feetY + 1) * 6;
+        svg.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: px, clientY: py }));
+    }
+
+    test('a tap names the NEAREST shot within reach, and a tap on empty floor clears it', async () => {
+        await render(payload({ shots: { complete: true, attempts: { home: 2, away: 0 }, away: [],
+            home: [s(true, { x: 25, y: 20 }), s(false, { x: 10, y: 30, range: 'three_pointer', period: 1, clock: '18:01' })] } }));
+        tab('shots');
+        expect(q('.hg-shot-tip').textContent).toBe('Tap a shot to see who took it.');
+        await tapAt(26, 21);                                                      // 1.4 ft from the make
+        expect(q('.hg-shot-tip').textContent).toBe('Isaiah Evans · made · 2nd 4:12');
+        expect(q('.hg-shot-tip').classList.contains('on')).toBe(true);
+        await tapAt(11, 31);
+        expect(q('.hg-shot-tip').textContent).toBe('Isaiah Evans · missed 3 · 1st 18:01');
+        await tapAt(45, 44);                                                      // nothing within 3 ft
+        expect(q('.hg-shot-tip').textContent).toBe('Tap a shot to see who took it.');
+        expect(q('.hg-shot-tip').classList.contains('on')).toBe(false);
+    });
+});

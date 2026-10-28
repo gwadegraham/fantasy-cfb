@@ -216,6 +216,14 @@ module.exports = {
         },
         // The schedule look-ahead: its branches are the skips and the
         // failures, each deciding whether a stale schedule is loud.
+        // Shot charts: billable per game, so the branches that matter are the
+        // ones that decide whether a call is made at all.
+        "./modules/hoops-shots.js": {
+            statements: 100,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-schedule-job.js": {
             statements: 100,
             branches: 80,

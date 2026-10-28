@@ -11,6 +11,7 @@ const jobMailer = require('./job-mailer');
 const { guardJob } = require('./job-guard');
 const hoopsStats = require('./hoops-stats');
 const boxScore = require('./hoops-box-score');
+const shotCharts = require('./hoops-shots');
 const { basketballLeagues, LOOKBACK_MS } = require('./hoops-scores-job');
 const HoopsGame = require('./../models/hoopsGame');
 
@@ -61,6 +62,19 @@ async function runOnce(now, state) {
         } catch (err) {
             failed = String((err && err.message) || err);
             done.push(`${season} boxes: FAILED ${failed}`);
+        }
+        // Shot charts the poller's pass missed (CBBD posts plays on its own
+        // schedule). Not a failure when CBBD answers badly for a game — the
+        // chart just isn't there — only when the fetch itself breaks.
+        try {
+            const shots = await shotCharts.ingestShots(season, { now: now.getTime() });
+            done.push(shots.skippedReason
+                ? `${season} shots: ${shots.skippedReason}`
+                : `${season} shots: ${shots.stored}/${shots.games} charted, ${shots.empty} not posted yet`
+                    + (shots.deferred ? `, ${shots.deferred} deferred` : '') + (shots.failed ? `, ${shots.failed} failed` : ''));
+        } catch (err) {
+            failed = String((err && err.message) || err);
+            done.push(`${season} shots: FAILED ${failed}`);
         }
     }
     if (!done.length) return { skippedReason: 'no recent results' };

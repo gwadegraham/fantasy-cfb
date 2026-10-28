@@ -213,6 +213,62 @@
         return h + '</table></div>';
     }
 
+    // ---- shot chart: a played game -------------------------------------
+
+    // One team's field-goal attempts on a half court, basket at the top, to
+    // scale (feet; 50 wide, 47 deep; the men's 22.15-ft arc and 22-ft
+    // corners, as the preview court draws them). Made shots are the team's
+    // colour, misses an open ring. Server-side the attempts are already
+    // folded onto this end (modules/hoops-shots.js).
+    var ZONES = [['rim', 'At the rim'], ['jumper', 'Jumpers'], ['three_pointer', 'Threes']];
+    function halfCourt() {
+        return '<path d="M0 0H50M0 0V47M50 0V47M0 47H50"/>'
+            + '<rect x="19" y="0" width="12" height="19"/>'
+            + '<path d="M19 19A6 6 0 0 0 31 19"/><path d="M19 19A6 6 0 0 1 31 19" stroke-dasharray="1 1"/>'
+            + '<path d="M3 0V7.79M47 0V7.79M3 7.79A22.15 22.15 0 0 0 47 7.79"/>'
+            + '<path d="M21 5.25A4 4 0 0 0 29 5.25"/>'
+            + '<path d="M22 4H28"/><circle cx="25" cy="5.25" r=".75"/>'
+            + '<path d="M19 47A6 6 0 0 1 31 47"/>';
+    }
+    function shotTip(s, names) {
+        var half = function (p) { return p === 1 ? '1st' : p === 2 ? '2nd' : p > 2 ? (p === 3 ? 'OT' : (p - 2) + 'OT') : ''; };
+        return (s.shooter ? (names[s.shooter] || s.shooter) + ' · ' : '') + (s.made ? 'made' : 'missed')
+            + (s.range === 'three_pointer' ? ' 3' : '') + (s.period ? ' · ' + half(s.period) + (s.clock ? ' ' + s.clock : '') : '');
+    }
+    function shotChart(d) {
+        var team = d[state.side], list = d.shots[state.side] || [];
+        var color = (state.colors && state.colors[state.side]) || '#F4F6FB';
+        var names = shortNames(list.map(function (s) { return { name: s.shooter || '' }; }));
+        // Misses drawn first, so a make on the same spot sits on top.
+        var ordered = list.filter(function (s) { return !s.made; }).concat(list.filter(function (s) { return s.made; }));
+        var dots = ordered.map(function (s) {
+            var tip = shotTip(s, names);
+            return s.made
+                ? '<circle class="mk" cx="' + s.x + '" cy="' + s.y + '" r=".95" fill="' + esc(color) + '"><title>' + esc(tip) + '</title></circle>'
+                : '<circle class="ms" cx="' + s.x + '" cy="' + s.y + '" r=".6"><title>' + esc(tip) + '</title></circle>';
+        }).join('');
+        var made = list.filter(function (s) { return s.made; }).length;
+        var rows = ZONES.map(function (z) {
+            var att = list.filter(function (s) { return s.range === z[0]; });
+            var m = att.filter(function (s) { return s.made; }).length;
+            return '<div class="hg-sz"><span>' + z[1] + '</span><b>' + m + '-' + att.length + '</b><small>'
+                + (att.length ? Math.round(100 * m / att.length) + '%' : '—') + '</small></div>';
+        }).join('');
+        var total = d.shots.attempts && d.shots.attempts[state.side];
+        var foot = total && total > list.length
+            ? '<p class="hg-shot-foot">' + list.length + ' of ' + total + ' attempts charted.</p>' : '';
+        return '<div class="sp-card hg-shots">'
+            + '<div class="hg-shot-head"><b>' + esc(team.school) + '</b><span>' + made + '-' + list.length + ' FG'
+            + (list.length ? ' · ' + Math.round(100 * made / list.length) + '%' : '') + '</span></div>'
+            + '<svg class="hg-shot-floor" viewBox="-1 -1 52 49" role="img" aria-label="' + esc(team.school) + ' shot chart: '
+            + made + ' of ' + list.length + ' made">'
+            + '<g class="ln" fill="none">' + halfCourt() + '</g>' + dots + '</svg>'
+            // Phones have no hover: a tap names the nearest shot here.
+            + '<p class="hg-shot-tip" aria-live="polite">Tap a shot to see who took it.</p>'
+            + '<div class="hg-shot-key"><span><i class="mk" style="background:' + esc(color) + '"></i>Made</span><span><i class="ms"></i>Missed</span></div>'
+            + '<div class="hg-szs">' + rows + '</div>' + foot + '</div>';
+    }
+
     // ---- preview: a game still to play ----------------------------------
 
     // The matchup predictor, drawn as a court the way football's is drawn
@@ -415,20 +471,23 @@
     }
 
     function tabs(d) {
-        if (!d.box) return '';
-        return kit.tabs([['summary', 'Summary'], ['box', 'Box score']], state.tab);
+        if (!d.box && !d.shots) return '';
+        var list = [['summary', 'Summary']];
+        if (d.box) list.push(['box', 'Box score']);
+        if (d.shots) list.push(['shots', 'Shot chart']);
+        return kit.tabs(list, state.tab);
     }
 
     function panel(d) {
+        var seg = function (key) {
+            var t = d[key];
+            return '<button type="button" data-side="' + key + '" class="' + (state.side === key ? 'on' : '') + '">'
+                + (t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '') + esc(t.school) + '</button>';
+        };
+        var segs = '<div class="sp-seg">' + seg('away') + seg('home') + '</div>';
+        if (state.tab === 'shots' && d.shots) return segs + shotChart(d);
         if (!d.box) return noBox(d);
-        if (state.tab === 'box') {
-            var seg = function (key) {
-                var t = d[key];
-                return '<button type="button" data-side="' + key + '" class="' + (state.side === key ? 'on' : '') + '">'
-                    + (t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '') + esc(t.school) + '</button>';
-            };
-            return '<div class="sp-seg">' + seg('away') + seg('home') + '</div>' + boxTable(d);
-        }
+        if (state.tab === 'box') return segs + boxTable(d);
         return '<h2 class="sp-h">Keys to the game<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="sp-card">' + factors(d) + '</div>'
             + '<h2 class="sp-h">Team stats' + (d.box.pace ? '<small>' + fixed(d.box.pace, 0) + ' possessions</small>' : '') + '</h2><div class="sp-card">' + teamStats(d) + '</div>'
             + '<h2 class="sp-h">Leaders</h2>' + leaders(d);
@@ -443,7 +502,7 @@
     function render(d) {
         data = d;
         var h = (window.location.hash || '').replace('#', '');
-        state.tab = h === 'box' ? 'box' : 'summary';
+        state.tab = h === 'box' && d.box ? 'box' : h === 'shots' && d.shots ? 'shots' : 'summary';
         // Open the box on the viewer's own team; failing that, the one side
         // somebody rosters; otherwise the left-hand (away) side, so the toggle
         // reads in the scoreboard's order.
@@ -460,8 +519,32 @@
         kit.countUp(root);
     }
 
+    // A tap on the chart: the nearest shot within a few feet, since a dot is
+    // far smaller than a fingertip. Measured in court feet off the SVG's own
+    // box, so it holds at any width.
+    function tapShot(e, svg) {
+        var list = (data.shots && data.shots[state.side]) || [];
+        var box = svg.getBoundingClientRect();
+        if (!list.length || !box.width) return;
+        var vb = (svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);   // x y w h
+        var x = vb[0] + (e.clientX - box.left) * vb[2] / box.width;
+        var y = vb[1] + (e.clientY - box.top) * vb[3] / box.height;
+        var best = null, bestD = 3;
+        list.forEach(function (s) {
+            var dd = Math.sqrt((s.x - x) * (s.x - x) + (s.y - y) * (s.y - y));
+            if (dd <= bestD) { best = s; bestD = dd; }
+        });
+        var out = root.querySelector('.hg-shot-tip');
+        if (!out) return;
+        var names = shortNames(list.map(function (s) { return { name: s.shooter || '' }; }));
+        out.textContent = best ? shotTip(best, names) : 'Tap a shot to see who took it.';
+        out.classList.toggle('on', !!best);
+    }
+
     root.addEventListener('click', function (e) {
         if (!data) return;
+        var floor = e.target.closest('.hg-shot-floor');
+        if (floor) { tapShot(e, floor); return; }
         var tab = e.target.closest('[data-tab]');
         if (tab) {
             state.tab = tab.getAttribute('data-tab');

@@ -19,6 +19,7 @@ const { homeWinProb } = require('./hoops-win-prob');
 const stale = require('./hoops-stale-duplicates');
 const { outlets } = require('./hoops-media');
 const { latestNet } = require('./hoops-net');
+const shotCharts = require('./hoops-shots');
 
 // A team's record through this game — what it was walking off the floor,
 // not what it is today.
@@ -106,7 +107,7 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
     // so the two pages give an unplayed game the same quadrant.
     const nowWeek = final ? null : await teamPage.currentWeek(yr);
     const rankWeek = final || nowWeek === null ? Number(game.week) : nowWeek;
-    const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed, net, apPolls] = await Promise.all([
+    const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed, net, apPolls, shots] = await Promise.all([
         HoopsTeam.find({ season: yr, id: { $in: [homeId, awayId] } },
             { id: 1, school: 1, abbreviation: 1, mascot: 1, color: 1, alt_color: 1, logos: 1, _id: 0 }).lean(),
         Number.isFinite(rankWeek) ? teamPage.cachedRanks(yr, rankWeek) : {},
@@ -117,7 +118,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         teamPage.quadrantValues(league),
         final ? boxScore.getBox(id) : null,
         latestNet(yr, [homeId, awayId]),
-        hoopsAp.cachedPolls(yr).catch(() => [])
+        hoopsAp.cachedPolls(yr).catch(() => []),
+        final ? shotCharts.forGame(game) : null
     ]);
     const byId = new Map(teams.map(t => [Number(t.id), t]));
     // Jersey numbers on the box, from the once-a-season roster import (the
@@ -211,6 +213,7 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         quadrantValues: values,
         rescheduled: replaced ? { id: replaced.id, startDate: replaced.startDate, startTimeTbd: !!replaced.startTimeTbd } : null,
         box: boxed || null,
+        shots: shots || null,
         preview
     };
 }
