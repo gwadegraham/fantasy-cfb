@@ -14,19 +14,32 @@ jest.mock('../modules/job-mailer', () => ({
     sendJobEmail: jest.fn(() => Promise.resolve()),
     emailOnSuccess: jest.fn(() => false)
 }));
+// The leaders job ingests in-process (the route can outlast Heroku's 30s
+// router limit), so its ingest is stubbed here rather than over fetch.
+jest.mock('../modules/player-season-leaders', () => ({
+    ingestSeasonLeaders: jest.fn()
+}));
 
 const { sendJobEmail, emailOnSuccess } = require('../modules/job-mailer');
+const { ingestSeasonLeaders } = require('../modules/player-season-leaders');
 const seasonStatsJob = require('../update-season-stats-job');
 const leadersJob = require('../update-player-season-leaders-job');
 
 const OLD_ENV = process.env;
 
 const JOBS = [
-    { mod: seasonStatsJob, name: 'season-stats', label: 'Season Stats', path: '/team-season-stats/ingest/' },
-    { mod: leadersJob, name: 'player-season-leaders', label: 'Player Season Leaders', path: '/player-season-leaders/ingest/' },
+    { mod: seasonStatsJob, name: 'season-stats', label: 'Season Stats' },
+    { mod: leadersJob, name: 'player-season-leaders', label: 'Player Season Leaders' },
 ];
 
 function stubFetch(over = {}) {
+    const body = over.body || { teams: 138, created: 4, updated: 134 };
+    ingestSeasonLeaders.mockReset();
+    if (over.status && over.status !== 200) {
+        ingestSeasonLeaders.mockRejectedValue(new Error(body.message));
+    } else {
+        ingestSeasonLeaders.mockResolvedValue(body);
+    }
     global.fetch = jest.fn((url, opts) => {
         if (url.includes('/job-runs')) {
             return Promise.resolve({
@@ -36,7 +49,7 @@ function stubFetch(over = {}) {
         }
         return Promise.resolve({
             status: over.status || 200,
-            json: () => Promise.resolve(over.body || { teams: 138, created: 4, updated: 134 })
+            json: () => Promise.resolve(body)
         });
     });
 }
@@ -56,16 +69,25 @@ beforeEach(() => {
 });
 afterEach(() => { process.env = OLD_ENV; jest.restoreAllMocks(); });
 
-describe.each(JOBS)('$name job', ({ mod, name, label, path }) => {
-    test('posts to its ingest endpoint for the configured season', async () => {
-        stubFetch();
-        await mod.run();
-        const call = global.fetch.mock.calls.find(c => c[0].includes(path));
-        expect(call[0]).toBe(`http://test.local${path}2026`);
-        expect(call[1].method).toBe('POST');
-        expect(call[1].headers['X-Internal-Token']).toBe('tok');
-    });
+test('season-stats posts to its ingest endpoint for the configured season', async () => {
+    stubFetch();
+    await seasonStatsJob.run();
+    const call = global.fetch.mock.calls.find(c => c[0].includes('/team-season-stats/ingest/'));
+    expect(call[0]).toBe('http://test.local/team-season-stats/ingest/2026');
+    expect(call[1].method).toBe('POST');
+    expect(call[1].headers['X-Internal-Token']).toBe('tok');
+});
 
+// Over HTTP, Heroku's router answered 503 at 30s while CFBD's ~25 MB
+// response was still being processed (27 Oct 2026).
+test('player-season-leaders ingests in-process, never through the router', async () => {
+    stubFetch();
+    await leadersJob.run();
+    expect(ingestSeasonLeaders).toHaveBeenCalledWith(2026);
+    expect(global.fetch.mock.calls.some(c => c[0].includes('/player-season-leaders/'))).toBe(false);
+});
+
+describe.each(JOBS)('$name job', ({ mod, name, label }) => {
     test('finishes the run with a STRING message so the PATCH can cast it', async () => {
         stubFetch();
         await mod.run();

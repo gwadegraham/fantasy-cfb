@@ -1,4 +1,5 @@
-const { pivotPlayers, pickLeaders, CATEGORY_DEFS } = require('../routes/player-season-leaders');
+const PlayerSeasonLeader = require('../models/playerSeasonLeader');
+const { pivotPlayers, pickLeaders, CATEGORY_DEFS, ingestSeasonLeaders } = require('../modules/player-season-leaders');
 
 describe('player season leaders pivot + pick', () => {
     const memphisRows = [
@@ -97,5 +98,58 @@ describe('player season leaders pivot + pick', () => {
 
     it('defines 7 leader categories', () => {
         expect(Object.keys(CATEGORY_DEFS)).toHaveLength(7);
+    });
+});
+
+describe('ingestSeasonLeaders', () => {
+    const rows = [
+        { playerId: 1, player: 'Seth Henigan', position: 'QB', team: 'Memphis', category: 'passing', statType: 'YDS', stat: '612' },
+        { playerId: 7, player: 'Gunner Stockton', position: 'QB', team: 'Georgia', category: 'passing', statType: 'YDS', stat: '540' }
+    ];
+    const okFetch = (body) => jest.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) }));
+
+    beforeEach(() => { jest.spyOn(console, 'log').mockImplementation(() => {}); });
+    afterEach(() => jest.restoreAllMocks());
+
+    it('upserts one row per team and reports the counts', async () => {
+        const bulk = jest.spyOn(PlayerSeasonLeader, 'bulkWrite')
+            .mockResolvedValue({ upsertedCount: 1, modifiedCount: 1 });
+        const fetchImpl = okFetch(rows);
+
+        const out = await ingestSeasonLeaders(2026, fetchImpl);
+
+        expect(fetchImpl.mock.calls[0][0]).toContain('/stats/player/season?year=2026');
+        expect(fetchImpl.mock.calls[0][1].signal).toBeDefined();
+        const ops = bulk.mock.calls[0][0];
+        expect(ops.map(o => o.updateOne.filter)).toEqual([
+            { season: 2026, team: 'Memphis' },
+            { season: 2026, team: 'Georgia' }
+        ]);
+        expect(ops[0].updateOne.upsert).toBe(true);
+        expect(ops[0].updateOne.update.$set.leaders.passing[0].name).toBe('Seth Henigan');
+        expect(out).toEqual({ teams: 2, created: 1, updated: 1 });
+    });
+
+    it('throws with the CFBD status so the route can pass it on', async () => {
+        const bulk = jest.spyOn(PlayerSeasonLeader, 'bulkWrite');
+        const fetchImpl = jest.fn(() => Promise.resolve({ ok: false, status: 429 }));
+
+        await expect(ingestSeasonLeaders(2026, fetchImpl)).rejects.toMatchObject({
+            message: 'CFBD returned 429', status: 429
+        });
+        expect(bulk).not.toHaveBeenCalled();
+    });
+
+    it('refuses a body that is not an array', async () => {
+        const bulk = jest.spyOn(PlayerSeasonLeader, 'bulkWrite');
+        await expect(ingestSeasonLeaders(2026, okFetch({ message: 'nope' })))
+            .rejects.toMatchObject({ status: 400 });
+        expect(bulk).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing for an empty season', async () => {
+        const bulk = jest.spyOn(PlayerSeasonLeader, 'bulkWrite');
+        expect(await ingestSeasonLeaders(2026, okFetch([]))).toEqual({ teams: 0, created: 0, updated: 0 });
+        expect(bulk).not.toHaveBeenCalled();
     });
 });

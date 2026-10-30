@@ -2,10 +2,10 @@ if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config();
 }
 
-const { internalFetch } = require('./modules/internal-api');
 const { remoteSeason } = require('./modules/remote-season');
 const { startRun, finishRun } = require('./modules/job-logger');
 const { sendJobEmail, emailOnSuccess } = require('./modules/job-mailer');
+const { ingestSeasonLeaders } = require('./modules/player-season-leaders');
 
 const JOB_NAME = 'player-season-leaders';
 const LABEL = 'Player Season Leaders';
@@ -16,6 +16,11 @@ const LABEL = 'Player Season Leaders';
 // forever) and every email render as "undefined FAILED" even on success.
 // Neither failure was visible from inside the job: job-logger swallows a bad
 // response and the mailer never throws.
+//
+// The ingest runs in-process, not over HTTP: through Heroku's router the
+// POST hit the 30s limit on 27 Oct 2026 (see modules/player-season-leaders.js).
+// That uses the server's mongoose connection, which is there because only the
+// scheduler runs this job; unlike the scores jobs it has no standalone entry.
 async function run() {
     const startMs = Date.now();
     const when = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
@@ -26,14 +31,7 @@ async function run() {
     }
     const id = await startRun(JOB_NAME, { season: String(season) });
     try {
-        const res = await internalFetch(`${process.env.URL}/player-season-leaders/ingest/${season}`, {
-            method: 'POST',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
-        });
-        const body = await res.json().catch(() => ({}));
-        if (res.status !== 200) {
-            throw new Error(`Ingest failed: ${body.message || res.status}`);
-        }
+        const body = await ingestSeasonLeaders(season);
         const secs = Math.round((Date.now() - startMs) / 1000);
         const summary = `${body.teams} teams ingested `
             + `(${body.created} new, ${body.updated} updated) (${secs}s)`;
