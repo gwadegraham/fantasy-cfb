@@ -15,6 +15,7 @@ const { combinedAmericanOdds, settledPayout } = require('../modules/parlay-calc'
 const { deriveParlayStatus } = require('../modules/parlay-resolve');
 const { contributorStats, superlatives } = require('../modules/parlay-stats');
 const audit = require('../modules/audit-log');
+const bestBets = require('../modules/best-bets');
 
 // Maintenance endpoint, called by the weekly enrichment job — not a member
 // action. It re-grades stat legs whose box scores weren't available when the
@@ -224,7 +225,10 @@ router.get('/games/:season/:week', async (req, res) => {
             const bl = lineMap.get(game.id);
             let dk = null;
             if (bl && bl.lines) {
-                dk = bl.lines.find(l => l.provider && l.provider.toLowerCase().includes('draftkings'));
+                // The same matcher Best Bets uses, so its picks name the line
+                // this board shows. includes('draftkings') missed CFBD's 2025
+                // "Draft Kings" rows and left those games at N/A.
+                dk = bl.lines.find(bestBets.isDK);
             }
             return {
                 id: game.id,
@@ -273,6 +277,104 @@ router.get('/games/:season/:week', async (req, res) => {
         }
 
         res.json(merged);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Best Bets — the ranked list on the betting page. See modules/best-bets.js for
+// what it ranks on and, more to the point, what the backtest says it can't do.
+//
+// Answers the dbWeek's games; the client keeps the ones in its own week list,
+// which is how week 0 / week 1 stay split without repeating that logic here.
+// Every pick carries `started` and `result`, so a past week shows the list it
+// would have offered, graded.
+//
+// The season record re-ranks every finished week, which reads the whole
+// season's games and lines. That only changes when a game finishes or a line
+// is refetched, so it is cached in-process rather than rebuilt per page view.
+const BEST_BETS_GAME_FIELDS = {
+    id: 1, week: 1, homeTeam: 1, awayTeam: 1, neutralSite: 1,
+    startDate: 1, startTimeTbd: 1, completed: 1, homePoints: 1, awayPoints: 1,
+    homePregameElo: 1, awayPregameElo: 1, pregameWinProb: 1, _id: 0
+};
+const BEST_BETS_LINE_FIELDS = {
+    id: 1, _id: 0,
+    'lines.provider': 1, 'lines.spread': 1, 'lines.overUnder': 1,
+    'lines.homeMoneyline': 1, 'lines.awayMoneyline': 1
+};
+const RECORD_TTL_MS = 30 * 60 * 1000;
+// season:seasonType -> { at, record, sp }. Keys are bounded: seasonType is
+// whitelisted below, and seasons are integers somebody actually asked for.
+const recordCache = new Map();
+const SEASON_TYPES = ['regular', 'postseason'];
+
+// SP+ for the season, slimmed in the database: team docs carry every season's
+// weekly scores, and $elemMatch can't trim a subdocument down to two fields.
+async function spSeasonsByTeam(season) {
+    const rows = await Team.aggregate([
+        { $project: {
+            school: 1,
+            s: { $arrayElemAt: [{ $filter: { input: '$seasons', cond: { $eq: ['$$this.season', season] } } }, 0] }
+        } },
+        { $project: { _id: 0, school: 1, spRating: '$s.spRating', spHistory: '$s.spHistory' } }
+    ]);
+    return new Map(rows.map(r => [r.school, r]));
+}
+
+router.get('/best-bets/:season/:week', async (req, res) => {
+    try {
+        const season = Number(req.params.season);
+        const week = Number(req.params.week);
+        if (!Number.isInteger(season) || !Number.isInteger(week)) {
+            return res.status(400).json({ message: 'Season and week must be numbers' });
+        }
+        const seasonType = req.query.seasonType || 'regular';
+        if (!SEASON_TYPES.includes(seasonType)) {
+            return res.status(400).json({ message: 'Unknown seasonType' });
+        }
+        const dbWeek = week === 0 ? 1 : week;
+
+        const key = season + ':' + seasonType;
+        const cached = recordCache.get(key);
+        const needSeason = !cached || Date.now() - cached.at > RECORD_TTL_MS;
+
+        const [games, lines, sp] = await Promise.all([
+            Game.find(needSeason ? { season, seasonType } : { season, seasonType, week: dbWeek }, BEST_BETS_GAME_FIELDS).lean(),
+            BettingLine.find(needSeason ? { season, seasonType } : { season, seasonType, week: dbWeek }, BEST_BETS_LINE_FIELDS).lean(),
+            // Scans every team document, so it rides the same cache as the record.
+            needSeason ? spSeasonsByTeam(season) : cached.sp
+        ]);
+        const linesById = new Map(lines.map(l => [l.id, l]));
+        const spFor = g => {
+            const home = bestBets.spBefore(sp.get(g.homeTeam), g.week, g.completed);
+            const away = bestBets.spBefore(sp.get(g.awayTeam), g.week, g.completed);
+            return home != null && away != null ? { home, away } : null;
+        };
+
+        let record;
+        if (needSeason) {
+            record = bestBets.seasonRecord(games, linesById, spFor);
+            recordCache.set(key, { at: Date.now(), record, sp });
+        } else {
+            record = cached.record;
+        }
+
+        const weekGames = games.filter(g => g.week === dbWeek);
+        const byId = new Map(weekGames.map(g => [g.id, g]));
+        const now = Date.now();
+        // 25, not the 6–10 the page shows: on week 0 or week 1 the client drops
+        // the other half of the split, and it needs enough left over.
+        const picks = bestBets.rankBestBets(weekGames, linesById, spFor, { limit: 25 }).map(p => {
+            const g = byId.get(p.gameId);
+            return {
+                ...p,
+                started: !!g.completed || (!g.startTimeTbd && !!g.startDate && new Date(g.startDate).getTime() < now),
+                result: bestBets.gradePick(p, g)
+            };
+        });
+
+        res.json({ season, week, picks, record, picksPerWeek: bestBets.RECORD_PICKS_PER_WEEK, minWinProb: bestBets.LIKELY_MIN });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

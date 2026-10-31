@@ -974,7 +974,8 @@ var activeStatPick = null; // { index, side, teamName, cat }
 
 function betButton(index, betType, label, line, odds, selection, side) {
     var safeSelection = selection.replace(/'/g, "\\'");
-    return '<button type="button" class="bet-btn" '
+    // data-selection is how a Best Bets row finds this button to select it.
+    return '<button type="button" class="bet-btn" data-selection="' + esc(selection) + '" '
         + 'onclick="pickBet(' + index + ',\'' + betType + '\',\'' + safeSelection + '\',' + (line != null ? line : 'null') + ',' + (odds != null ? odds : 'null') + ',\'' + (side || '') + '\', this)">'
         + '<span class="bet-btn-label">' + label + '</span>'
         + '<span class="bet-btn-odds">' + formatOdds(odds) + '</span>'
@@ -1506,9 +1507,129 @@ async function resolveLeg(parlayId, contributor, result) {
     }
 }
 
+// ---- Best Bets ------------------------------------------------------------
+// Ranked list for the week (modules/best-bets.js on the server, public/best-bets.js
+// for the rows). "Use" fills the member's OWN leg through the normal bet board,
+// pre-selected, so they still see the game, the odds box and Submit Leg. Nothing
+// is submitted for them.
+var bestBetsData = null;
+var bestBetsSeq = 0;
+
+async function loadBestBets() {
+    // Arrowing through weeks fires several of these; only the latest may land,
+    // or week 9's picks get filtered against week 10's games and the card
+    // reads "No DraftKings lines".
+    var seq = ++bestBetsSeq;
+    var data = null;
+    try {
+        var res = await fetch('/betting/best-bets/' + currentSeason + '/' + currentWeek);
+        if (res.ok) data = await res.json();
+    } catch (e) { /* the list is optional; the page works without it */ }
+    if (seq === bestBetsSeq) bestBetsData = data;
+}
+
+function myOpenLeg() {
+    var parlay = parlays.find(function (p) { return p.week === currentWeek; });
+    if (!parlay) return { reason: 'No slip yet' };
+    if (parlay.status !== 'pending') return { reason: 'Slip settled' };
+    var index = parlay.legs.findIndex(function (l) { return l.contributor === myUserId; });
+    if (index === -1) return { reason: 'Not in this slip' };
+    return { parlay: parlay, index: index, leg: parlay.legs[index] };
+}
+
+// One leg per member: the week's slip if there is one, else the group.
+function bestBetsLegCount() {
+    var parlay = parlays.find(function (p) { return p.week === currentWeek; });
+    if (parlay && parlay.legs && parlay.legs.length) return parlay.legs.length;
+    var members = Object.keys(memberNames).length;
+    return members || 6;
+}
+
+// Kept across re-renders (a submit or a week change redraws the card), so a
+// typed wager doesn't snap back to $20.
+var bestBetsWager = window.ccBestBets ? ccBestBets.DEFAULT_WAGER : 20;
+
+document.addEventListener('input', function (e) {
+    if (!e.target || e.target.id !== 'bestbets-wager') return;
+    var n = Number(e.target.value);
+    if (!(n > 0)) return;
+    bestBetsWager = n;
+    // Only the pay line changes; redrawing the card would drop focus mid-type.
+    var parlay = ccBestBets.suggestedParlay(bestBetsData, games.map(function (g) { return g.id; }), bestBetsLegCount());
+    var line = document.getElementById('bestbets-pay-line');
+    if (parlay && line) line.innerHTML = ccBestBets.parlayPayLine(parlay, n);
+    var summary = document.getElementById('bestbets-summary-line');
+    if (summary) summary.innerHTML = ccBestBets.summaryLine(parlay, n);
+});
+
+// Folded by default: on a phone the open list is two screens tall and pushes
+// the slip's own legs and the bet board out of view. Whatever the member last
+// chose sticks, on this device only (a convenience, so storage may fail).
+var BEST_BETS_OPEN_KEY = 'cc_best_bets_open';
+var bestBetsOpen = false;
+try { bestBetsOpen = localStorage.getItem(BEST_BETS_OPEN_KEY) === '1'; } catch (e) { /* private mode */ }
+
+// toggle doesn't bubble, hence the capture listener.
+document.addEventListener('toggle', function (e) {
+    if (!e.target.classList || !e.target.classList.contains('bestbets-fold')) return;
+    bestBetsOpen = e.target.open;
+    try { localStorage.setItem(BEST_BETS_OPEN_KEY, bestBetsOpen ? '1' : '0'); } catch (err) { /* private mode */ }
+}, true);
+
+function renderBestBets() {
+    var el = document.getElementById('best-bets');
+    if (!el || !window.ccBestBets) return;
+    var gameIds = games.map(function (g) { return g.id; });
+    var html = ccBestBets.render(bestBetsData, gameIds, {
+        legCount: bestBetsLegCount(),
+        wager: bestBetsWager,
+        open: bestBetsOpen,
+        canUse: function () {
+            var mine = myOpenLeg();
+            if (!mine.parlay) return { ok: false, label: mine.reason };
+            return { ok: true, label: mine.leg.gameId ? 'Swap in' : 'Use' };
+        }
+    });
+    el.innerHTML = html;
+    el.hidden = !html;
+}
+
+// By game id, not the row's index: refresh() swaps `games` in before it
+// redraws the rows, and a game kicking off in between reorders the list under
+// a button already on screen. One pick per game, so the id is exact.
+function useBestBet(gameId) {
+    var pick = ((bestBetsData && bestBetsData.picks) || []).find(function (p) { return String(p.gameId) === gameId; });
+    var mine = myOpenLeg();
+    if (!pick || !mine.parlay) return;
+
+    // A filled leg goes back to its "Choose a game" state first, the same as
+    // the Change pick link; the leg on the server is untouched until Submit.
+    if (mine.leg.gameId) changeLegPick(mine.parlay._id, myUserId);
+
+    // A selection left over from another board must not ride along: if the
+    // button below isn't found, Submit would send it under this leg's game.
+    selectedBet = null;
+
+    activePick = { parlayId: mine.parlay._id, contributor: myUserId, index: mine.index };
+    selectGame(pick.gameId);
+
+    var board = document.getElementById('bet-board-' + mine.index);
+    var btn = board && Array.prototype.find.call(board.querySelectorAll('.bet-btn'), function (b) {
+        return b.getAttribute('data-selection') === pick.selection;
+    });
+    if (btn) btn.click();
+    else if (window.ccToast) ccToast.info('That line moved. Pick from the board');
+}
+
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('.bestbets-use');
+    if (btn) useBestBet(btn.getAttribute('data-game-id'));
+});
+
 async function refresh() {
-    await Promise.all([loadParlays(), loadGames(), loadMemberNames()]);
+    await Promise.all([loadParlays(), loadGames(), loadMemberNames(), loadBestBets()]);
     renderCurrentParlay();
+    renderBestBets();
     renderHistory();
     loadSeasonSummary();
     loadContributorStats();
