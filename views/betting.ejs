@@ -17,6 +17,7 @@
     <script src="logo.js"></script>
     <script src="leg-display.js"></script>
     <script src="alt-spread.js"></script>
+    <script src="best-bets.js"></script>
     <script src="betting.js" defer></script>
     <title data-league-title="Betting">Betting · Campus Clash</title>
     <%- include('partials/favicons') %>
@@ -57,6 +58,10 @@
             <div class="loading-spinner"></div>
         </div>
     </div>
+
+    <!-- Ranked legs for the week. Rendered by public/betting.js renderBestBets
+         (rows from public/best-bets.js); hidden until there is something to show. -->
+    <section class="bestbets" id="best-bets" hidden></section>
 
     <div class="section-divider"></div>
 

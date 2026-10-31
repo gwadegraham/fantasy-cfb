@@ -956,4 +956,98 @@ describe('GET /betting/games/:season/:week', () => {
         expect(g).toHaveProperty('homeLogos');
         expect(g).toHaveProperty('dk');
     });
+
+    // CFBD spelled it "Draft Kings" on 64 games in 2025. The board read those as
+    // having no DK line while Best Bets priced them, so "Use" could never find
+    // the button it was pointing at.
+    it('finds the DK line under the "Draft Kings" spelling too', async () => {
+        const BettingLine = require('../models/bettingLine');
+        await Game.create({
+            id: 902, season: 2026, week: 3, seasonType: 'regular',
+            startDate: '2026-09-19T00:00:00.000Z', startTimeTbd: false,
+            neutralSite: false, conferenceGame: false,
+            homeId: 1, homeTeam: 'Oregon', awayId: 2, awayTeam: 'Duke'
+        });
+        await BettingLine.create({ id: 902, season: 2026, seasonType: 'regular', week: 3,
+            lines: [{ provider: 'Bovada', spread: -10 }, { provider: 'Draft Kings', spread: -9.5, formattedSpread: 'Oregon -9.5' }] });
+        const res = await request(app).get('/betting/games/2026/3');
+        expect(res.body.find(x => x.id === 902).dk).toMatchObject({ spread: -9.5 });
+    });
+});
+
+describe('GET /betting/best-bets/:season/:week', () => {
+    const BettingLine = require('../models/bettingLine');
+    const Team = require('../models/team');
+
+    function seedGame(over) {
+        return Game.create({
+            season: 2031, seasonType: 'regular', startTimeTbd: false,
+            neutralSite: false, conferenceGame: false,
+            homeId: 1, awayId: 2, homePregameElo: 1600, awayPregameElo: 1600,
+            ...over
+        });
+    }
+
+    // Each test uses its own season: the season record is cached in-process
+    // by season, and a shared key would hand one test another's record.
+    it('ranks the week, marks started games, and grades finished ones', async () => {
+        const past = '2020-01-01T00:00:00.000Z';
+        const future = '2099-01-01T00:00:00.000Z';
+        await seedGame({ id: 11, season: 2031, week: 4, startDate: past, homeTeam: 'Utah', awayTeam: 'BYU', completed: true, homePoints: 20, awayPoints: 21 });
+        await seedGame({ id: 12, season: 2031, week: 5, startDate: future, homeTeam: 'Iowa', awayTeam: 'Rice' });
+        await BettingLine.create([
+            // Away favourite at -400 (~78%): likely enough to list.
+            { id: 11, season: 2031, seasonType: 'regular', week: 4, lines: [{ provider: 'DraftKings', spread: 10.5, homeMoneyline: 310, awayMoneyline: -400 }] },
+            { id: 12, season: 2031, seasonType: 'regular', week: 5, lines: [{ provider: 'DraftKings', spread: -10.5, homeMoneyline: -400, awayMoneyline: 310 }] }
+        ]);
+
+        const wk5 = await request(app).get('/betting/best-bets/2031/5');
+        expect(wk5.status).toBe(200);
+        expect(wk5.body.picks).toHaveLength(1);
+        expect(wk5.body.picks[0]).toMatchObject({ gameId: 12, started: false, result: null, betType: 'moneyline', teamSide: 'home' });
+        // Week 4 is finished: BYU, the -400 favourite, won 21-20.
+        expect(wk5.body.record).toMatchObject({ wins: 1, losses: 0, weeks: 1 });
+        expect(wk5.body.picksPerWeek).toBe(6);
+        expect(wk5.body.minWinProb).toBe(0.7);
+
+        const wk4 = await request(app).get('/betting/best-bets/2031/4');
+        expect(wk4.body.picks[0]).toMatchObject({ gameId: 11, selection: 'BYU ML', started: true, result: 'win' });
+    });
+
+    it('reads week 0 from CFBD week 1, as the games route does', async () => {
+        await seedGame({ id: 21, season: 2032, week: 1, startDate: '2099-08-29T00:00:00.000Z', homeTeam: 'Iowa', awayTeam: 'Rice' });
+        await BettingLine.create({ id: 21, season: 2032, seasonType: 'regular', week: 1, lines: [{ provider: 'DraftKings', spread: -10.5, homeMoneyline: -400, awayMoneyline: 310 }] });
+
+        const res = await request(app).get('/betting/best-bets/2032/0');
+        expect(res.body.picks.map(p => p.gameId)).toEqual([21]);
+    });
+
+    it('lets SP+ vote from the team season, slimmed in the query', async () => {
+        await seedGame({ id: 31, season: 2033, week: 6, startDate: '2099-10-01T00:00:00.000Z', homeTeam: 'Iowa', awayTeam: 'Rice' });
+        await BettingLine.create({ id: 31, season: 2033, seasonType: 'regular', week: 6, lines: [{ provider: 'DraftKings', spread: -10.5, homeMoneyline: -400, awayMoneyline: 310 }] });
+        // Raw insert: the Team schema requires a full CFBD profile that has
+        // nothing to do with what this route reads.
+        await Team.collection.insertMany([
+            { school: 'Iowa', seasons: [{ season: 2032, spRating: -30 }, { season: 2033, spHistory: [{ week: 5, rating: 20 }] }] },
+            { school: 'Rice', seasons: [{ season: 2032, spRating: 30 }, { season: 2033, spHistory: [{ week: 5, rating: -10 }] }] }
+        ]);
+
+        const res = await request(app).get('/betting/best-bets/2033/6');
+        const p = res.body.picks[0];
+        expect(p.voters).toContain('sp');
+        // Iowa by 32.5 in SP+ terms: SP+ backs Iowa to win.
+        // Reading 2032 instead (Iowa -30, Rice +30) would have SP+ vote Rice.
+        expect(p.teamSide).toBe('home');
+        expect(p.agree).toContain('sp');
+    });
+
+    it('refuses a seasonType it does not know, rather than querying and caching on it', async () => {
+        const res = await request(app).get('/betting/best-bets/2031/5?seasonType=junk');
+        expect(res.status).toBe(400);
+    });
+
+    it('rejects a non-numeric week instead of querying with NaN', async () => {
+        const res = await request(app).get('/betting/best-bets/2031/abc');
+        expect(res.status).toBe(400);
+    });
 });

@@ -1136,3 +1136,95 @@
 /* The box score that replaces the matchup line once a game ends. */
 .leg-final { font-variant-numeric: tabular-nums; }
 .leg-final b { font-weight: 600; color: var(--cc-text); }
+
+/* ---- Best Bets ------------------------------------------------------------
+   Ranked legs for the week, between the slip and the season Results. Rows from
+   public/best-bets.js. width:100% for the same flex-body reason as
+   .bettors-board above. Class names are prefixed: the navbar loads Bootstrap
+   on every page, and bare .row/.card/.lead restyle new markup. */
+.bestbets { width: 100%; box-sizing: border-box; padding: 0 24px; margin-top: 20px; }
+.bestbets[hidden] { display: none; }
+/* Folded, the section is this one bar: title, the parlay's payout, a caret. */
+.bestbets-fold { background: var(--cc-surface); border: 1px solid var(--cc-border); border-radius: var(--cc-r-md); }
+.bestbets-summary {
+    display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 14px;
+    cursor: pointer; list-style: none;
+}
+.bestbets-summary::-webkit-details-marker { display: none; }
+.bestbets-title { flex: 0 0 auto; font-size: 15px; font-weight: 600; color: var(--cc-text); }
+.bestbets-title i { color: var(--cc-amber); margin-right: 4px; }
+.bestbets-summary-line {
+    flex: 1; min-width: 0; text-align: right; font-size: 12px; color: var(--cc-muted-bright);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bestbets-summary-line strong { color: var(--cc-success); font-weight: 600; }
+.bestbets-caret { flex: 0 0 auto; font-size: 12px; color: var(--cc-muted); transition: transform 0.15s; }
+.bestbets-fold[open] > .bestbets-summary .bestbets-caret { transform: rotate(180deg); }
+.bestbets-fold[open] > .bestbets-summary { border-bottom: 1px solid var(--cc-border); }
+.bestbets-body { padding: 10px 12px 12px; }
+.bestbets-about { font-size: 12px; color: var(--cc-muted); text-align: center; margin-top: 10px; }
+.bestbets-about summary { cursor: pointer; color: var(--cc-interactive); list-style: none; }
+.bestbets-about summary::-webkit-details-marker { display: none; }
+.bestbets-about p { text-align: left; margin: 8px 0 0; line-height: 1.45; }
+.bestbets-record strong { color: var(--cc-text); font-weight: 600; }
+.bestbets-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.bestbets-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; border-top: 1px solid var(--cc-border);
+}
+.bestbets-row:first-child { border-top: none; }
+.bestbets-main { flex: 1; min-width: 0; }
+.bestbets-pick { font-size: 14px; font-weight: 600; color: var(--cc-text); }
+.bestbets-pick .bestbets-odds { font-weight: 500; margin-left: 2px; }
+.bestbets-matchup { font-size: 11px; color: var(--cc-muted-2); }
+.bestbets-needs { color: var(--cc-muted-bright); }
+.bestbets-facts { display: flex; flex-wrap: wrap; gap: 0 8px; margin-top: 1px; font-size: 11px; color: var(--cc-muted); }
+.bestbets-prob { font-weight: 600; color: var(--cc-success); }
+.bestbets-pays { color: var(--cc-muted-bright); }
+.bestbets-odds { color: var(--cc-muted-2); }
+.bestbets-agree { color: var(--cc-muted-2); }
+.bestbets-action { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.bestbets-use {
+    min-height: 36px; min-width: 64px; padding: 0 12px;
+    border-radius: var(--cc-r-sm); border: 1px solid var(--cc-interactive);
+    background: transparent; color: var(--cc-interactive);
+    font-family: 'Poppins', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.bestbets-use:hover { background: var(--cc-interactive); color: var(--cc-bg); }
+.bestbets-use-na { font-size: 11px; color: var(--cc-muted-2); max-width: 84px; text-align: right; }
+.bestbets-result {
+    width: 24px; height: 24px; border-radius: var(--cc-r-pill);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; background: var(--cc-surface-3); color: var(--cc-muted-bright);
+}
+.bestbets-result--win { background: var(--cc-success); color: #fff; }
+.bestbets-result--loss { background: var(--cc-danger); color: #fff; }
+.bestbets-parlay {
+    border: 1px solid var(--cc-amber); border-radius: var(--cc-r-md);
+    padding: 10px 12px; margin-bottom: 10px;
+}
+.bestbets-parlay-head { font-size: 13px; font-weight: 600; color: var(--cc-amber); }
+.bestbets-parlay-hit { font-size: 11px; color: var(--cc-muted); margin-bottom: 4px; }
+.bestbets-parlay-hit strong { color: var(--cc-text); }
+.bestbets-parlay-note { font-size: 11px; color: var(--cc-muted); margin-bottom: 4px; }
+.bestbets-parlay-pay {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+    padding-top: 8px; border-top: 1px solid var(--cc-border);
+    font-size: 14px; color: var(--cc-muted-bright);
+}
+.bestbets-parlay-pay strong { color: var(--cc-success); font-size: 16px; }
+.bestbets-wager { display: flex; align-items: center; gap: 2px; margin: 0; font-size: 13px; color: var(--cc-muted); }
+.bestbets-wager input {
+    width: 64px; min-height: 36px; padding: 0 8px; border-radius: var(--cc-r-sm);
+    border: 1px solid var(--cc-border-2); background: var(--cc-surface-2); color: var(--cc-text);
+    /* 16px, not 14: iOS zooms the page into any input smaller than that. */
+    font-family: 'Poppins', sans-serif; font-size: 16px;
+}
+.bestbets-more-head { font-size: 12px; font-weight: 600; color: var(--cc-muted-bright); margin: 4px 0 0; }
+.bestbets-notice { font-size: 12px; color: var(--cc-muted); text-align: center; margin-bottom: 8px; }
+.bestbets-empty { font-size: 12px; color: var(--cc-muted); text-align: center; padding: 8px 0; }
+
+@media (max-width: 600px) {
+    .bestbets { padding: 0 16px; }
+    .bestbets-use { min-height: 44px; }
+}

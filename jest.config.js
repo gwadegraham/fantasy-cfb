@@ -50,6 +50,16 @@ module.exports = {
         "/tests/"
     ],
     coverageThreshold: {
+        // Best Bets ranks real-money legs for the group. The ranking rules that
+        // matter most are short branches (trap removal, the no-leak SP+
+        // fallback, DK excluded from its own consensus), so branches is the
+        // figure that guards them.
+        "./modules/best-bets.js": {
+            statements: 95,
+            branches: 92,
+            functions: 100,
+            lines: 95
+        },
         // The cutover for #313. It runs once, against a live season, and its
         // failure modes are quiet — a dropped field passes verification unless
         // the guard that catches it is itself covered.
