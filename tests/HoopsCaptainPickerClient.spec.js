@@ -124,3 +124,32 @@ test('uhTbdDay falls back to a bare TBD', () => {
     expect(uhTbdDay(null)).toBe('TBD');
     expect(uhTbdDay('nope')).toBe('TBD');
 });
+
+test('each game carries its quadrant, and each team what its week pays as Captain', async () => {
+    const withQ = JSON.parse(JSON.stringify(STATE));
+    withQ.slate[0].games[0] = Object.assign(withQ.slate[0].games[0], { quadrant: 1, quadrantRank: 20, winValue: 10 });
+    Object.assign(withQ.slate[1].games[0], { quadrant: 2, quadrantRank: 90, winValue: 6 });
+    Object.assign(withQ.slate[1].games[1], { quadrant: 4, quadrantRank: 300, winValue: 0 });
+    global.fetch = jest.fn(url => Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(String(url).startsWith('/scoring-config') ? { engagement: { captainEnabled: true } } : withQ)
+    }));
+    await hydrateCaptain(USER, '2027');
+    const body = document.createElement('div');
+    uhDrawer.captain(body);
+    const [one, two] = [...body.querySelectorAll('.captain-team')];
+    expect([...one.querySelectorAll('.cap-q')].map(e => e.textContent)).toEqual(['Q1']);
+    expect(one.querySelector('.cap-q').getAttribute('title')).toContain('#20');
+    expect(one.querySelector('.cap-up').textContent).toBe('up to +10');
+    // Two games: both chips, and the week's total.
+    expect([...two.querySelectorAll('.cap-q')].map(e => e.textContent)).toEqual(['Q2', 'Q4']);
+    expect(two.querySelector('.cap-up').textContent).toBe('up to +6');
+});
+
+test('a slate without quadrants (football, or a failed read) shows neither', async () => {
+    await hydrateCaptain(USER, '2027');
+    const body = document.createElement('div');
+    uhDrawer.captain(body);
+    expect(body.querySelector('.cap-q')).toBeNull();
+    expect(body.querySelector('.cap-up')).toBeNull();
+});

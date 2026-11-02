@@ -163,7 +163,7 @@ describe('hydrate', () => {
     test('the current basketball week\'s games for the rostered ids', async () => {
         await boot();
         expect(window.ccCurrentWeek.get).toHaveBeenCalledWith('2027');
-        expect(calls).toEqual(['/hoops/games/teams/2027/1?ids=1%2C3%2C9']);
+        expect(calls).toEqual(['/hoops/games/teams/2027/1?ids=1%2C3%2C9&quadrants=1']);
         expect(document.getElementById('glance').textContent).toContain('2 of your teams · Week 1');
     });
 
@@ -176,7 +176,7 @@ describe('hydrate', () => {
         sel.value = '2';
         sel.dispatchEvent(new Event('change'));
         await flush();
-        expect(calls[1]).toBe('/hoops/games/teams/2027/2?ids=1%2C3%2C9');
+        expect(calls[1]).toBe('/hoops/games/teams/2027/2?ids=1%2C3%2C9&quadrants=1');
         expect(body.textContent).toContain('No games for your teams this week.');
         expect(body.querySelector('[uh-hg-week]').value).toBe('2');
         expect(document.getElementById('glance').textContent).toBe('No games for your teams · Week 2');
@@ -276,7 +276,7 @@ describe('userHome hydrateGames', () => {
         loadUserHome('basketball');
         await hydrateGames(user, '2027');
         await flush();
-        expect(calls).toEqual(['/hoops/games/teams/2027/1?ids=1%2C3%2C9']);
+        expect(calls).toEqual(['/hoops/games/teams/2027/1?ids=1%2C3%2C9&quadrants=1']);
         expect(window.ccCurrentWeek.sync).not.toHaveBeenCalled();
         expect(window.localStorage.getItem('weekCode')).toBe('week-5');
         expect(window.localStorage.getItem('weekSeason')).toBe('2026');
@@ -290,5 +290,63 @@ describe('userHome hydrateGames', () => {
         await flush();
         expect(window.ccCurrentWeek.sync).toHaveBeenCalledWith(undefined);
         expect(calls).toEqual(['/games/seasonType/regular/week/5/teams?ids=1']);
+    });
+});
+
+describe('quadrant chips and what a win pays', () => {
+    const VALUES = { 1: 5, 2: 3, 3: 1, 4: 0 };
+    const withQ = (g, teamId, q, rank) => {
+        const c = JSON.parse(JSON.stringify(g));
+        ['home', 'away'].forEach(s => { if (c[s].id === teamId) { c[s].quadrant = q; c[s].quadrantRank = rank; } });
+        return c;
+    };
+    const rowFor = (games, entry, teamId, gameId, opts) => {
+        const e = hg().byTeam(ROSTER, games)[String(teamId)].find(x => x.game.id === gameId);
+        return hg().rowHtml(e, entry, 1, opts);
+    };
+
+    test('a game still to play shows today\'s quadrant and its win value', () => {
+        const html = rowFor([withQ(G.pre, 1, 2, 60)], SEASON_ENTRY, 1, 102, { values: VALUES, captainMultiplier: 2 });
+        expect(html).toContain('uh-hg-q q2');
+        expect(html).toContain('#60');
+        expect(html).toContain('win +3');
+        expect(html).not.toContain('2×');
+    });
+
+    test('the week\'s Captain is priced at the multiple', () => {
+        const entry = Object.assign({}, SEASON_ENTRY, { captains: [{ week: 1, teamId: 1 }] });
+        const html = rowFor([withQ(G.pre, 1, 1, 12)], entry, 1, 102, { values: VALUES, captainMultiplier: 2 });
+        expect(html).toContain('win +10');
+        expect(html).toContain('2×');
+    });
+
+    test('a conference-tournament game is never priced at the Captain\'s multiple', () => {
+        const entry = Object.assign({}, SEASON_ENTRY, { captains: [{ week: 1, teamId: 1 }] });
+        const tourney = Object.assign(withQ(G.pre, 1, 1, 12), { modeGame: false });
+        const html = rowFor([tourney], entry, 1, 102, { values: VALUES, captainMultiplier: 2 });
+        expect(html).toContain('win +5');
+        expect(html).not.toContain('2×');
+    });
+
+    test('a manual pick beats a frozen default for the same week', () => {
+        const entry = { captains: [{ week: 1, teamId: 3, auto: true }, { week: 1, teamId: 1 }] };
+        expect(hg().captainFor(entry, 1)).toBe(1);
+        expect(hg().captainFor({ captains: [{ week: 1, teamId: 3, auto: true }] }, 1)).toBe(3);
+        expect(hg().captainFor({ captains: [{ week: 2, teamId: 3 }] }, 1)).toBeNull();
+    });
+
+    test('a paid game shows the quadrant it was banked at, not today\'s', () => {
+        const entry = { weeklyScore: [{ week: 1, scoreByTeam: [{ teamId: 1, gameId: 100, score: 5, quadrant: 1, oppRank: 20 }] }] };
+        const html = rowFor([withQ(G.final, 1, 3, 140)], entry, 1, 100, { values: VALUES });
+        expect(html).toContain('uh-hg-q q1');
+        expect(html).not.toContain('uh-hg-q q3');
+        // Final: the banked points stand, no "if won".
+        expect(html).not.toContain('win +');
+    });
+
+    test('no quadrant on the payload: no chip, no value', () => {
+        const html = rowFor([G.pre], SEASON_ENTRY, 1, 102, { values: VALUES });
+        expect(html).not.toContain('uh-hg-q');
+        expect(html).not.toContain('win +');
     });
 });

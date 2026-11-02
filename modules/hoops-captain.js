@@ -22,6 +22,8 @@ const { engagementForSeason } = require('./scoring-defaults');
 const ScoringConfig = require('../models/scoringConfig');
 
 const scoringPass = () => require('./hoops-scoring-pass');
+const teamPage = () => require('./hoops-team-page');
+const isFinalGame = (g) => scoringPass().isFinal({ status: g.status, homePoints: g.homePoints, awayPoints: g.awayPoints });
 
 // ---- the frozen default ------------------------------------------------------
 //
@@ -142,10 +144,25 @@ async function captainState({ userId, league, season, nowMs = Date.now() }) {
         .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
     const mine = new Set(teamIds);
     const oppIds = weekGames.flatMap(g => [g.homeId, g.awayId]).filter(id => id != null && !mine.has(Number(id)));
-    const [names, apPolls] = await Promise.all([
+    const [names, apPolls, quads, values, cfg] = await Promise.all([
         teamNames(season, oppIds),
-        hoopsAp.cachedPolls(season).catch(() => [])
+        hoopsAp.cachedPolls(season).catch(() => []),
+        // The Q chip and what a win would pay, read the way the team page
+        // reads them. Help for the pick, not the pick itself: a failed read
+        // costs the chips, never the picker.
+        teamPage().quadrantsForGames(season, weekGames.map(g => ({
+            id: g.id, week: g.week, seasonType: 'regular', neutralSite: g.neutralSite,
+            homeTeamId: g.homeId, awayTeamId: g.awayId,
+            status: g.status, homePoints: g.homePoints, awayPoints: g.awayPoints
+        }))).catch(err => {
+            console.error(`hoops captain ${league}: quadrants not read: ${err.message}`);
+            return {};
+        }),
+        teamPage().quadrantValues(league).catch(() => null),
+        ScoringConfig.findOne({ league }, { engagementBySeason: 1 }).lean()
     ]);
+    // A Captain pays its team's week this many times over (2 by default).
+    const multiplier = engagementForSeason(cfg && cfg.engagementBySeason, season).captainMultiplier;
     // The poll in force when the week's first game tips.
     const tips = weekGames.map(g => Date.parse(g.startDate)).filter(Number.isFinite);
     const apRanks = hoopsAp.ranksAt(apPolls, tips.length ? Math.min(...tips) : Date.now());
@@ -161,11 +178,23 @@ async function captainState({ userId, league, season, nowMs = Date.now() }) {
                 const isHome = Number(g.homeId) === tid;
                 const oppId = isHome ? g.awayId : g.homeId;
                 const opp = names[oppId];
+                const q = (quads[g.id] || {})[tid];
                 return {
                     gameId: g.id,
                     opp: (opp && (opp.abbreviation || opp.school)) || (isHome ? g.awayTeam : g.homeTeam) || '',
                     oppRank: rankOf(oppId),
-                    ha: isHome ? 'vs' : '@',
+                    // Graded on T-Rank then NET, NOT the AP rank beside the
+                    // name — so a Q1 can come against an unranked opponent.
+                    quadrant: q ? q.quadrant : null,
+                    quadrantRank: q ? q.rank : null,
+                    // What a win would pay with this team as Captain — only
+                    // while it is still to be won, so a locked week's total
+                    // counts what is left.
+                    winValue: q && values && !isFinalGame(g) && Number.isFinite(values[q.quadrant])
+                        ? values[q.quadrant] * multiplier : null,
+                    // 'N' on a neutral floor, as My Team's Games drawer marks
+                    // it — the quadrant beside it is graded on that venue.
+                    ha: g.neutralSite ? 'N' : isHome ? 'vs' : '@',
                     // The real tip, or null when TBD. `day` is the instant the
                     // game locks a pick (its Eastern day's start when TBD), so
                     // the picker can still say WHICH day an untimed game is.

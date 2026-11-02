@@ -127,6 +127,40 @@ describe('GET /users/me/captain on a basketball league', () => {
         expect(res.body.slate.find(s => s.teamId === 2).games).toHaveLength(1);
     });
 
+    test('each game carries its quadrant (venue-adjusted) and what a win pays as Captain', async () => {
+        require('../modules/hoops-team-page').clearRankCache();
+        // Ranked 60 on the list quadrants are graded on: Q2 at home, Q1 on the road.
+        await HoopsTeam.create({ id: 91, season: SEASON, school: 'Road Opp', abbreviation: 'ROD', preseason: { rank: 60 } });
+        await HoopsGame.create(hg(1, 91, '2099-11-07T00:30:00.000Z', { awayTeamId: 1, homeTeam: 'Road Opp', awayTeam: 'Team 1' }));
+        await HoopsGame.create(hg(1, 2, '2099-11-08T00:30:00.000Z', { awayTeamId: 91, awayTeam: 'Road Opp' }));
+        const res = await request(app).get('/users/me/captain').set('Cookie', cookie(HOOPS));
+        const games = (id) => res.body.slate.find(s => s.teamId === id).games;
+        // #3 at home is Q1 — graded on the preseason rank, not the AP #10 shown.
+        expect(games(1)[0]).toMatchObject({ opp: 'OPP', quadrant: 1, quadrantRank: 3, winValue: 10 });
+        expect(games(1)[1]).toMatchObject({ opp: 'ROD', ha: '@', quadrant: 1, quadrantRank: 60, winValue: 10 });
+        // The same opponent at home: Q2, paying 3 x the Captain's 2.
+        expect(games(2).find(g => g.opp === 'ROD')).toMatchObject({ ha: 'vs', quadrant: 2, winValue: 6 });
+        // A final game has nothing left to win: no value toward the total.
+        await HoopsGame.updateOne({ homeTeamId: 2, awayTeamId: 91 }, { $set: { status: 'final', homePoints: 70, awayPoints: 60 } });
+        const done = await request(app).get('/users/me/captain').set('Cookie', cookie(HOOPS));
+        expect(done.body.slate.find(s => s.teamId === 2).games.find(g => g.opp === 'ROD')).toMatchObject({ quadrant: 2, winValue: null });
+        // On a neutral floor the same #60 is a Q2 and reads 'N', not '@'.
+        await HoopsGame.updateMany({ homeTeamId: 91 }, { $set: { neutralSite: true } });
+        const again = await request(app).get('/users/me/captain').set('Cookie', cookie(HOOPS));
+        expect(again.body.slate.find(s => s.teamId === 1).games[1]).toMatchObject({ opp: 'ROD', ha: 'N', quadrant: 2, winValue: 6 });
+    });
+
+    test('a failed quadrant or config read costs the chips, never the picker', async () => {
+        const teamPage = require('../modules/hoops-team-page');
+        jest.spyOn(teamPage, 'quadrantsForGames').mockRejectedValue(new Error('ranks down'));
+        jest.spyOn(teamPage, 'quadrantValues').mockRejectedValue(new Error('config down'));
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const res = await request(app).get('/users/me/captain').set('Cookie', cookie(HOOPS));
+        expect(res.status).toBe(200);
+        const g = res.body.slate.find(s => s.teamId === 1).games[0];
+        expect(g).toMatchObject({ opp: 'OPP', oppRank: 10, quadrant: null, winValue: null });
+    });
+
     test('a football selection still gets the football picker', async () => {
         const res = await request(app).get('/users/me/captain?season=2026').set('Cookie', cookie(FOOTBALL));
         expect(res.status).toBe(200);

@@ -22,6 +22,10 @@ const leagueSelection = require('../modules/league-selection');
 const seasons = require('../modules/active-season');
 const visibility = require('../modules/hoops-visibility');
 const gamePage = require('../modules/hoops-game-page');
+const teamPage = require('../modules/hoops-team-page');
+const ScoringConfig = require('../models/scoringConfig');
+const { isModeGame } = require('../modules/hoops-modes');
+const { engagementForSeason } = require('../modules/scoring-defaults');
 const board = require('../modules/hoops-league-scoreboard');
 const boardHelpers = require('../modules/league-scoreboard');
 const hoopsAp = require('../modules/hoops-ap');
@@ -495,7 +499,8 @@ router.get('/teams/:season/:week', async (req, res) => {
         const FIELDS = {
             id: 1, week: 1, seasonType: 1, startDate: 1, startTimeTbd: 1, status: 1, neutralSite: 1,
             period: 1, clock: 1, homeTeamId: 1, homeTeam: 1, homePoints: 1,
-            awayTeamId: 1, awayTeam: 1, awayPoints: 1, gameNotes: 1, broadcasts: 1, _id: 0
+            awayTeamId: 1, awayTeam: 1, awayPoints: 1, gameNotes: 1, broadcasts: 1,
+            conferenceGame: 1, tournament: 1, _id: 0
         };
         const nowMs = Date.now();
         const listed = await HoopsGame.find({
@@ -528,7 +533,42 @@ router.get('/teams/:season/:week', async (req, res) => {
         teamDocs.forEach(t => { teams[t.id] = { school: t.school, abbr: t.abbreviation || null, logo: pickLogo(t.logos) || null }; });
 
         const shaped = board.shapeGames(games, { owners: {}, points: {}, teams, ranks: ranks || {}, nowMs });
-        res.json({ season, week, weeks, games: shaped });
+        const body = { season, week, weeks, games: shaped };
+        // My Team's drawer asks for each side's quadrant (?quadrants=1), and
+        // what a win in each pays in the viewer's league. Opt-in: Standings
+        // reads this route for every rostered team and shows no Q chip.
+        if (req.query.quadrants === '1' && games.length) {
+            try {
+                const league = await leagueSelection.selectedLeague(req).catch(() => '');
+                const basketball = !!league && seasons.sportForLeague(league) === 'basketball';
+                const [quads, values, cfg] = await Promise.all([
+                    teamPage.quadrantsForGames(season, games),
+                    basketball ? teamPage.quadrantValues(league) : null,
+                    basketball ? ScoringConfig.findOne({ league }, { engagementBySeason: 1 }).lean() : null
+                ]);
+                const mode = new Set(games.filter(isModeGame).map(g => g.id));
+                shaped.forEach(g => {
+                    // A conference-tournament game is a quadrant game that
+                    // Captain does NOT double (noModes in the scoring pass).
+                    g.modeGame = mode.has(g.id);
+                    const q = quads[g.id] || {};
+                    ['home', 'away'].forEach(side => {
+                        const mine = g[side] && q[g[side].id];
+                        if (!mine) return;
+                        g[side].quadrant = mine.quadrant;
+                        g[side].quadrantRank = mine.rank;
+                    });
+                });
+                body.quadrantValues = values;
+                // So the drawer can price its Captain's games at what they pay.
+                const eng = engagementForSeason(cfg && cfg.engagementBySeason, season);
+                body.captainMultiplier = eng.captainEnabled ? eng.captainMultiplier : null;
+            } catch (e) {
+                // The chips are help, not the list: the games still go out.
+                console.error(`hoops team games: quadrants not read: ${e && e.message}`);
+            }
+        }
+        res.json(body);
     } catch (err) {
         console.error(`hoops team games: ${err && err.message}`);
         res.status(500).json({ message: 'Could not load the games' });

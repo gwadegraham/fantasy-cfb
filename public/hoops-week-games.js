@@ -32,7 +32,7 @@
     function load(season, week, ids) {
         var list = (ids || []).filter(function (id) { return id != null; });
         var url = '/hoops/games/teams/' + encodeURIComponent(season) + '/' + encodeURIComponent(week)
-            + '?ids=' + encodeURIComponent(list.join(','));
+            + '?ids=' + encodeURIComponent(list.join(',')) + '&quadrants=1';
         return global.fetch(url, { headers: { Accept: 'application/json' } })
             .then(function (r) { return r.ok ? r.json() : null; })
             .catch(function () { return null; });
@@ -167,18 +167,67 @@
             }).join('') + '</select></label>';
     }
 
-    function rowHtml(entry, seasonEntry, week) {
+    // The team doubled this week, pick or frozen default — null if none.
+    function captainFor(seasonEntry, week) {
+        var mine = ((seasonEntry && seasonEntry.captains) || []).filter(function (c) {
+            return Number(c.week) === Number(week) && c.teamId != null;
+        });
+        var manual = mine.filter(function (c) { return !c.auto; })[0];
+        var pick = manual || mine[0];
+        return pick ? Number(pick.teamId) : null;
+    }
+
+    // The quadrant a game is graded at: what scoring banked it at once it
+    // has been paid (#502), else today's read from the server.
+    function quadrantOf(entry, seasonEntry, week) {
+        var weeks = (seasonEntry && seasonEntry.weeklyScore) || [];
+        for (var i = 0; i < weeks.length; i++) {
+            if (Number(weeks[i].week) !== Number(week)) continue;
+            var by = weeks[i].scoreByTeam || [];
+            for (var j = 0; j < by.length; j++) {
+                if (String(by[j].teamId) === String(entry.us.id) && String(by[j].gameId) === String(entry.game.id)
+                    && by[j].quadrant != null) {
+                    return { quadrant: Number(by[j].quadrant), rank: by[j].oppRank != null ? Number(by[j].oppRank) : null, banked: true };
+                }
+            }
+        }
+        var q = Number(entry.us.quadrant);
+        return q >= 1 && q <= 4 ? { quadrant: q, rank: entry.us.quadrantRank != null ? Number(entry.us.quadrantRank) : null, banked: false } : null;
+    }
+
+    function qChip(q) {
+        if (!q) return '';
+        var tip = 'Q' + q.quadrant + (q.rank ? ': opponent ranked #' + q.rank + ' (T-Rank, then NET), adjusted for venue' : '')
+            + (q.banked ? '' : '. As of today’s ranks');
+        return '<span class="uh-hg-q q' + q.quadrant + '" title="' + esc(tip) + '">Q' + q.quadrant + '</span>';
+    }
+
+    // opts: { values, captainMultiplier } from the week's payload.
+    function rowHtml(entry, seasonEntry, week, opts) {
         var g = entry.game, them = entry.them;
+        var o = opts || {};
         var r = result(entry);
         var pts = pointsFor(seasonEntry, week, entry.us.id, g.id);
         var ptsText = g.state === 'final' && pts != null ? (pts > 0 ? '+' + pts : String(pts)) : '';
+        var q = quadrantOf(entry, seasonEntry, week);
+        // A game still to play: what a win would pay, at the Captain's
+        // multiple if this team is the week's Captain.
+        var ifWon = '';
+        if (g.state !== 'final' && q && o.values && typeof o.values[q.quadrant] === 'number') {
+            // Never a conference-tournament game: Captain does not double those.
+            var cap = o.captainMultiplier && g.modeGame !== false && captainFor(seasonEntry, week) === Number(entry.us.id);
+            var v = Math.round(o.values[q.quadrant] * (cap ? o.captainMultiplier : 1) * 10) / 10;
+            ifWon = '<span class="uh-hg-if" title="If they win' + (cap ? ', as your Captain' : '') + '">win +' + v
+                + (cap ? ' <b>' + esc(o.captainMultiplier) + '×</b>' : '') + '</span>';
+        }
         var href = gameHref(g.id);
         return '<a class="sp-gr uh-hg-row' + (r.tone === 'up' ? ' up' : '') + '" href="' + href + '">'
             + '<span class="d">' + dayCell(g) + '</span>'
-            + '<span class="opp"><span class="nm"><span class="uh-hg-v">' + venueMark(entry.venue) + '</span>'
+            + '<span class="opp"><span class="nm">' + qChip(q) + '<span class="uh-hg-v">' + venueMark(entry.venue) + '</span>'
             + (them.logo ? '<img class="sp-ologo" src="' + esc(them.logo) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
             + esc(them.team) + '</span>'
-            + (g.notes && g.notes !== r.text ? '<span class="note">' + esc(g.notes) + '</span>' : '') + '</span>'
+            + (g.notes && g.notes !== r.text ? '<span class="note">' + esc(g.notes) + '</span>' : '')
+            + (ifWon ? '<span class="note">' + ifWon + '</span>' : '') + '</span>'
             + '<span class="res uh-hg-' + r.tone + '">' + esc(r.text) + '</span>'
             + '<span class="p' + (pts ? '' : ' z') + '">' + ptsText + '</span></a>';
     }
@@ -193,7 +242,9 @@
             if (!list.length) return;
             h += '<a class="sp-gr div uh-hg-team" href="' + teamHref(t.id) + '">'
                 + '<span><img class="sp-ologo" src="' + esc(opts.logoOf(t)) + '" alt="">' + esc(t.school) + '</span></a>';
-            list.forEach(function (e) { h += rowHtml(e, opts.seasonEntry, opts.week); });
+            list.forEach(function (e) {
+                h += rowHtml(e, opts.seasonEntry, opts.week, { values: opts.values, captainMultiplier: opts.captainMultiplier });
+            });
         });
         if (!h) return '<div class="sp-empty">No games for ' + esc(opts.poss) + ' teams this week.</div>';
         return '<div class="sp-card sp-games">' + h + '</div>';
@@ -230,7 +281,8 @@
             body.innerHTML = '<div class="uh-hg">' + pickerHtml(d.weeks, state.week)
                 + (state.note ? '<div class="sp-empty">' + esc(state.note) + '</div>' : '') + '<div uh-hg-list>'
                 + listHtml({ roster: opts.roster, games: d.games, seasonEntry: opts.seasonEntry,
-                    week: state.week, logoOf: opts.logoOf, poss: opts.poss }) + '</div></div>';
+                    week: state.week, logoOf: opts.logoOf, poss: opts.poss,
+                    values: d.quadrantValues, captainMultiplier: d.captainMultiplier }) + '</div></div>';
             var sel = body.querySelector('[uh-hg-week]');
             if (sel) sel.addEventListener('change', function () {
                 var listEl = body.querySelector('[uh-hg-list]');
@@ -268,6 +320,7 @@
     }
 
     var api = { load: load, byTeam: byTeam, pointsFor: pointsFor, periodLabel: periodLabel, result: result,
+        captainFor: captainFor, quadrantOf: quadrantOf,
         glanceHtml: glanceHtml, pickerHtml: pickerHtml, weekLabel: weekLabel, rowHtml: rowHtml, listHtml: listHtml, hydrate: hydrate };
     global.ccHoopsWeekGames = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
