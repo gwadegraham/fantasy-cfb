@@ -567,6 +567,19 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         expect(out.box).toMatchObject({ gameId: 500, home: { teamId: 1 }, away: { teamId: 2 } });
     });
 
+    test('a neutral site where ESPN\'s home is our away: sides matched on each team\'s ESPN id', async () => {
+        const espn = stubEspn();
+        // Duke (our home) is ESPN 87, which the fixture lists as AWAY.
+        await HoopsTeam.updateOne({ id: 1, season: SEASON }, { $set: { sourceId: '87' } });
+        await HoopsTeam.updateOne({ id: 2, season: SEASON }, { $set: { sourceId: '222' } });
+        await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress' } });
+        await gamePage.build(500);
+        const SUMMARY = require('./fixtures/espn-hoops-summary-401920982.json');
+        const out = espn.mock.calls[0][2](SUMMARY);
+        expect(out.box.home).toMatchObject({ teamId: 1, points: 74 });
+        expect(out.box.away).toMatchObject({ teamId: 2, points: 72 });
+    });
+
     test('a final past the batches\' lookback: no ESPN stand-in, since CBBD will never replace it', async () => {
         const espn = stubEspn();
         const p = await gamePage.build(500, { now: GAME.startDate.getTime() + boxScore.LOOKBACK_MS + 1 });

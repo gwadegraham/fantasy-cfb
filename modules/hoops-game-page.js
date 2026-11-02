@@ -122,7 +122,14 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
     // so the two pages give an unplayed game the same quadrant.
     const nowWeek = final ? null : await teamPage.currentWeek(yr);
     const rankWeek = final || nowWeek === null ? Number(game.week) : nowWeek;
-    const espnFor = () => espnSummary.summaryFor('basketball', game.sourceId, espnLive.shape(game)).then(r => r.value);
+    // Sides are matched on each team's ESPN id: at a neutral site ESPN's
+    // home can be CBBD's away (modules/hoops-espn-live.js).
+    const espnFor = async () => {
+        const ids = await HoopsTeam.find({ season: yr, id: { $in: [homeId, awayId] } }, { id: 1, sourceId: 1, _id: 0 }).lean();
+        const src = (teamId) => { const t = ids.find(x => Number(x.id) === teamId); return t && t.sourceId ? String(t.sourceId) : null; };
+        const r = await espnSummary.summaryFor('basketball', game.sourceId, espnLive.shape(game, { home: src(homeId), away: src(awayId) }));
+        return r.value;
+    };
     const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed, net, apPolls, shots, liveEspn] = await Promise.all([
         HoopsTeam.find({ season: yr, id: { $in: [homeId, awayId] } },
             { id: 1, school: 1, abbreviation: 1, mascot: 1, color: 1, alt_color: 1, logos: 1, _id: 0 }).lean(),
