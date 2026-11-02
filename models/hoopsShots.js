@@ -1,5 +1,6 @@
-// One basketball game's shot chart. Written once the game is final by
-// modules/hoops-shots.js (from CBBD /plays/game), only read by the game page.
+// One basketball game's shot chart and play log. Written once the game is
+// final by modules/hoops-shots.js (from CBBD /plays/game), only read by the
+// game page.
 //
 // Slim on purpose: located field-goal attempts only, already folded onto one
 // half court, in feet — ~120 shots, ~12 KB a game. Free throws carry no
@@ -23,6 +24,22 @@ const shotSchema = new mongoose.Schema({
     y: Number
 }, { _id: false });
 
+// One row of the gamecast's play log (modules/hoops-play-log.js), kept from
+// the same /plays/game answer the chart is made from: no extra CBBD call.
+// Substitutions are dropped; ~50 KB a game.
+const playSchema = new mongoose.Schema({
+    type: String,
+    text: String,
+    period: Number,
+    clock: String,
+    side: String,
+    home: Number,
+    away: Number,
+    points: Number,
+    wp: Number,
+    player: Boolean
+}, { _id: false });
+
 const hoopsShotsSchema = new mongoose.Schema({
     gameId: { type: Number, required: true, unique: true },
     season: Number,
@@ -30,6 +47,8 @@ const hoopsShotsSchema = new mongoose.Schema({
     // "102 of 110 charted" rather than passing a partial chart off as whole.
     attempts: { home: Number, away: Number },
     shots: [shotSchema],
+    // The play log for the game page's Gamecast tab, once the game is final.
+    log: [playSchema],
     // False until the plays match a stored box score's attempts. An
     // incomplete game is fetched again, up to MAX_FETCHES real answers.
     complete: { type: Boolean, default: false },

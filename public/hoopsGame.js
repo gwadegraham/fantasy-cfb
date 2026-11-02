@@ -18,6 +18,9 @@
     }
 
     var state = { tab: 'summary', side: 'away', adv: false };
+    // The Gamecast tab (public/hoopsGamecast.js): its play log, fetched apart
+    // from the page, and what the viewer has chosen inside it.
+    var gc = { plays: null, source: null, loading: false, chart: 'wp', pbp: 'all', open: {}, shot: null };
     var data = null;
 
     function when(g) {
@@ -40,10 +43,18 @@
         var meta = (status ? '<b' + (g.live ? ' class="live"' : '') + '>' + esc(status) + '</b>' + (!g.live && when(g) ? ' · ' + esc(when(g)) : '') : '<b>' + esc(countdown(g)) + '</b>')
             + (g.tournament ? ' · ' + esc(g.tournament) : g.notes ? ' · ' + esc(g.notes) : '')
             + (place ? '<br>' + place : '');
-        var side = function (t) {
+        // Live: team fouls this half and the bonus under each side, pinned
+        // to the bottom so a two-line name cannot knock them out of line.
+        var fouls = function (k) {
+            var f = g.live && d.fouls && d.fouls[k];
+            if (!f) return '';
+            return '<div class="hg-fouls"><span>' + f.fouls + ' foul' + (f.fouls === 1 ? '' : 's') + '</span>'
+                + (f.bonus ? '<b>' + (f.bonus === 'double' ? '2× Bonus' : 'Bonus') + '</b>' : '') + '</div>';
+        };
+        var side = function (t, k) {
             return '<div class="hg-side">' + teamLink(t, (t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '')
                 + '<div class="hg-nm">' + (t.rank ? '<small>' + t.rank + '</small>' : '') + esc(t.school).toUpperCase() + '</div>')
-                + (t.record ? '<div class="hg-rec">' + t.record.w + '–' + t.record.l + '</div>' : '') + '</div>';
+                + (t.record ? '<div class="hg-rec">' + t.record.w + '–' + t.record.l + '</div>' : '') + fouls(k) + '</div>';
         };
         var scored = g.final || (g.live && H.points != null && A.points != null);
         var homeWon = scored && H.points > A.points;
@@ -57,7 +68,7 @@
             : '<span class="vs">' + (g.neutralSite ? 'vs' : '@') + '</span>';
         return '<section class="sp-hero match hg-hero" style="--left:' + esc(A.color || '#343954') + ';--right:' + esc(H.color || '#343954') + '">'
             + '<div class="hg-meta">' + meta + '</div>'
-            + '<div class="hg-board">' + side(A) + '<div class="hg-score">' + score + '</div>' + side(H) + '</div>'
+            + '<div class="hg-board' + (g.live && d.fouls ? ' fouled' : '') + '">' + side(A, 'away') + '<div class="hg-score">' + score + '</div>' + side(H, 'home') + '</div>'
             + lineScore(d) + '</section>';
     }
 
@@ -516,11 +527,51 @@
     }
 
     function tabs(d) {
-        if (!d.box && !d.shots) return '';
-        var list = [['summary', 'Summary']];
-        if (d.box) list.push(['box', 'Box score']);
-        if (d.shots) list.push(['shots', 'Shot chart']);
+        if (!d.box && !d.shots && !d.gamecast) return '';
+        // Four tabs only fit a 375px phone with the short labels.
+        var four = d.gamecast && d.box && d.shots;
+        var list = d.gamecast ? [['gamecast', 'Gamecast'], ['summary', 'Summary']] : [['summary', 'Summary']];
+        if (d.box) list.push(['box', four ? 'Box' : 'Box score']);
+        if (d.shots) list.push(['shots', four ? 'Shots' : 'Shot chart']);
         return kit.tabs(list, state.tab);
+    }
+
+    // ---- gamecast --------------------------------------------------------
+
+    function gamecastPanel(d) {
+        if (!gc.plays) {
+            loadPlays();
+            return '<div class="sp-card sp-empty">Loading plays…</div>';
+        }
+        var key = window.ccHoopsGamecast.latestShot(gc.plays);
+        var animate = key !== gc.shot;
+        gc.shot = key;
+        return window.ccHoopsGamecast.panel(Object.assign({ gcSource: gc.source }, d), gc.plays, state.colors,
+            { chart: gc.chart, pbp: gc.pbp, open: gc.open, animate: animate });
+    }
+
+    function playsUrl(since) {
+        return '/hoops/games/' + encodeURIComponent(root.getAttribute('data-game-id')) + '/plays' + (since ? '?since=' + since : '');
+    }
+    // The log is fetched when the tab is first opened, then topped up with
+    // each live refresh: `since` brings only the newest plays (and a few
+    // before them, which ESPN still corrects).
+    function loadPlays(since) {
+        if (gc.loading) return Promise.resolve();
+        gc.loading = true;
+        return window.fetch(playsUrl(since), { headers: { Accept: 'application/json' } })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (b) {
+                gc.loading = false;
+                if (!b || !Array.isArray(b.plays)) { if (!gc.plays) gc.plays = []; return; }
+                // A partial answer from a different source (the final switching
+                // ESPN for CBBD) cannot be spliced: start again.
+                if (since && gc.source && b.source !== gc.source) { gc.plays = null; gc.source = null; return loadPlays(); }
+                gc.plays = since && gc.plays ? gc.plays.slice(0, b.from).concat(b.plays) : b.plays;
+                gc.source = b.source;
+                if (state.tab === 'gamecast' && data) paintPanel(true);
+            })
+            .catch(function () { gc.loading = false; if (!gc.plays) gc.plays = []; });
     }
 
     function panel(d) {
@@ -530,6 +581,7 @@
                 + (t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '') + esc(t.school) + '</button>';
         };
         var segs = '<div class="sp-seg">' + seg('away') + seg('home') + '</div>';
+        if (state.tab === 'gamecast' && d.gamecast) return gamecastPanel(d);
         if (state.tab === 'shots' && d.shots) return segs + shotChart(d) + espnNote(d, d.shots, true);
         // A live game keeps its preview under the stats; one with no box
         // yet is all preview.
@@ -557,11 +609,17 @@
             : chart ? 'Shot chart from ESPN.' : 'Early stats from ESPN. The official box score replaces them overnight.') + '</p>';
     }
 
-    function paintPanel() {
+    // `keepScroll`: new plays arriving keep the play list where it was.
+    function paintPanel(keepScroll) {
         state.pick = null;            // a new tab or side starts with nothing picked
+        var list = keepScroll === true ? root.querySelector('.hg-pbp-list') : null;
+        var top = list ? list.scrollTop : 0;
         var t = root.querySelector('.sp-tabs');
         if (t) t.outerHTML = tabs(data);
-        root.querySelector('.hg-panel').innerHTML = panel(data);
+        var host = root.querySelector('.hg-panel');
+        if (!host) return;
+        host.innerHTML = panel(data);
+        if (top && root.querySelector('.hg-pbp-list')) root.querySelector('.hg-pbp-list').scrollTop = top;
     }
 
     // `keep`: a live refresh repaints with the viewer's tab, team and box
@@ -574,10 +632,16 @@
         var scroller = refreshing ? root.querySelector('.hg-box-scroll') : null;
         var scrollLeft = scroller ? scroller.scrollLeft : 0;
         var pick = refreshing ? state.pick : null;
+        var pbpList = refreshing ? root.querySelector('.hg-pbp-list') : null;
+        var pbpTop = pbpList ? pbpList.scrollTop : 0;
+        // The game just went final: its log may now come from CBBD.
+        if (refreshing && data.game.live && d.game.final) { gc.plays = null; gc.source = null; }
         data = d;
         var h = (window.location.hash || '').replace('#', '');
-        if (!refreshing || (state.tab === 'box' && !d.box) || (state.tab === 'shots' && !d.shots)) {
-            state.tab = h === 'box' && d.box ? 'box' : h === 'shots' && d.shots ? 'shots' : 'summary';
+        if (!refreshing || (state.tab === 'box' && !d.box) || (state.tab === 'shots' && !d.shots) || (state.tab === 'gamecast' && !d.gamecast)) {
+            // A live game opens on its Gamecast; a final on its Summary.
+            state.tab = h === 'box' && d.box ? 'box' : h === 'shots' && d.shots ? 'shots'
+                : (h === 'gamecast' || (!h && d.game.live)) && d.gamecast ? 'gamecast' : 'summary';
         }
         // Open the box on the viewer's own team; failing that, the one side
         // somebody rosters; otherwise the left-hand (away) side, so the toggle
@@ -592,7 +656,7 @@
         // preview kept under the Summary.
         root.innerHTML = d.game.final
             ? hero(d) + fantasy(d) + netCard(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
-            : d.game.live && (d.box || d.shots)
+            : d.game.live && (d.box || d.shots || d.gamecast)
                 ? hero(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
                 : hero(d) + '<div class="hg-preview">' + preview(d) + '</div>';
         var title = document.querySelector('title');
@@ -600,6 +664,7 @@
         if (window.ccLeague && window.ccLeague.paint) window.ccLeague.paint();
         kit.countUp(root);
         if (scrollLeft && root.querySelector('.hg-box-scroll')) root.querySelector('.hg-box-scroll').scrollLeft = scrollLeft;
+        if (pbpTop && root.querySelector('.hg-pbp-list')) root.querySelector('.hg-pbp-list').scrollTop = pbpTop;
         state.pick = null;
         var floor = root.querySelector('.hg-shot-floor');
         if (pick && floor && pick.side === state.side && d.shots) {
@@ -705,6 +770,17 @@
             paintPanel();
             return;
         }
+        var chart = e.target.closest('[data-gc-chart]');
+        if (chart) { gc.chart = chart.getAttribute('data-gc-chart'); paintPanel(true); return; }
+        var which = e.target.closest('[data-gc-pbp]');
+        if (which) { gc.pbp = which.getAttribute('data-gc-pbp'); paintPanel(); return; }
+        var per = e.target.closest('[data-gc-per]');
+        if (per) {
+            var k = Number(per.getAttribute('data-gc-per'));
+            gc.open[k] = per.getAttribute('aria-expanded') !== 'true';
+            paintPanel(true);
+            return;
+        }
         var tab = e.target.closest('[data-tab]');
         if (tab) {
             state.tab = tab.getAttribute('data-tab');
@@ -738,7 +814,14 @@
     function refresh() {
         return window.fetch(url(), { headers: { Accept: 'application/json' } })
             .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (d) { if (d && d.game) { render(d, true); schedule(d); } else schedule(data); })
+            .then(function (d) {
+                if (d && d.game) {
+                    render(d, true);
+                    schedule(d);
+                    // The Gamecast tops up its log alongside the page.
+                    if (state.tab === 'gamecast' && gc.plays && gc.plays.length && d.game.live) loadPlays(gc.plays.length);
+                } else schedule(data);
+            })
             // A failed refresh keeps the page as it was and tries again.
             .catch(function () { schedule(data); });
     }

@@ -22,9 +22,9 @@ const stale = require('./hoops-stale-duplicates');
 const { outlets } = require('./hoops-media');
 const { latestNet } = require('./hoops-net');
 const shotCharts = require('./hoops-shots');
-// Namespaces, so a test can stand in for the ESPN call.
-const espnSummary = require('./espn-summary');
-const espnLive = require('./hoops-espn-live');
+// A namespace, so a test can stand in for the ESPN call.
+const gamecast = require('./hoops-gamecast');
+const playLog = require('./hoops-play-log');
 
 // A team's record through this game — what it was walking off the floor,
 // not what it is today.
@@ -122,15 +122,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
     // so the two pages give an unplayed game the same quadrant.
     const nowWeek = final ? null : await teamPage.currentWeek(yr);
     const rankWeek = final || nowWeek === null ? Number(game.week) : nowWeek;
-    // Sides are matched on each team's ESPN id: at a neutral site ESPN's
-    // home can be CBBD's away (modules/hoops-espn-live.js).
-    const espnFor = async () => {
-        const ids = await HoopsTeam.find({ season: yr, id: { $in: [homeId, awayId] } }, { id: 1, sourceId: 1, _id: 0 }).lean();
-        const src = (teamId) => { const t = ids.find(x => Number(x.id) === teamId); return t && t.sourceId ? String(t.sourceId) : null; };
-        const r = await espnSummary.summaryFor('basketball', game.sourceId, espnLive.shape(game, { home: src(homeId), away: src(awayId) }));
-        return r.value;
-    };
-    const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed, net, apPolls, shots, liveEspn] = await Promise.all([
+    const espnFor = () => gamecast.espnFor(game);
+    const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed, net, apPolls, shots, liveEspn, logged] = await Promise.all([
         HoopsTeam.find({ season: yr, id: { $in: [homeId, awayId] } },
             { id: 1, school: 1, abbreviation: 1, mascot: 1, color: 1, alt_color: 1, logos: 1, _id: 0 }).lean(),
         Number.isFinite(rankWeek) ? teamPage.cachedRanks(yr, rankWeek) : {},
@@ -145,7 +138,9 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         // A chart is optional: a bad one costs the tab, never the page.
         final ? shotCharts.forGame(game).catch(() => null) : null,
         // Live: ESPN's lines, fetched alongside the rest, not after it.
-        live && game.sourceId ? espnFor() : null
+        live && game.sourceId ? espnFor() : null,
+        // A final's Gamecast tab: CBBD's play log, stored with the chart.
+        final ? shotCharts.logFor(id).then(l => !!l).catch(() => false) : false
     ]);
     const byId = new Map(teams.map(t => [Number(t.id), t]));
     // ESPN fills what CBBD has not stored yet: everything while the game is
@@ -252,6 +247,10 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         quadrantValues: values,
         rescheduled: replaced ? { id: replaced.id, startDate: replaced.startDate, startTimeTbd: !!replaced.startTimeTbd } : null,
         box: boxed || (espn && espn.box) || null,
+        // Whether the Gamecast tab has a log to read (GET /:id/plays), and,
+        // live, each side's team fouls and bonus for the scoreboard.
+        gamecast: !!(espn && espn.plays) || !!logged,
+        fouls: live && espn && espn.plays ? playLog.teamFouls(espn.plays) : null,
         shots: shots || (espn && espn.shots) || null,
         preview
     };

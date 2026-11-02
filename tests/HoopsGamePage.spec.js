@@ -580,6 +580,47 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         expect(out.box.away).toMatchObject({ teamId: 2, points: 72 });
     });
 
+    test('live with ESPN plays: a Gamecast tab, and each side\'s team fouls and bonus for the scoreboard', async () => {
+        const foul = (side) => ({ type: 'PersonalFoul', side, period: 2 });
+        const plays = [].concat(Array.from({ length: 7 }, () => foul('away')), [foul('home')]);
+        stubEspn({ box: ESPN_BOX, shots: ESPN_SHOTS, plays });
+        await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress' } });
+        const p = await gamePage.build(500);
+        expect(p.gamecast).toBe(true);
+        expect(p.fouls).toEqual({ period: 2, home: { fouls: 1, bonus: 'single' }, away: { fouls: 7, bonus: null } });
+    });
+
+    test('live without plays yet, or ESPN down: no Gamecast tab, no fouls', async () => {
+        stubEspn();
+        await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress' } });
+        let p = await gamePage.build(500);
+        expect([p.gamecast, p.fouls]).toEqual([false, null]);
+        jest.restoreAllMocks();
+        stubEspn(null);
+        p = await gamePage.build(500);
+        expect([p.gamecast, p.fouls]).toEqual([false, null]);
+    });
+
+    test('a final: a Gamecast tab from CBBD\'s stored log, and no fouls line', async () => {
+        const espn = stubEspn();
+        await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
+        await HoopsShots.create({ gameId: 500, season: SEASON, complete: true, shots: [{ teamId: 1, made: true, x: 25, y: 6 }],
+            log: [{ type: 'JumpShot', text: 'x', period: 1, clock: '19:00', side: 'home', home: 2, away: 0 }] });
+        const p = await gamePage.build(500);
+        expect([p.gamecast, p.fouls]).toEqual([true, null]);
+        expect(espn).not.toHaveBeenCalled();
+    });
+
+    test('a stored log that cannot be read costs the Gamecast tab, never the page', async () => {
+        stubEspn();
+        jest.spyOn(require('../modules/hoops-shots'), 'logFor').mockRejectedValue(new Error('db down'));
+        await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
+        await HoopsShots.create({ gameId: 500, season: SEASON, complete: true, shots: [{ teamId: 1, made: true, x: 25, y: 6 }] });
+        const p = await gamePage.build(500);
+        expect(p.gamecast).toBe(false);
+        expect(p.home.school).toBe('Duke');
+    });
+
     test('a final past the batches\' lookback: no ESPN stand-in, since CBBD will never replace it', async () => {
         const espn = stubEspn();
         const p = await gamePage.build(500, { now: GAME.startDate.getTime() + boxScore.LOOKBACK_MS + 1 });

@@ -22,6 +22,7 @@ const leagueSelection = require('../modules/league-selection');
 const seasons = require('../modules/active-season');
 const visibility = require('../modules/hoops-visibility');
 const gamePage = require('../modules/hoops-game-page');
+const gamecast = require('../modules/hoops-gamecast');
 const teamPage = require('../modules/hoops-team-page');
 const ScoringConfig = require('../models/scoringConfig');
 const { isModeGame } = require('../modules/hoops-modes');
@@ -603,6 +604,26 @@ router.get('/:id/page', async (req, res) => {
     } catch (err) {
         console.error(`hoops game page ${req.params.id}: ${err && err.message}`);
         return res.status(500).json({ message: 'Could not load this game' });
+    }
+});
+
+// The Gamecast tab's play log (modules/hoops-gamecast.js): ESPN while the
+// game is on, CBBD's stored log once final. Read by the page every 15s while
+// live, so `?since=<plays it holds>` answers just the new tail.
+router.get('/:id/plays', async (req, res) => {
+    try {
+        if (!(await visibility.seesBasketball(req))) return res.status(404).json({ message: 'Not found' });
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id)) return res.status(400).json({ message: 'game id must be a number' });
+        const game = await HoopsGame.findOne({ id }, { id: 1, season: 1, status: 1, sourceId: 1, startDate: 1,
+            homeTeamId: 1, awayTeamId: 1, homePoints: 1, awayPoints: 1, _id: 0 }).lean();
+        if (!game) return res.status(404).json({ message: 'No such basketball game' });
+        const log = await gamecast.forGame(game);
+        if (!log) return res.json({ source: null, total: 0, from: 0, plays: [] });
+        return res.json(gamecast.slice(log, req.query.since));
+    } catch (err) {
+        console.error(`hoops game plays ${req.params.id}: ${err && err.message}`);
+        return res.status(500).json({ message: 'Could not load the plays' });
     }
 });
 
