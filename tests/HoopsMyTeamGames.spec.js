@@ -104,6 +104,44 @@ describe('GET /hoops/games/teams/:season/:week', () => {
         expect(res.body.games[1].neutralSite).toBe(true);
     });
 
+    test('?quadrants=1: each side\'s quadrant, venue-adjusted, and the league\'s win values', async () => {
+        require('../modules/hoops-team-page').clearRankCache();
+        await HoopsTeam.updateOne({ id: 3, season: SEASON }, { $set: { preseason: { rank: 40 } } });
+        jest.spyOn(leagueSelection, 'selectedLeague').mockResolvedValue(LEAGUE);
+        const res = await request(app).get(`/hoops/games/teams/${SEASON}/2?ids=1&quadrants=1`);
+        expect(res.status).toBe(200);
+        const [home, neutral] = res.body.games;
+        // Kansas, #40: a Q2 at home, a Q1 on a neutral floor.
+        expect(home.home).toMatchObject({ id: 1, quadrant: 2, quadrantRank: 40 });
+        expect(neutral.away).toMatchObject({ id: 1, quadrant: 1, quadrantRank: 40 });
+        // Duke is unranked here, so Kansas's side of it is a Q4.
+        expect(neutral.home).toMatchObject({ id: 3, quadrant: 4, quadrantRank: null });
+        expect(res.body.quadrantValues).toEqual({ 1: 5, 2: 3, 3: 1, 4: 0 });
+        // Captain is off by default, so nothing to multiply by.
+        expect(res.body.captainMultiplier).toBeNull();
+    });
+
+    test('?quadrants=1 with Captain on: the multiplier, and which games it can double', async () => {
+        const ScoringConfig = require('../models/scoringConfig');
+        await ScoringConfig.create({ league: LEAGUE, model: 'hoops', engagementBySeason: { [SEASON]: { captainEnabled: true, captainMultiplier: 3 } } });
+        await HoopsGame.create(game(23, 2, at(4), 1, 3, { conferenceGame: true, gameNotes: 'Big 12 Tournament - Quarterfinal' }));
+        jest.spyOn(leagueSelection, 'selectedLeague').mockResolvedValue(LEAGUE);
+        const res = await request(app).get(`/hoops/games/teams/${SEASON}/2?ids=1&quadrants=1`);
+        expect(res.body.captainMultiplier).toBe(3);
+        const byId = Object.fromEntries(res.body.games.map(g => [g.id, g]));
+        expect(byId[20].modeGame).toBe(true);
+        expect(byId[23].modeGame).toBe(false);
+    });
+
+    test('without ?quadrants=1 (Standings), no quadrant work and none on the payload', async () => {
+        const teamPage = require('../modules/hoops-team-page');
+        const spy = jest.spyOn(teamPage, 'quadrantsForGames');
+        const res = await request(app).get(`/hoops/games/teams/${SEASON}/2?ids=1`);
+        expect(res.body.games[0].home.quadrant).toBeUndefined();
+        expect(res.body.quadrantValues).toBeUndefined();
+        expect(spy).not.toHaveBeenCalled();
+    });
+
     test('a final carries its score', async () => {
         const res = await request(app).get(`/hoops/games/teams/${SEASON}/1?ids=1,2`);
         expect(res.body.games).toHaveLength(1);

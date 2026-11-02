@@ -117,6 +117,42 @@ async function quadrantValues(league) {
     return { 1: v.q1Win ?? null, 2: v.q2Win ?? null, 3: v.q3Win ?? null, 4: v.q4Win ?? null };
 }
 
+// Each side's quadrant for a batch of games, by the team page's own rule: a
+// final game against its own week's ranks, one still to play against the
+// latest week played. For the Captain picker and My Team's Games drawer,
+// which show the Q chip for games across many teams at once.
+//
+// `games` are stored rows (homeTeamId / awayTeamId / neutralSite / week /
+// seasonType), plus `final` where the caller already knows it. Returns
+// { [gameId]: { [teamId]: { quadrant, rank } } }. A postseason game has no
+// quadrant (null), as on the team page.
+async function quadrantsForGames(season, games) {
+    const yr = Number(season);
+    const nowWeek = await currentWeek(yr);
+    const final = (g) => (g.final != null ? !!g.final : isFinal(g));
+    const weekOf = (g) => (final(g) || nowWeek === null ? Number(g.week) : nowWeek);
+    const ranksByWeek = new Map();
+    await Promise.all([...new Set((games || []).map(weekOf).filter(Number.isFinite))]
+        .map(async wk => { ranksByWeek.set(wk, await cachedRanks(yr, wk)); }));
+    const out = {};
+    for (const g of games || []) {
+        const ranks = ranksByWeek.get(weekOf(g)) || {};
+        const postseason = String(g.seasonType || '').toLowerCase() === 'postseason';
+        const sides = {};
+        for (const [us, them] of [[g.homeTeamId, g.awayTeamId], [g.awayTeamId, g.homeTeamId]]) {
+            if (us == null) continue;
+            const rank = Number(ranks[String(them)]);
+            const venue = venueFor(Number(us), { homeId: g.homeTeamId, awayId: g.awayTeamId, neutralSite: g.neutralSite });
+            sides[us] = {
+                quadrant: postseason ? null : quadrantFor(rank, venue),
+                rank: Number.isFinite(rank) ? rank : null
+            };
+        }
+        out[g.id] = sides;
+    }
+    return out;
+}
+
 // Which franchise in `league` rosters this team, and what it has banked.
 async function ownership(league, season, teamId) {
     if (!league) return null;
@@ -336,4 +372,4 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
 
 module.exports = { build, standingsFrom, rankAmong, isConfTournament, clearRankCache, RANK_TTL_MS,
     // Shared with the game page (#503), so the two read ranks and owners the same way.
-    cachedRanks, ownership, quadrantValues, currentWeek };
+    cachedRanks, ownership, quadrantValues, currentWeek, quadrantsForGames };

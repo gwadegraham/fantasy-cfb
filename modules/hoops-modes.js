@@ -130,6 +130,8 @@ function captainShape(g) {
         awayId: g.awayTeamId,
         homeTeam: g.homeTeam,
         awayTeam: g.awayTeam,
+        // For the picker's Q chip: a neutral court moves the quadrant bands.
+        neutralSite: !!g.neutralSite,
         status: g.status,
         homePoints: g.homePoints,
         awayPoints: g.awayPoints,
@@ -152,7 +154,7 @@ async function captainGames(season, teamIds, weeks) {
         $or: [{ homeTeamId: { $in: ids } }, { awayTeamId: { $in: ids } }]
     }, {
         id: 1, week: 1, seasonType: 1, conferenceGame: 1, tournament: 1, gameNotes: 1,
-        homeTeamId: 1, awayTeamId: 1, homeTeam: 1, awayTeam: 1, status: 1,
+        homeTeamId: 1, awayTeamId: 1, homeTeam: 1, awayTeam: 1, status: 1, neutralSite: 1,
         homePoints: 1, awayPoints: 1, startDate: 1, startTimeTbd: 1, _id: 0
     }).lean();
     return rows.filter(isModeGame).map(captainShape);
