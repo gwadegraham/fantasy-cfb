@@ -9,7 +9,9 @@
 //   1. a games-live gate on the LOCAL schedule (0 CBBD calls), so empty days,
 //      the off-season and finished slates cost nothing;
 //   2. one QUOTA-FREE /scoreboard call per tick while a game is on, writing
-//      scores, status, half and clock (modules/hoops-scoreboard.js);
+//      scores, status, half and clock (modules/hoops-scoreboard.js), with
+//      ESPN's fresher running score and clock laid over it — CBBD still
+//      decides when a game is final (modules/hoops-espn-scoreboard.js);
 //   3. newly final games queue in their OWN completion batch
 //      (modules/completion-flush.js createCompletionFlush) and, once the cluster
 //      goes quiet, the heavy pass runs once: box scores for the window
@@ -21,12 +23,13 @@
 // Registered alongside football's poller, behind the same LIVE_POLL_ENABLED.
 // A JobRun is written only for a tick with a new final, a settled batch or an
 // error — not for a running score moving — so a game night is a handful of
-// rows, not one every 30 seconds.
+// rows, not one every 10 seconds.
 
 const HoopsGame = require('../models/hoopsGame');
 const cbbd = require('./cbbd-client');
 const seasons = require('./active-season');
 const scoreboard = require('./hoops-scoreboard');
+const espnBoard = require('./hoops-espn-scoreboard');
 const boxScore = require('./hoops-box-score');
 const shotCharts = require('./hoops-shots');
 const scoringPass = require('./hoops-scoring-pass');
@@ -122,8 +125,8 @@ function dispatchAlerts(applied) {
 }
 
 // The same error is recorded at most once per ERROR_EVERY_MS: an outage or
-// an id mismatch lasts the whole night, and one row per 30s tick would be
-// ~1,000 identical red rows on the shared free-tier cluster. A different
+// an id mismatch lasts the whole night, and one row per 10s tick would be
+// ~3,000 identical red rows on the shared free-tier cluster. A different
 // error, or any success, records at once.
 const ERROR_EVERY_MS = 15 * 60 * 1000;
 let lastError = null;
@@ -138,8 +141,17 @@ async function record(status, summary, nowMs = Date.now(), key = summary) {
     await jobLogger.finishRun(id, status, summary);
 }
 
+// An ESPN outage is logged once per ERROR_EVERY_MS too. It is not a JobRun
+// error: the tick still did its job from CBBD, only up to a minute slower.
+let lastEspnError = null;
+function noteEspnError(message, nowMs) {
+    if (lastEspnError && lastEspnError.message === message && nowMs - lastEspnError.at < ERROR_EVERY_MS) return;
+    lastEspnError = { message, at: nowMs };
+    console.log(`hoops-live: ESPN scoreboard unavailable, CBBD only: ${message}`);
+}
+
 // One tick at a time. A completion pass (box scores, then every league and
-// week rescored) can outlast the 30s cadence on the free-tier cluster; a
+// week rescored) can outlast the 10s cadence on the free-tier cluster; a
 // second tick starting under it would write the scoreboard and score
 // concurrently. A skipped tick costs nothing — the next one catches up.
 let running = false;
@@ -167,7 +179,8 @@ async function tick({ now = new Date() } = {}) {
         { startDate: 1, startTimeTbd: 1, status: 1, _id: 0 }
     ).lean();
     // football's gate reads `completed`; ours is the status we just filtered on
-    const live = anyGameInProgress(candidates.map(g => Object.assign({ completed: false }, g)), nowMs, MAX_GAME_HOURS);
+    const inWindow = candidates.filter(g => anyGameInProgress([Object.assign({ completed: false }, g)], nowMs, MAX_GAME_HOURS));
+    const live = inWindow.length > 0;
 
     if (!live) {
         if (!flush.pendingCount()) return { skipped: 'no game in progress' };
@@ -184,7 +197,11 @@ async function tick({ now = new Date() } = {}) {
         await record('error', `scoreboard: ${err.message}`, nowMs);
         return { error: err.message };
     }
-    const applied = await scoreboard.applyScoreboard(board.data);
+    // ESPN's fresher running numbers (modules/hoops-espn-scoreboard.js). Its
+    // failure costs speed, not the tick: CBBD's board still goes through.
+    const espn = await espnBoard.fetchLive(espnBoard.daysFor(inWindow));
+    if (espn.error) noteEspnError(espn.error, nowMs);
+    const applied = await scoreboard.applyScoreboard(board.data, { espn: espn.events });
     dispatchAlerts(applied);
     // Group new finals by week so the batch rescores the right weeks.
     const byWeek = new Map();
@@ -196,6 +213,8 @@ async function tick({ now = new Date() } = {}) {
     for (const b of byWeek.values()) flush.addPending(b.ids, { week: b.week, seasonType: b.seasonType }, nowMs);
 
     const bits = [`${applied.matched} of ${applied.rows} scoreboard games matched`, `${applied.updated} updated`];
+    if (applied.fromEspn) bits.push(`${applied.fromEspn} ahead on ESPN`);
+    if (espn.error) bits.push(`ESPN unavailable: ${espn.error}`);
     if (applied.newlyFinal.length) bits.push(`${applied.newlyFinal.length} final`);
 
     const verdict = flush.shouldFlush({ nowMs });
@@ -224,4 +243,4 @@ async function tick({ now = new Date() } = {}) {
     return { polled: true, summary, failed };
 }
 
-module.exports = { run, JOB_NAME, completionWork, dispatchAlerts, _flush: flush, ERROR_EVERY_MS, _resetErrors: () => { lastError = null; } };
+module.exports = { run, JOB_NAME, completionWork, dispatchAlerts, _flush: flush, ERROR_EVERY_MS, _resetErrors: () => { lastError = null; lastEspnError = null; } };

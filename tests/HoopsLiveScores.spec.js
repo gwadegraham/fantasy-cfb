@@ -16,6 +16,7 @@ jest.mock('../modules/push-notify', () => ({
 const pushNotify = require('../modules/push-notify');
 const { useMongo } = require('./helpers/mongo');
 const scoreboard = require('../modules/hoops-scoreboard');
+const espnBoard = require('../modules/hoops-espn-scoreboard');
 const livePoll = require('../modules/hoops-live-poll');
 const boxScore = require('../modules/hoops-box-score');
 const shotCharts = require('../modules/hoops-shots');
@@ -64,6 +65,9 @@ beforeEach(async () => {
     // Shot charts have their own tests (HoopsShots.spec.js); here they must
     // never reach CBBD or the roster lookup.
     jest.spyOn(shotCharts, 'ingestShots').mockResolvedValue({ games: 1, stored: 1 });
+    // ESPN's overlay has its own tests (HoopsEspnScoreboard.spec.js and the
+    // block below); by default it has nothing to say and never hits the network.
+    jest.spyOn(espnBoard, 'fetchDay').mockResolvedValue(new Map());
 });
 afterEach(() => { seasons._reset(); jest.restoreAllMocks(); delete process.env.LIVE_POLL_ENABLED; });
 
@@ -125,7 +129,7 @@ describe('applyScoreboard', () => {
     });
 
     test('nothing to apply', async () => {
-        expect(await scoreboard.applyScoreboard([])).toEqual({ rows: 0, matched: 0, mismatched: 0, updated: 0, newlyFinal: [], events: {} });
+        expect(await scoreboard.applyScoreboard([])).toEqual({ rows: 0, matched: 0, mismatched: 0, updated: 0, fromEspn: 0, newlyFinal: [], events: {} });
         expect(await scoreboard.applyScoreboard(null)).toMatchObject({ rows: 0 });
     });
 });
@@ -511,9 +515,9 @@ describe('the nightly safety net', () => {
 });
 
 describe('scheduling', () => {
-    test('the basketball poller rides the same opt-in as football\'s, every 30 seconds', () => {
+    test('the basketball poller rides the same opt-in as football\'s, every 10 seconds', () => {
         const { HOOPS_LIVE_POLL_SCHEDULE, JOB_SCHEDULES } = require('../modules/scheduler');
-        expect(HOOPS_LIVE_POLL_SCHEDULE).toMatchObject({ job: 'hoops-live', rule: { second: [0, 30] } });
+        expect(HOOPS_LIVE_POLL_SCHEDULE).toMatchObject({ job: 'hoops-live', rule: { second: [0, 10, 20, 30, 40, 50] } });
         expect(JOB_SCHEDULES.find(s => s.job === 'hoops-live')).toBeUndefined();     // not always-on
     });
 });
@@ -528,5 +532,100 @@ describe('the refresh\'s "games were due" guard', () => {
         await HoopsGame.create(game(20, { seasonType: 'postseason' }));
         expect((await hoopsGames.refreshResults({ season: SEASON, seasonType: 'regular', start, end })).code).toBe(200);
         expect((await hoopsGames.refreshResults({ season: SEASON, seasonType: 'postseason', start, end })).code).toBe(422);
+    });
+});
+
+describe('a live game never runs backwards', () => {
+    const live = { status: 'in_progress', homePoints: 60, awayPoints: 55, period: 2, clock: '5:00' };
+
+    test('an in-progress game is never sent back to scheduled (no second tip-off)', () => {
+        expect(scoreboard.updateFor(row(1, 'scheduled', 0, 0), live)).toBeNull();
+    });
+    test('fewer points at the same game time, or less game played, is ignored', () => {
+        expect(scoreboard.updateFor(row(1, 'in_progress', 58, 55, { clock: '5:00' }), live)).toBeNull();
+        expect(scoreboard.updateFor(row(1, 'in_progress', 60, 53, { clock: '5:00' }), live)).toBeNull();
+        expect(scoreboard.updateFor(row(1, 'in_progress', 60, 55, { clock: '6:10' }), live)).toBeNull();
+        expect(scoreboard.updateFor(row(1, 'in_progress', 60, 55, { period: 1, clock: '1:00' }), live)).toBeNull();
+    });
+    test('moving forward still writes; a row with no clock is judged on its half and points', () => {
+        expect(scoreboard.updateFor(row(1, 'in_progress', 62, 55, { clock: '4:30' }), live)).toMatchObject({ homePoints: 62, clock: '4:30' });
+        expect(scoreboard.updateFor(row(1, 'in_progress', 62, 55, { period: 1, clock: null }), live)).toBeNull();
+        const half = { status: 'in_progress', homePoints: 30, awayPoints: 28, period: 1, clock: '0:00' };
+        expect(scoreboard.updateFor(row(1, 'in_progress', 30, 28, { period: 1, clock: null }), half)).not.toBeNull();
+    });
+    // QA on this PR: refusing every lower score froze the clock for the rest
+    // of the game after one reviewed basket, and crunch time never fired.
+    test('a score correction goes through once the clock has moved on', () => {
+        expect(scoreboard.updateFor(row(1, 'in_progress', 59, 55, { clock: '4:40' }), live)).toMatchObject({ homePoints: 59, clock: '4:40' });
+    });
+    test('a final always goes through, even with a lower score than ESPN gave us', () => {
+        expect(scoreboard.updateFor(row(1, 'final', 59, 55), live)).toMatchObject({ status: 'final', homePoints: 59, homeWinner: true });
+    });
+});
+
+describe('ESPN laid over the CBBD scoreboard', () => {
+    const espnEvent = (home, away, o = {}) => Object.assign({
+        period: 2, clock: '6:10', home: { points: home, lineScores: [30, home - 30] }, away: { points: away, lineScores: [28, away - 28] }
+    }, o);
+    const espnMap = (entries) => new Map(Object.entries(entries));
+
+    test('ESPN tips a game CBBD still has scheduled, and the tip-off alert fires from it', async () => {
+        await HoopsGame.create(game(10, { sourceId: '401900010' }));
+        const out = await scoreboard.applyScoreboard([row(10, 'scheduled', 0, 0)],
+            { espn: espnMap({ 401900010: espnEvent(4, 2, { period: 1, clock: '18:40' }) }) });
+        expect(out).toMatchObject({ updated: 1, fromEspn: 1 });
+        expect(out.events[10]).toEqual([expect.objectContaining({ type: 'tipoff' })]);
+        expect(await HoopsGame.findOne({ id: 10 }).lean()).toMatchObject({ status: 'in_progress', homePoints: 4, awayPoints: 2, period: 1, clock: '18:40' });
+    });
+
+    test('a running game takes ESPN\'s newer score and clock; the next CBBD-only tick cannot undo it', async () => {
+        await HoopsGame.create(game(11, { sourceId: '401900011', status: 'in_progress', homePoints: 50, awayPoints: 48, period: 2, clock: '8:43' }));
+        await scoreboard.applyScoreboard([row(11, 'in_progress', 50, 48)], { espn: espnMap({ 401900011: espnEvent(55, 50) }) });
+        expect(await HoopsGame.findOne({ id: 11 }).lean()).toMatchObject({ homePoints: 55, awayPoints: 50, clock: '6:10' });
+        // ESPN down this tick: CBBD's older row arrives alone and is ignored.
+        const out = await scoreboard.applyScoreboard([row(11, 'in_progress', 52, 48, { clock: '7:30' })]);
+        expect(out.updated).toBe(0);
+        expect(await HoopsGame.findOne({ id: 11 }).lean()).toMatchObject({ homePoints: 55, clock: '6:10' });
+    });
+
+    test('ESPN never makes a game final — CBBD\'s final is what queues the scoring', async () => {
+        await HoopsGame.create(game(12, { sourceId: '401900012', status: 'in_progress', homePoints: 70, awayPoints: 66, period: 2, clock: '0:30' }));
+        const out = await scoreboard.applyScoreboard([row(12, 'in_progress', 70, 66, { clock: '0:30' })],
+            { espn: espnMap({ 401900012: espnEvent(74, 68, { clock: '0:00' }) }) });
+        expect(out.newlyFinal).toEqual([]);
+        expect((await HoopsGame.findOne({ id: 12 }).lean()).status).toBe('in_progress');
+        const fin = await scoreboard.applyScoreboard([row(12, 'final', 74, 68)], { espn: espnMap({ 401900012: espnEvent(74, 68, { clock: '0:00' }) }) });
+        expect(fin.newlyFinal.map(g => g.id)).toEqual([12]);
+    });
+
+    test('a game with no sourceId, or one ESPN does not list, is CBBD\'s alone', async () => {
+        await HoopsGame.create([game(13), game(14, { sourceId: '401900014' })]);
+        const out = await scoreboard.applyScoreboard([row(13, 'in_progress', 10, 8), row(14, 'in_progress', 12, 9)],
+            { espn: espnMap({ 999: espnEvent(40, 30) }) });
+        expect(out).toMatchObject({ updated: 2, fromEspn: 0 });
+        expect(await HoopsGame.findOne({ id: 13 }).lean()).toMatchObject({ homePoints: 10 });
+    });
+
+    test('the poller asks ESPN for the live game\'s Eastern day and applies what it says', async () => {
+        await HoopsGame.create(game(15, { sourceId: '401900015' }));
+        jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [row(15, 'scheduled', 0, 0)] });
+        espnBoard.fetchDay.mockResolvedValue(espnMap({ 401900015: espnEvent(6, 3, { period: 1, clock: '17:00' }) }));
+        const out = await livePoll.run({ now: DURING });
+        expect(espnBoard.fetchDay).toHaveBeenCalledWith('2026-11-17');      // TIP is 7 PM Eastern on the 17th
+        expect(out.summary).toContain('1 ahead on ESPN');
+        expect(await HoopsGame.findOne({ id: 15 }).lean()).toMatchObject({ status: 'in_progress', homePoints: 6 });
+    });
+
+    test('an ESPN outage costs nothing but speed: CBBD still applies, no JobRun error, logged once', async () => {
+        await HoopsGame.create(game(16, { sourceId: '401900016' }));
+        jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [row(16, 'in_progress', 20, 18)] });
+        espnBoard.fetchDay.mockRejectedValue(new Error('ESPN scoreboard 2026-11-17 503'));
+        const out = await livePoll.run({ now: DURING });
+        expect(out.failed).toBeNull();
+        expect(out.summary).toContain('ESPN unavailable: ESPN scoreboard 2026-11-17 503');
+        expect(await HoopsGame.findOne({ id: 16 }).lean()).toMatchObject({ homePoints: 20 });
+        await livePoll.run({ now: new Date(DURING.getTime() + 10000) });
+        expect(console.log.mock.calls.filter(c => String(c[0]).includes('ESPN scoreboard unavailable'))).toHaveLength(1);
+        expect(logged.filter(l => l.status === 'error')).toEqual([]);
     });
 });

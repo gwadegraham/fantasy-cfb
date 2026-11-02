@@ -249,6 +249,14 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // ESPN's running score laid over CBBD's: the branches are ESPN never
+        // finalising, never going backwards, and a failed day failing safe.
+        "./modules/hoops-espn-scoreboard.js": {
+            statements: 100,
+            branches: 90,
+            functions: 100,
+            lines: 100
+        },
         // The basketball AP poll: display only, beside team names. ONE billable
         // call a day; the branches that matter are the dropped rows (receiving
         // votes, other polls) and which poll is in force on a given night.

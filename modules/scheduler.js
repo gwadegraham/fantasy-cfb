@@ -120,13 +120,15 @@ const LIVE_POLL_SCHEDULE = {
     rule: { second: [0, 10, 20, 30, 40, 50] }
 };
 
-// Basketball's live poller (#505), behind the same opt-in. 30s rather than
-// football's 10s: no basketball surface shows a running clock yet, so the
-// only thing a faster tick would buy is a final noticed a few seconds sooner —
-// and finals are batched for two minutes regardless (completion-flush).
+// Basketball's live poller (#505), behind the same opt-in. 10s, like
+// football's: the game page, Scores and My Team now show a running clock, and
+// ESPN's running numbers move every 12-21s (modules/hoops-espn-scoreboard.js),
+// so a 30s tick would sit on them. Finals are still batched for two minutes
+// regardless (completion-flush). Costs nothing: CBBD's /scoreboard is
+// quota-free and ESPN's has no quota.
 const HOOPS_LIVE_POLL_SCHEDULE = {
     job: 'hoops-live', modulePath: '../modules/hoops-live-poll',
-    rule: { second: [0, 30] }
+    rule: { second: [0, 10, 20, 30, 40, 50] }
 };
 
 function livePollEnabled() { return process.env.LIVE_POLL_ENABLED === 'true'; }
