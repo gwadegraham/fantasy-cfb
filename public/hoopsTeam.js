@@ -291,6 +291,20 @@
             + '</div></div>';
     }
 
+    // What a win would pay this league: "+5 if won", or in the viewer's
+    // Captain week "+10 if won · 2×" (#635). Only the win is multiplied —
+    // a loss penalty never is — and the server never marks a conference
+    // tournament game as a Captain game.
+    function isCaptain(d, g) { return !!(g.captain && d.captainMultiplier); }
+    function ifWon(d, g) {
+        var vals = d.quadrantValues || {};
+        var v = g.quadrant && vals[g.quadrant];
+        if (!v) return '';
+        if (!isCaptain(d, g)) return '+' + v + ' if won';
+        return '+' + Math.round(v * d.captainMultiplier * 10) / 10 + ' if won · <b class="ht-cap" title="Your Captain this week">'
+            + esc(d.captainMultiplier) + '×</b>';
+    }
+
     // The next game, one tap from its preview: when, where, who, and what a
     // win there pays this manager's league.
     // A game more than this far past its tip with no final (cancelled, or
@@ -302,9 +316,8 @@
         var startOf = function (x) { return x.startDate ? new Date(x.startDate).getTime() : NaN; };
         var g = d.games.filter(function (x) { return !x.final && !(now - startOf(x) > STALE_TIP_MS); })[0];
         if (!g) return '';
-        var vals = d.quadrantValues || {};
         var o = g.opponent;
-        var pay = g.quadrant && vals[g.quadrant] ? '+' + vals[g.quadrant] + ' if won' : '';
+        var pay = ifWon(d, g);
         var card = '<a class="sp-card ht-next" href="/hoops/game/' + encodeURIComponent(g.id) + '">'
             // Tipped and not final: it is being played, not "awaiting" anything.
             + '<div class="ht-next-when">' + (!g.startTimeTbd && now >= startOf(g) ? 'Under way' : 'Next up · ' + esc(kit.countdown(g, now))) + '</div>'
@@ -315,7 +328,8 @@
             + (g.quadrant ? qChip(g)
                 : '<span class="ht-qt post">' + esc(g.tournament || 'Post') + '</span>')
             + (pay ? '<span class="ht-next-pay">' + pay + '</span>' : '') + '</div>'
-            + (g.notes ? '<div class="ht-next-note">' + esc(g.notes) + '</div>' : '') + '</a>';
+            + (g.notes ? '<div class="ht-next-note">' + esc(g.notes) + '</div>' : '')
+            + (isCaptain(d, g) ? '<div class="ht-next-cap">Your Captain this week</div>' : '') + '</a>';
         // Its ESPN preview finds it by ESPN's game id (public/team-news.js).
         return window.ccTeamNews ? window.ccTeamNews.nextWrap(card, g.espnId) : card;
     }
@@ -386,10 +400,9 @@
     }
 
     function gameRow(d, g) {
-        var vals = d.quadrantValues || {};
         var res = g.final
             ? '<span class="' + (won(g) ? 'sp-w' : 'sp-l') + '">' + (won(g) ? 'W' : 'L') + '</span> ' + g.us + '–' + g.them
-            : (vals[g.quadrant] ? '+' + vals[g.quadrant] + ' if won' : '');
+            : ifWon(d, g);
         var pts = g.final && g.points != null ? (g.points > 0 ? '+' + g.points : String(g.points)) : '';
         var gameHref = '/hoops/game/' + encodeURIComponent(g.id);
         return '<div class="sp-gr' + (g.final ? '' : ' up') + '"><a class="d" href="' + gameHref + '">' + kit.dayOf(g) + '</a>'
@@ -540,6 +553,6 @@
         document.fonts.ready.then(function () { if (data) fitSchools(); }).catch(function () {});
     }
 
-    window.ccHoopsTeam = { render: render, load: load, state: state, netDay: netDay, styleTags: styleTags, turnover: turnover };
+    window.ccHoopsTeam = { render: render, ifWon: ifWon, load: load, state: state, netDay: netDay, styleTags: styleTags, turnover: turnover };
     load();
 })();

@@ -382,6 +382,107 @@ describe('build', () => {
     });
 });
 
+// The viewer's Captain (#635): a game still to play in the week the
+// viewer has captained this team shows the doubled win.
+describe('the viewer\'s Captain', () => {
+    const upcoming = (id, week, o = {}) => game(id, week, 1, 2, Object.assign({ status: 'scheduled', homePoints: null, awayPoints: null }, o));
+    async function captainOwner({ captains = [], weeklyScore = [], enabled = true } = {}) {
+        const a = await Account.create({ firstName: 'Garrett', lastName: 'G', email: 'cap@example.invalid' });
+        // Army first: with nothing scored yet, the auto-captain is the first team.
+        await Franchise.create({ accountId: a._id, league: LEAGUE,
+            seasons: [{ season: SEASON, franchiseName: 'Hoop Dreams',
+                teamRefs: [3, 1].map(id => ({ id, sport: 'basketball' })), captains, weeklyScore }] });
+        await ScoringConfig.collection.insertOne({ league: LEAGUE, model: 'hoops', disabled: [], enabled: [],
+            engagementBySeason: { [SEASON]: { captainEnabled: enabled, captainMultiplier: 2 } } });
+        await HoopsGame.create([
+            game(10, 1, 1, 3),
+            upcoming(20, 2),
+            upcoming(21, 2, { neutralSite: true, conferenceGame: true, gameNotes: 'ACC Tournament - First Round' }),
+            upcoming(30, 3)
+        ]);
+        return String(a._id);
+    }
+    const flags = (p) => Object.fromEntries(p.games.map(g => [g.id, g.captain]));
+
+    test('a manual pick doubles that week\'s games — never a final, a conference tournament game, or another week', async () => {
+        const viewerId = await captainOwner({ captains: [{ week: 2, teamId: 1 }] });
+        const p = await teamPage.build(1, { season: SEASON, league: LEAGUE, viewerId });
+        expect(p.captainMultiplier).toBe(2);
+        expect(flags(p)).toEqual({ 10: false, 20: true, 21: false, 30: false });
+    });
+
+    test('someone else\'s page shows nothing doubled, and so does no viewer', async () => {
+        await captainOwner({ captains: [{ week: 2, teamId: 1 }] });
+        for (const viewerId of ['someone-else', null]) {
+            const p = await teamPage.build(1, { season: SEASON, league: LEAGUE, viewerId });
+            expect(p.captainMultiplier).toBeNull();
+            expect(Object.values(flags(p)).some(Boolean)).toBe(false);
+        }
+    });
+
+    test('a frozen default counts as the pick; a manual pick beside it wins', async () => {
+        const viewerId = await captainOwner({ captains: [
+            { week: 2, teamId: 1, auto: true },
+            { week: 3, teamId: 1, auto: true }, { week: 3, teamId: 3 }
+        ] });
+        const p = await teamPage.build(1, { season: SEASON, league: LEAGUE, viewerId });
+        expect(flags(p)).toMatchObject({ 20: true, 30: false });
+    });
+
+    test('nothing picked or frozen: the auto-captain from the weeks before, up to the week the picker offers', async () => {
+        const viewerId = await captainOwner({ weeklyScore: [{ week: 1, score: 5,
+            scoreByTeam: [{ teamId: 1, gameId: 10, score: 5 }, { teamId: 3, gameId: 10, score: 0 }] }] });
+        // Week 1 locked (10 Nov), week 2 still to lock (17 Nov): the picker offers week 2.
+        const now = Date.UTC(2026, 10, 16);
+        const p = await teamPage.build(1, { season: SEASON, league: LEAGUE, viewerId, now });
+        // Week 3 has no pick yet, so nothing there reads 2× — not even the default.
+        expect(flags(p)).toMatchObject({ 20: true, 30: false });
+        // Army was the default only in week 1, which is played: nothing left to double.
+        const army = await teamPage.build(3, { season: SEASON, league: LEAGUE, viewerId, now });
+        expect(army.captainMultiplier).toBeNull();
+    });
+
+    test('every week played out: the auto-captain still resolves, as a missed freeze is scored', async () => {
+        const viewerId = await captainOwner({ weeklyScore: [{ week: 1, score: 5,
+            scoreByTeam: [{ teamId: 1, gameId: 10, score: 5 }] }] });
+        // Past every lock there is no week on offer; games 20 and 30 are late, not stale.
+        const p = await teamPage.build(1, { season: SEASON, league: LEAGUE, viewerId, now: Date.UTC(2026, 10, 24, 6) });
+        expect(flags(p)).toMatchObject({ 20: true, 30: true });
+    });
+
+    test('a failed Captain read costs the 2×, not the page', async () => {
+        const viewerId = await captainOwner({ captains: [{ week: 2, teamId: 1 }] });
+        jest.spyOn(HoopsGame, 'aggregate').mockRejectedValue(new Error('M0 hiccup'));
+        const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const p = await teamPage.build(1, { season: SEASON, league: LEAGUE, viewerId });
+        expect(p.captainMultiplier).toBeNull();
+        expect(p.games).toHaveLength(4);
+        expect(err).toHaveBeenCalledWith(expect.stringContaining('Captain not read'));
+    });
+
+    test('a league not playing Captain doubles nothing', async () => {
+        const viewerId = await captainOwner({ captains: [{ week: 2, teamId: 1 }], enabled: false });
+        const p = await teamPage.build(1, { season: SEASON, league: LEAGUE, viewerId });
+        expect(p.captainMultiplier).toBeNull();
+        expect(flags(p)[20]).toBe(false);
+    });
+
+    test('the route reads the viewer from the Auth0 profile', async () => {
+        const viewerId = await captainOwner({ captains: [{ week: 2, teamId: 1 }] });
+        jest.spyOn(leagueSelection, 'viewableBy').mockResolvedValue([LEAGUE]);
+        jest.spyOn(leagueSelection, 'selectedLeague').mockResolvedValue(LEAGUE);
+        const app = express();
+        app.use((req, _res, next) => { req.effUser = { user_metadata: { metadata: { userId: viewerId } } }; next(); });
+        app.use('/hoops/teams', require('../routes/hoopsTeams'));
+        const res = await request(app).get('/hoops/teams/1/page');
+        expect(res.status).toBe(200);
+        expect(res.body.captainMultiplier).toBe(2);
+        expect(res.body.games.find(g => g.id === 20).captain).toBe(true);
+        // The owner's roster entry stays on the server.
+        expect(JSON.stringify(res.body)).not.toContain('captains');
+    });
+});
+
 describe('GET /hoops/teams/:id/page', () => {
     const app = express();
     app.use('/hoops/teams', require('../routes/hoopsTeams'));
