@@ -541,6 +541,9 @@
     flex-shrink: 0;
     box-shadow: 0 0 0 1px var(--cc-border-2);
 }
+/* Your own teams' badges (#638): a violet ring, so "which of these is me?"
+   has an answer without reading initials. */
+.sb-owner.is-me .sb-owner-chip { box-shadow: 0 0 0 2px var(--cc-interactive); }
 .sb-owner-chip img {
     width: 100%;
     height: 100%;

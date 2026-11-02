@@ -536,7 +536,8 @@ async function hydratePreseasonModes(user, activeYear) {
     tile.hidden = false;
 }
 
-// Roster → Roster tile. Glance shows your top performer; drawer lists all teams
+// Roster → Roster tile. Glance shows your top performers — or, before any
+// points, each team's next game (uhRosterNextUp); drawer lists all teams
 // as cards (points + share bar) then the full week-by-week grid (reused
 // displayTeams). Sums per-team points from this season's weekly scoreByTeam.
 function hydrateRoster(user, activeYear) {
@@ -556,7 +557,9 @@ function hydrateRoster(user, activeYear) {
     if (g) {
         g.innerHTML = top && top.pts > 0
             ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => `<a href="/team?team=${c.t.id}" class="uh-rg-row" style="color:inherit;text-decoration:none"><img src="${ccLogo(c.t.logos)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></a>`).join('')}</span>`
-            : (uhOwns(user) ? 'Your 10 teams' : 'Their 10 teams');
+            : uhRosterLogosHtml(teams, uhOwns(user));
+        // Nothing banked yet (#638): what is coming beats an empty ranking.
+        if (!(top && top.pts > 0)) uhRosterNextUp(g, season, teams, activeYear);
     }
 
     uhDrawer.roster = (body) => {
@@ -579,6 +582,39 @@ function hydrateRoster(user, activeYear) {
             body.querySelectorAll('[data-view-panel]').forEach(p => { p.hidden = p.getAttribute('data-view-panel') !== v; });
         }));
     };
+}
+
+// The roster as a strip of logos — the glance when there is nothing to rank
+// and no game to show.
+function uhRosterLogosHtml(teams, own) {
+    const logos = teams.map(t => `<img src="${ccLogo(t.logos)}" alt="" title="${escapeHtml(t.school || '')}">`).join('');
+    return `<span class="uh-games-logos">${logos}</span><span class="uh-glance-sub uh-games-wk">${uhPoss(own, true)} ${teams.length} teams</span>`;
+}
+
+// Before any points: each team's next game this week as logo rows —
+// [logo] [2×] vs [logo] · tip — from the basketball week the Games tile reads.
+// Basketball only: football's week payload carries no opponent logos, and its
+// pre-points window is the offseason. Any failure keeps the logo strip.
+async function uhRosterNextUp(glance, season, teams, activeYear) {
+    const hw = window.ccHoopsWeekGames, nu = window.ccRosterNextUp;
+    if (!hw || !nu || !(window.ccLeague && window.ccLeague.sport && window.ccLeague.sport() === 'basketball')) return;
+    try {
+        const cw = window.ccCurrentWeek;
+        const week = (cw && cw.get ? await cw.get(activeYear).catch(() => null) : null) || 1;
+        const d = await hw.load(activeYear, week, teams.map(t => t.id));
+        if (!d) return;
+        // A repaint (season pill) while this was loading replaced the tile.
+        if (!glance.isConnected) return;
+        // No multiplier = Captain is off in this league: no 2× on anything.
+        const list = nu.rows(teams, d.games, d.captainMultiplier ? hw.captainFor(season, week) : null);
+        const html = nu.html(list, { logoOf: t => ccLogo(t.logos), multiplier: d.captainMultiplier });
+        if (!html) return;
+        glance.innerHTML = html;
+        // Nothing here is a "top performer" yet; say what the tile shows.
+        const tile = glance.closest('.uh-tile');
+        const label = tile && tile.querySelector('.uh-tlabel');
+        if (label && label.firstChild && label.firstChild.nodeType === 3) label.firstChild.nodeValue = 'Roster · next up';
+    } catch (e) { /* keep the logo strip */ }
 }
 
 // Trajectory → Trajectory tile. Glance shows total points; drawer hosts the
