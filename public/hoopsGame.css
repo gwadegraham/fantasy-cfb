@@ -179,3 +179,4 @@ a.hg-meet { grid-template-columns: 52px 1fr; }
 .hg-box.adv tr.hl-row td.hl-x { background-image: linear-gradient(rgba(255, 255, 255, .24), rgba(255, 255, 255, .24));
     color: var(--cc-text); font-weight: 700; }
 
+.hg-src { font-size: 11px; color: var(--cc-muted-2); text-align: center; margin: 10px 0 0; }

@@ -530,15 +530,35 @@
                 + (t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '') + esc(t.school) + '</button>';
         };
         var segs = '<div class="sp-seg">' + seg('away') + seg('home') + '</div>';
-        if (state.tab === 'shots' && d.shots) return segs + shotChart(d);
-        if (!d.box) return noBox(d);
-        if (state.tab === 'box') return segs + boxTable(d);
-        return '<h2 class="sp-h">Keys to the game<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="sp-card">' + factors(d) + '</div>'
-            + '<h2 class="sp-h">Team stats' + (d.box.pace ? '<small>' + fixed(d.box.pace, 0) + ' possessions</small>' : '') + '</h2><div class="sp-card">' + teamStats(d) + '</div>'
-            + '<h2 class="sp-h">Leaders</h2>' + leaders(d);
+        if (state.tab === 'shots' && d.shots) return segs + shotChart(d) + espnNote(d, d.shots, true);
+        // A live game keeps its preview under the stats; one with no box
+        // yet is all preview.
+        var after = d.game.live ? '<div class="hg-preview">' + preview(d) + '</div>' : '';
+        if (!d.box) return d.game.live ? after : noBox(d);
+        if (state.tab === 'box') return segs + boxTable(d) + espnNote(d, d.box);
+        // The four factors explain a final; ESPN's lines carry only one of
+        // them, so a stand-in box waits for CBBD's.
+        var keys = d.game.final && d.box.source !== 'espn' ? factors(d) : '';
+        var stats = '<h2 class="sp-h">Team stats' + (d.box.pace ? '<small>' + fixed(d.box.pace, 0) + ' possessions</small>' : '') + '</h2><div class="sp-card">' + teamStats(d) + '</div>';
+        var top = '<h2 class="sp-h">Leaders</h2>' + leaders(d);
+        // Mid-game the question is who is going off: leaders first, then
+        // the fourteen team rows.
+        return (keys.length > vsHead(d).length ? '<h2 class="sp-h">Keys to the game<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="sp-card">' + keys + '</div>' : '')
+            + (d.game.live ? top + stats : stats + top) + espnNote(d, d.box) + after;
+    }
+
+    // Lines from ESPN stand in until CBBD's post-game data is stored
+    // (modules/hoops-espn-live.js); say so, and that they will change.
+    // A final's box always gets CBBD's; its chart only for a drafted team
+    // (modules/hoops-shots.js), so the chart's note promises nothing.
+    function espnNote(d, src, chart) {
+        if (!src || src.source !== 'espn') return '';
+        return '<p class="hg-src">' + (d.game.live ? 'Live stats from ESPN.'
+            : chart ? 'Shot chart from ESPN.' : 'Early stats from ESPN. The official box score replaces them overnight.') + '</p>';
     }
 
     function paintPanel() {
+        state.pick = null;            // a new tab or side starts with nothing picked
         var t = root.querySelector('.sp-tabs');
         if (t) t.outerHTML = tabs(data);
         root.querySelector('.hg-panel').innerHTML = panel(data);
@@ -548,6 +568,12 @@
     // mode left as they were, rather than snapping back to the defaults.
     function render(d, keep) {
         var refreshing = keep === true && !!data;
+        // A live refresh repaints everything; what the viewer was looking at
+        // inside the panel — the shot they tapped, how far the Advanced box
+        // is scrolled — goes back where it was.
+        var scroller = refreshing ? root.querySelector('.hg-box-scroll') : null;
+        var scrollLeft = scroller ? scroller.scrollLeft : 0;
+        var pick = refreshing ? state.pick : null;
         data = d;
         var h = (window.location.hash || '').replace('#', '');
         if (!refreshing || (state.tab === 'box' && !d.box) || (state.tab === 'shots' && !d.shots)) {
@@ -562,13 +588,26 @@
             state.side = mine(d.home) ? 'home' : mine(d.away) ? 'away'
                 : (d.home.owner && !d.away.owner ? 'home' : 'away');
         }
+        // A live game with ESPN's lines gets the box and chart tabs, its
+        // preview kept under the Summary.
         root.innerHTML = d.game.final
             ? hero(d) + fantasy(d) + netCard(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
-            : hero(d) + '<div class="hg-preview">' + preview(d) + '</div>';
+            : d.game.live && (d.box || d.shots)
+                ? hero(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
+                : hero(d) + '<div class="hg-preview">' + preview(d) + '</div>';
         var title = document.querySelector('title');
         if (title) title.setAttribute('data-league-title', abbr(d.away) + (d.game.neutralSite ? ' vs ' : ' at ') + abbr(d.home));
         if (window.ccLeague && window.ccLeague.paint) window.ccLeague.paint();
         kit.countUp(root);
+        if (scrollLeft && root.querySelector('.hg-box-scroll')) root.querySelector('.hg-box-scroll').scrollLeft = scrollLeft;
+        state.pick = null;
+        var floor = root.querySelector('.hg-shot-floor');
+        if (pick && floor && pick.side === state.side && d.shots) {
+            var k = (d.shots[state.side] || []).findIndex(function (s) {
+                return s.period === pick.period && s.clock === pick.clock && s.x === pick.x && s.y === pick.y;
+            });
+            if (k > -1) pickShot(floor, k);
+        }
     }
 
     // A tap on the chart: the nearest shot within a few feet, since a dot is
@@ -600,6 +639,8 @@
         var old = wrap.querySelector('.hg-shot-label');
         if (old) wrap.removeChild(old);
         var s = list[k];
+        // Kept so a live refresh can put the same shot back (render).
+        state.pick = s ? { side: state.side, period: s.period, clock: s.clock, x: s.x, y: s.y } : null;
         svg.classList.toggle('picked', !!s);
         if (out) out.classList.toggle('on', !!s);
         if (!s) { if (out) out.textContent = 'Tap a dot to see the shot.'; return; }
