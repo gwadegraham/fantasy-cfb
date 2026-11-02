@@ -142,7 +142,7 @@
         // A final is decided, whatever the model's last number says.
         if (d.game.final && d.home.points != null && d.away.points != null) {
             wp = d.home.points > d.away.points ? 1 : 0;
-            pts.push([end, wp * H]);
+            pts.push([now, wp * H]);
         }
         var lead = wp >= 0.5 ? 'home' : 'away', team = { home: d.home, away: d.away };
         var pct = Math.round(100 * (lead === 'home' ? wp : 1 - wp));
@@ -187,7 +187,7 @@
         var last = plays[plays.length - 1];
         var now = last ? secs(last) : 0;
         var end = Math.max(2400, now);
-        var b = function (k, label) { return '<button type="button" data-gc-chart="' + k + '" class="' + (ui.chart === k ? 'on' : '') + '">' + label + '</button>'; };
+        var b = function (k, label) { return '<button type="button" data-gc-chart="' + k + '" class="' + (ui.chart === k ? 'on' : '') + '" aria-pressed="' + (ui.chart === k) + '">' + label + '</button>'; };
         return '<h2 class="sp-h">Game flow</h2><div class="sp-card hg-gc">'
             + '<div class="hg-gc-seg">' + b('wp', 'Win probability') + b('lead', 'Lead') + '</div>'
             + (ui.chart === 'lead' ? leadChart(d, plays, colors, end, now) : winProb(d, plays, colors, end, now)) + '</div>';
@@ -215,7 +215,7 @@
         // newest period opens, the rest fold to one line each.
         var newest = periods[periods.length - 1];
         if (live) periods.reverse();
-        var tab = function (k, label) { return '<button type="button" class="hg-pbp-tab' + (ui.pbp === k ? ' on' : '') + '" data-gc-pbp="' + k + '">' + label + '</button>'; };
+        var tab = function (k, label) { return '<button type="button" class="hg-pbp-tab' + (ui.pbp === k ? ' on' : '') + '" data-gc-pbp="' + k + '" aria-pressed="' + (ui.pbp === k) + '">' + label + '</button>'; };
         var body = periods.map(function (per) {
             var rows = list.filter(function (p) { return p.period === per; });
             if (live) rows = rows.slice().reverse();

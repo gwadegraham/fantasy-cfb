@@ -20,7 +20,12 @@
     var state = { tab: 'summary', side: 'away', adv: false };
     // The Gamecast tab (public/hoopsGamecast.js): its play log, fetched apart
     // from the page, and what the viewer has chosen inside it.
-    var gc = { plays: null, source: null, loading: false, chart: 'wp', pbp: 'all', open: {}, shot: null };
+    var gc = { plays: null, source: null, loading: false, gen: 0, chart: 'wp', pbp: 'all', open: {}, shot: null };
+    // Drops the log so the next look fetches it whole. A reply to a request
+    // made before the reset is from the old generation and is ignored.
+    function resetPlays() { gc.plays = null; gc.source = null; gc.loading = false; gc.gen++; }
+    // A play's identity for the splice check (modules/hoops-gamecast.js).
+    var playKey = function (p) { return p ? [p.period, p.clock, p.text].join('|') : ''; };
     var data = null;
 
     function when(g) {
@@ -559,19 +564,35 @@
     function loadPlays(since) {
         if (gc.loading) return Promise.resolve();
         gc.loading = true;
+        var gen = gc.gen;
+        var done = function () { if (gen === gc.gen) gc.loading = false; };
         return window.fetch(playsUrl(since), { headers: { Accept: 'application/json' } })
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (b) {
-                gc.loading = false;
-                if (!b || !Array.isArray(b.plays)) { if (!gc.plays) gc.plays = []; return; }
-                // A partial answer from a different source (the final switching
-                // ESPN for CBBD) cannot be spliced: start again.
-                if (since && gc.source && b.source !== gc.source) { gc.plays = null; gc.source = null; return loadPlays(); }
-                gc.plays = since && gc.plays ? gc.plays.slice(0, b.from).concat(b.plays) : b.plays;
+                if (gen !== gc.gen) return;
+                done();
+                // Nothing usable (ESPN down, a 500): keep what is on screen.
+                // An empty log is retried by the next refresh.
+                if (!b || !Array.isArray(b.plays) || !b.source) {
+                    if (!gc.plays) { gc.plays = []; if (state.tab === 'gamecast' && data) paintPanel(); }
+                    return;
+                }
+                var partial = !!since && !!gc.plays && gc.plays.length > 0;
+                // The plays before the tail must still be the ones held: a
+                // different source (the final switching ESPN for CBBD), or ESPN
+                // inserting or removing a play further back, means start again.
+                if (partial && (b.source !== gc.source || (b.from > 0 && b.check !== playKey(gc.plays[b.from - 1])))) {
+                    resetPlays();
+                    return loadPlays();
+                }
+                gc.plays = partial ? gc.plays.slice(0, b.from).concat(b.plays) : b.plays;
                 gc.source = b.source;
                 if (state.tab === 'gamecast' && data) paintPanel(true);
             })
-            .catch(function () { gc.loading = false; if (!gc.plays) gc.plays = []; });
+            .catch(function () {
+                done();
+                if (gen === gc.gen && !gc.plays) { gc.plays = []; if (state.tab === 'gamecast' && data) paintPanel(); }
+            });
     }
 
     function panel(d) {
@@ -635,7 +656,7 @@
         var pbpList = refreshing ? root.querySelector('.hg-pbp-list') : null;
         var pbpTop = pbpList ? pbpList.scrollTop : 0;
         // The game just went final: its log may now come from CBBD.
-        if (refreshing && data.game.live && d.game.final) { gc.plays = null; gc.source = null; }
+        if (refreshing && data.game.live && d.game.final) resetPlays();
         data = d;
         var h = (window.location.hash || '').replace('#', '');
         if (!refreshing || (state.tab === 'box' && !d.box) || (state.tab === 'shots' && !d.shots) || (state.tab === 'gamecast' && !d.gamecast)) {
@@ -819,7 +840,7 @@
                     render(d, true);
                     schedule(d);
                     // The Gamecast tops up its log alongside the page.
-                    if (state.tab === 'gamecast' && gc.plays && gc.plays.length && d.game.live) loadPlays(gc.plays.length);
+                    if (state.tab === 'gamecast' && gc.plays && d.game.live) loadPlays(gc.plays.length);
                 } else schedule(data);
             })
             // A failed refresh keeps the page as it was and tries again.

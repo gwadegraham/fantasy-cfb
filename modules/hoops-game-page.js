@@ -150,8 +150,10 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
     // team never comes either; that one goes when the window closes.) Stored
     // CBBD data always wins. A failure just leaves the gap.
     const recent = now - new Date(game.startDate).getTime() <= boxScore.LOOKBACK_MS;
+    // (The play log too: a chart stored before the log was kept has none,
+    // and the Gamecast route stands ESPN in for it the same way.)
     const espn = liveEspn
-        || (final && recent && game.sourceId && (!boxed || !shots) ? await espnFor() : null);
+        || (final && recent && game.sourceId && (!boxed || !shots || !logged) ? await espnFor() : null);
     // Jersey numbers on the box, from the once-a-season roster import (the
     // key players get theirs through the team page's stats below).
     if (boxed) {

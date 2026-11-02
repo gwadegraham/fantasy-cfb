@@ -46,11 +46,17 @@ function server(state) {
         const body = /\/plays/.test(url)
             ? (function () {
                 const m = /since=(\d+)/.exec(url), n = m ? Number(m[1]) : 0;
+                if (state.down) return { source: null, total: 0, from: 0, plays: [] };
                 const from = n ? Math.max(0, Math.min(n, state.plays.length) - 10) : 0;
-                return { source: state.source || 'espn', total: state.plays.length, from: from, plays: state.plays.slice(from) };
+                const p = state.plays[from - 1];
+                return Object.assign({ source: state.source || 'espn', total: state.plays.length, from: from, plays: state.plays.slice(from) },
+                    from > 0 ? { check: [p.period, p.clock, p.text].join('|') } : {});
             })()
             : state.page;
-        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(JSON.parse(JSON.stringify(body))) });
+        const copy = JSON.parse(JSON.stringify(body));
+        // `slow`: a tail request that answers 20s late (the race below).
+        if (state.slow && /since=/.test(url)) return new Promise(r => setTimeout(() => r({ ok: true, status: 200, json: () => Promise.resolve(copy) }), 20000));
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(copy) });
     });
 }
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
@@ -67,6 +73,9 @@ async function open(state, fake) {
     await flush();
 }
 const q = (s) => document.querySelector(s);
+// Rows drawn across every open half, against the plays they should be.
+const rowsShown = () => document.querySelectorAll('.hg-pbp-group.on .hg-gc-row').length;
+const rowsExpected = (plays) => plays.length;
 const all = (s) => Array.from(document.querySelectorAll(s));
 const txt = (s) => all(s).map(n => n.textContent).join(' | ');
 
@@ -135,9 +144,44 @@ describe('a live game', () => {
         // Twenty more plays, with a shot among them.
         state.plays = LIVE_PLAYS;
         await jest.advanceTimersByTimeAsync(15000);
-        expect(all('.hg-pbp-group.on .hg-gc-row').length).toBeGreaterThan(0);
+        expect(global.fetch.mock.calls.map(c => c[0]).pop()).toBe('/hoops/games/377909/plays?since=' + held);
         expect(q('.hg-gc-last .t').textContent).toContain(LIVE_PLAYS[LIVE_PLAYS.length - 1].text);
         expect(q('.hg-gc-floor .arc')).not.toBeNull();
+        // Every play once: the tail spliced on, nothing doubled or dropped.
+        q('[data-gc-per="1"]').click();
+        expect(rowsShown()).toBe(rowsExpected(LIVE_PLAYS));
+        // A repaint of the same shot does not replay its flight.
+        expect(q('.hg-gc-floor .arc')).toBeNull();
+    });
+
+    test('ESPN down mid-game keeps the plays on screen, and an empty log is fetched again once it is back', async () => {
+        jest.useFakeTimers();
+        const state = { page: payload(), plays: LIVE_PLAYS, down: true };
+        await open(state, true);
+        expect(q('.hg-panel').textContent).toContain('No plays yet.');
+        state.down = false;
+        await jest.advanceTimersByTimeAsync(15000);
+        expect(global.fetch.mock.calls.map(c => c[0]).pop()).toBe('/hoops/games/377909/plays');
+        expect(q('.hg-gc-floor')).not.toBeNull();
+        state.down = true;
+        await jest.advanceTimersByTimeAsync(15000);
+        expect(q('.hg-gc-floor')).not.toBeNull();            // kept, not wiped
+        q('[data-gc-per="1"]').click();
+        expect(rowsShown()).toBe(rowsExpected(LIVE_PLAYS));
+    });
+
+    test('a play inserted further back than the re-sent tail: the whole log is fetched again', async () => {
+        jest.useFakeTimers();
+        const state = { page: payload(), plays: LIVE_PLAYS.slice(0, 100) };
+        await open(state, true);
+        const late = { type: 'PersonalFoul', text: 'Foul on Late Entry.', period: 1, clock: '18:00', side: 'home', home: 0, away: 0 };
+        state.plays = LIVE_PLAYS.slice(0, 20).concat([late], LIVE_PLAYS.slice(20));
+        await jest.advanceTimersByTimeAsync(15000);
+        const urls = global.fetch.mock.calls.map(c => c[0]).filter(u => /\/plays/.test(u));
+        expect(urls.slice(-2)).toEqual(['/hoops/games/377909/plays?since=100', '/hoops/games/377909/plays']);
+        q('[data-gc-per="1"]').click();
+        expect(rowsShown()).toBe(rowsExpected(state.plays));
+        expect(txt('.hg-gc-row')).toContain('Foul on Late Entry.');
     });
 
     test('play text is escaped', async () => {
@@ -189,6 +233,23 @@ describe('a final', () => {
         q('[data-tab="gamecast"]').click();
         await jest.advanceTimersByTimeAsync(0);
         expect(global.fetch.mock.calls.map(c => c[0]).pop()).toBe('/hoops/games/377909/plays');
+        expect(q('.hg-gc-big span').textContent).toBe('won');
+    });
+
+    test('a tail asked for before the final, answering after it, is thrown away', async () => {
+        jest.useFakeTimers();
+        const state = { page: payload(), plays: LIVE_PLAYS };
+        await open(state, true);
+        state.slow = true;
+        await jest.advanceTimersByTimeAsync(15000);          // a tail request, still out
+        state.page = finalPage();
+        state.plays = PLAYS;
+        state.source = 'cbbd';
+        await jest.advanceTimersByTimeAsync(15000);          // goes final: the whole log is fetched
+        await jest.advanceTimersByTimeAsync(20000);          // the old tail lands
+        q('[data-tab="gamecast"]').click();
+        all('.hg-pbp-group:not(.on) [data-gc-per]').forEach(b => b.click());
+        expect(rowsShown()).toBe(rowsExpected(PLAYS));
         expect(q('.hg-gc-big span').textContent).toBe('won');
     });
 

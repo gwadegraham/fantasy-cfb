@@ -52,12 +52,19 @@ async function forGame(game, { now = Date.now() } = {}) {
     return espn && espn.plays ? { source: 'espn', plays: espn.plays } : null;
 }
 
+// A play's identity for the splice check; public/hoopsGame.js builds the same.
+const playKey = (p) => (p ? [p.period, p.clock, p.text].join('|') : '');
+
 // What the route sends. `since` is how many plays the page already holds:
 // it gets the plays from RESEND before that, and puts them at `from`.
+// `check` names the play just before `from`, so a page whose copy no longer
+// lines up (ESPN inserted or removed a play further back) refetches it all.
 function slice(log, since) {
     const n = Number(since);
     const from = Number.isInteger(n) && n > 0 ? Math.max(0, Math.min(n, log.plays.length) - RESEND) : 0;
-    return { source: log.source, total: log.plays.length, from, plays: log.plays.slice(from) };
+    const out = { source: log.source, total: log.plays.length, from, plays: log.plays.slice(from) };
+    if (from > 0) out.check = playKey(log.plays[from - 1]);
+    return out;
 }
 
 module.exports = { forGame, espnFor, slice, RESEND };

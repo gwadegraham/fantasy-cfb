@@ -546,10 +546,11 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         expect(get).not.toHaveBeenCalled();
     });
 
-    test('a final with CBBD\'s box and chart stored: those, and ESPN is never asked', async () => {
+    test('a final with CBBD\'s box, chart and log stored: those, and ESPN is never asked', async () => {
         const espn = stubEspn();
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
-        await HoopsShots.create({ gameId: 500, season: SEASON, complete: true, shots: [{ teamId: 1, made: true, range: 'rim', x: 25, y: 6 }] });
+        await HoopsShots.create({ gameId: 500, season: SEASON, complete: true, shots: [{ teamId: 1, made: true, range: 'rim', x: 25, y: 6 }],
+            log: [{ type: 'JumpShot', text: 'x', period: 1, clock: '19:00', side: 'home', home: 2, away: 0 }] });
         const p = await gamePage.build(500);
         expect(espn).not.toHaveBeenCalled();
         expect(p.box.source).toBeUndefined();
@@ -611,7 +612,18 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         expect(espn).not.toHaveBeenCalled();
     });
 
-    test('a stored log that cannot be read costs the Gamecast tab, never the page', async () => {
+    test('a chart stored before the log was kept: ESPN is asked for the log, as the Gamecast route does', async () => {
+        const espn = stubEspn({ box: ESPN_BOX, shots: ESPN_SHOTS, plays: [{ type: 'JumpShot', period: 1, clock: '19:00', side: 'home', home: 2, away: 0 }] });
+        await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
+        await HoopsShots.create({ gameId: 500, season: SEASON, complete: true, shots: [{ teamId: 1, made: true, x: 25, y: 6 }] });
+        const p = await gamePage.build(500);
+        expect(espn).toHaveBeenCalledTimes(1);
+        expect(p.gamecast).toBe(true);
+        expect(p.box.source).toBeUndefined();          // CBBD's box still wins
+        expect(p.shots.source).toBeUndefined();
+    });
+
+    test('a stored log that cannot be read, and no ESPN plays either: no Gamecast tab, and the page still builds', async () => {
         stubEspn();
         jest.spyOn(require('../modules/hoops-shots'), 'logFor').mockRejectedValue(new Error('db down'));
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
