@@ -22,6 +22,7 @@ const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
 const ScoringConfig = require('../models/scoringConfig');
 const seasons = require('../modules/active-season');
+const { captainWeeklyBonus } = require('../modules/captain');
 const scoreboard = require('../modules/hoops-scoreboard');
 const scoringPass = require('../modules/hoops-scoring-pass');
 const push = require('../modules/push-notify');
@@ -309,10 +310,13 @@ describe('a final for the manager\'s Captain', () => {
         expect(sends()[0].body).not.toContain('Captain');
     });
 
-    test('a doubled penalty reads as negative', () => {
+    test('a captained penalised loss is not doubled: −2, and no Captain line', () => {
         const g = { id: 9, homeTeamId: DUKE, awayTeamId: TEXAS, homeTeam: 'Duke', awayTeam: 'Texas', homePoints: 60, awayPoints: 70 };
-        expect(push.buildHoopsFinalPayload(g, 'Duke', { total: -2, matched: [{ label: 'Bad loss' }] }, -2).body)
-            .toBe('−4 pts — Bad loss · 👑 Captain bonus −2 · Texas 70 – Duke 60');
+        // The bonus the final is handed, from the scorer's own formula.
+        const bonus = captainWeeklyBonus([{ teamId: DUKE, score: -2 }], DUKE, 2);
+        expect(bonus).toBe(0);
+        expect(push.buildHoopsFinalPayload(g, 'Duke', { total: -2, matched: [{ label: 'Bad loss' }] }, bonus).body)
+            .toBe('−2 pts — Bad loss · Texas 70 – Duke 60');
     });
 });
 

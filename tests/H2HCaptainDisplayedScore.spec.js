@@ -62,7 +62,8 @@ function finishedGame(id, homeId, awayId) {
 const OREGON_RAW = 4, USC_RAW = 2, CAPTAIN_BONUS = OREGON_RAW;
 const WEEK_TOTAL = OREGON_RAW + USC_RAW + CAPTAIN_BONUS;
 
-async function seed({ captainEnabled = true, h2hBonus = 0 } = {}) {
+async function seed({ captainEnabled = true, h2hBonus = 0, oregonRaw = OREGON_RAW, captainBonus = CAPTAIN_BONUS } = {}) {
+    const weekTotal = oregonRaw + USC_RAW + captainBonus;
     await ScoringConfig.create({
         league: LEAGUE, model: 'graham', values: {},
         engagementBySeason: { '2026': { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0, captainEnabled, captainMultiplier: 2 } }
@@ -80,15 +81,15 @@ async function seed({ captainEnabled = true, h2hBonus = 0 } = {}) {
             captains: [{ week: 1, teamId: OREGON }],
             weeklyScore: [{
                 week: 1, season: 'regular',
-                score: WEEK_TOTAL + h2hBonus,
+                score: weekTotal + h2hBonus,
                 h2hBonus,
-                captainTeamId: OREGON, captainBonus: CAPTAIN_BONUS,
+                captainTeamId: OREGON, captainBonus,
                 scoreByTeam: [
-                    { teamId: OREGON, school: 'Oregon', score: OREGON_RAW },
+                    { teamId: OREGON, school: 'Oregon', score: oregonRaw },
                     { teamId: USC, school: 'USC', score: USC_RAW }
                 ]
             }],
-            cumulativeScore: WEEK_TOTAL + h2hBonus
+            cumulativeScore: weekTotal + h2hBonus
         }]
     });
     await User.create({
@@ -123,6 +124,14 @@ describe('the matchup card shows the Captain doubled', () => {
         expect(oregon.score).toBe(OREGON_RAW * 2);
         expect(usc.captain).toBe(false);
         expect(usc.score).toBe(USC_RAW);
+    });
+
+    test('a captained NEGATIVE score reads undoubled, and the rows still sum to the headline', async () => {
+        // −2 on the Captain: no bonus (a penalty is not doubled).
+        const ann = await seed({ oregonRaw: -2, captainBonus: 0 });
+        const { teams, headline } = await cardFor(ann);
+        expect(teams.find(t => t.teamId === OREGON).score).toBe(-2);
+        expect(teams.reduce((sum, t) => sum + (t.score || 0), 0)).toBe(headline);
     });
 
     // The identity the whole fix rests on. If this breaks, the card is printing

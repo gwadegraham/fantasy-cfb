@@ -71,7 +71,7 @@
         <% } %>
         <% if (engagement.captainEnabled) { %>
           <% if (dr.sport === 'basketball') { %>
-            <li><strong>Captain</strong> — name one team each regular-season week, before your first team tips off; its points that week count <strong><%= engagement.captainMultiplier %>×</strong>. No pick means your best-averaging team is captained for you. Not applied to conference tournaments or March.</li>
+            <li><strong>Captain</strong> — name one team each regular-season week, before your first team tips off; its wins that week count <strong><%= engagement.captainMultiplier %>×</strong>. A Q4 loss penalty is not doubled. No pick means your best-averaging team is captained for you. Not applied to conference tournaments or March.</li>
           <% } else { %>
             <li><strong>Captain</strong> — name one team each regular-season week, before your first kickoff; its points that week count <strong><%= engagement.captainMultiplier %>×</strong>. No pick means your best-averaging team is captained for you. No Captain in bowls or the CFP.</li>
           <% } %>

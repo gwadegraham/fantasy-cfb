@@ -133,8 +133,10 @@ describe('scoring aggregation', () => {
             expect(await weekRow(4)).toMatchObject({ score: 8, captainTeamId: 333, captainBonus: 4 });
         });
 
-        it('a NEGATIVE bonus too — the score already carries it, and the pages need it to split it back', async () => {
-            expect(await weekRow(-3)).toMatchObject({ score: -6, captainTeamId: 333, captainBonus: -3 });
+        it('a negative score is not doubled — no bonus, and the score counts it once', async () => {
+            const row = await weekRow(-3);
+            expect(row).toMatchObject({ score: -3 });
+            expect(row.captainBonus).toBeUndefined();
         });
 
         it('no bonus, no fields', async () => {

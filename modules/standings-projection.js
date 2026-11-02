@@ -211,36 +211,38 @@ function buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx,
 // explicitly skipped in the postseason, and the H2H schedule stops at
 // H2H_MAX_WEEK.
 
-// A game's expected points. pointsIfLoss is basketball's opt-in bad-loss
-// penalty (modules/hoops-projection.js); football entries carry none, so
-// this is exactly winProb × pointsIfWin for them (x + 0 is x).
-const expPoints = (g) => (g.winProb || 0) * (g.pointsIfWin || 0) + (1 - (g.winProb || 0)) * (g.pointsIfLoss || 0);
 // One simulated result for a game: pointsIfWin on a win, pointsIfLoss (0
 // unless penalised) on a loss. One Math.random() per game either way, so
 // football's draw sequence is unchanged.
 const drawPoints = (g) => (Math.random() < g.winProb ? g.pointsIfWin : (g.pointsIfLoss || 0));
+// What doubling a game can add: its positive points only. pointsIfLoss is
+// basketball's opt-in bad-loss penalty (modules/hoops-projection.js); football
+// entries carry none. A captained team's
+// penalised loss counts once, never N× (modules/captain.js captainWeeklyBonus).
+const expCaptainGain = (g) => (g.winProb || 0) * Math.max(0, g.pointsIfWin || 0)
+    + (1 - (g.winProb || 0)) * Math.max(0, g.pointsIfLoss || 0);
 
 // Expected points a manager's captain adds in one week.
 //
 // A manager picks BEFORE kickoff, so the choice is the team with the highest
-// expected score; the bonus is that team's realised score. The expectation of
-// the bonus is therefore just that team's expected score — no simulation, and
+// expected gain; the bonus is that team's realised positive points. The
+// expectation of the bonus is therefore that team's expected gain — no simulation, and
 // no peeking at results. (Taking the best team after the fact would be worth
 // ~10 more points a season, which is the luck in the mechanic, not the skill.)
 // A captained team that loses scores nothing, which falls out of the per-game
 // probabilities: every regular-season rule requires a win.
 function expectedCaptainWeek(teamsThisWeek, multiplier) {
-    // -Infinity, not 0: with basketball's bad-loss penalty every option can
-    // expect less than 0, and the captain still doubles the least-bad one
-    // (captainWeeklyBonus doubles a negative score) — as the simulation does.
-    // Football never expects below 0, so its answer is unchanged.
-    let best = -Infinity;
+    // Basketball's bad-loss penalty is not doubled, so a captain can only
+    // add: the best option is the one whose WINS are worth most, and a week
+    // with nothing to win adds 0. Football has no penalty, so its answer is
+    // unchanged.
+    let best = 0;
     (teamsThisWeek || []).forEach(t => {
         let exp = 0;
-        (t.games || []).forEach(g => { exp += expPoints(g); });
+        (t.games || []).forEach(g => { exp += expCaptainGain(g); });
         if (exp > best) best = exp;
     });
-    return best === -Infinity ? 0 : best * ((multiplier || 2) - 1);
+    return best * ((multiplier || 2) - 1);
 }
 
 // Expected captain points across a manager's whole remaining schedule.
@@ -315,7 +317,7 @@ function captainIndex(list, fixed) {
     let bestIdx = -1, bestExp = -Infinity;
     list.forEach((t, i) => {
         let exp = 0;
-        (t.games || []).forEach(g => { exp += expPoints(g); });
+        (t.games || []).forEach(g => { exp += expCaptainGain(g); });
         if (exp > bestExp) { bestExp = exp; bestIdx = i; }
     });
     return bestIdx;
@@ -363,8 +365,9 @@ function expectedH2H(managers, ids, weeks, winBonus, tieBonus, scheduleWeeks, ex
         const out2 = [];
         list.forEach((t, i) => (t.games || []).forEach(g => {
             if (i !== pick) { out2.push(g); return; }
+            // The penalty rides undoubled (captainWeeklyBonus).
             const e = { winProb: g.winProb, pointsIfWin: (g.pointsIfWin || 0) * mult };
-            if (g.pointsIfLoss != null) e.pointsIfLoss = g.pointsIfLoss * mult;
+            if (g.pointsIfLoss != null) e.pointsIfLoss = g.pointsIfLoss;
             out2.push(e);
         }));
         const banked = m.bankedWeek && m.bankedWeek[w];
@@ -469,10 +472,10 @@ function simulateTitleOdds(managers, N, opts = {}) {
             const perWeek = {};
             weeks.forEach(w => {
                 const list = (m.byWeek || {})[w] || [];
-                let bestIdx = -1, bestExp = -Infinity;   // -Infinity: a basketball week can expect less than 0
+                let bestIdx = -1, bestExp = -Infinity;
                 list.forEach((t, i) => {
                     let exp = 0;
-                    (t.games || []).forEach(g => { exp += expPoints(g); });
+                    (t.games || []).forEach(g => { exp += expCaptainGain(g); });
                     if (exp > bestExp) { bestExp = exp; bestIdx = i; }
                 });
                 // No Captain past the last week it covers (basketball).
@@ -522,13 +525,15 @@ function simulateTitleOdds(managers, N, opts = {}) {
                     // same draws.
                     for (let i = 0; i < list.length; i++) {
                         const gs = list[i].games || [];
-                        let ts = 0;
+                        let ts = 0, pos = 0;
                         for (let k = 0; k < gs.length; k++) {
                             const g = gs[k];
-                            ts += Math.random() < g.winProb ? g.pointsIfWin : (g.pointsIfLoss || 0);
+                            const v = Math.random() < g.winProb ? g.pointsIfWin : (g.pointsIfLoss || 0);
+                            ts += v;
+                            if (v > 0) pos += v;
                         }
                         sum += ts;
-                        if (i === pick) captained = ts;   // a captain that loses doubles nothing (or its penalty)
+                        if (i === pick) captained = pos;   // only its positive points double; a penalty counts once
                     }
                     if (eng.captainEnabled) sum += captained * ((eng.captainMultiplier || 2) - 1);
                     // The matchup counts what is already banked this week

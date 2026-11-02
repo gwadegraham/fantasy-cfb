@@ -144,9 +144,9 @@ describe('buildHoopsProjections (pure)', () => {
 });
 
 describe('standings-projection, basketball inputs (pure)', () => {
-    test('the Captain term counts a penalised loss', () => {
+    test('the Captain term does not double a penalised loss', () => {
         const week = [{ teamId: 1, games: [{ winProb: 0.5, pointsIfWin: 4, pointsIfLoss: -2 }] }];
-        expect(SP.expectedCaptainWeek(week, 2)).toBeCloseTo(1, 12);   // 0.5×4 + 0.5×(−2)
+        expect(SP.expectedCaptainWeek(week, 2)).toBeCloseTo(2, 12);   // 0.5×4; the −2 is not doubled
         // Football's entries (no pointsIfLoss) are unchanged.
         expect(SP.expectedCaptainWeek([{ teamId: 1, games: [{ winProb: 0.5, pointsIfWin: 4 }] }], 2)).toBe(2);
     });
@@ -169,11 +169,19 @@ describe('standings-projection, basketball inputs (pure)', () => {
         expect(a2.expH2H).toBe(0);                             // football's default cap
     });
 
-    test('a week whose every option expects a loss still has a Captain (the least-bad)', () => {
+    test('a Captain never expects less than 0, even when every option expects a loss', () => {
         const week = [{ teamId: 1, games: [{ winProb: 0, pointsIfWin: 0, pointsIfLoss: -2 }] },
             { teamId: 2, games: [{ winProb: 0, pointsIfWin: 0, pointsIfLoss: -4 }] }];
-        expect(SP.expectedCaptainWeek(week, 2)).toBe(-2);
+        expect(SP.expectedCaptainWeek(week, 2)).toBe(0);
         expect(SP.expectedCaptainWeek([], 2)).toBe(0);
+    });
+
+    test('the Captain is the team whose wins are worth most, not the best net expectation', () => {
+        // Team 1 nets more (no penalty risk) but team 2's wins are worth more
+        // to double: 0.5×6 = 3 vs 0.9×2 = 1.8.
+        const week = [{ teamId: 1, games: [{ winProb: 0.9, pointsIfWin: 2 }] },
+            { teamId: 2, games: [{ winProb: 0.5, pointsIfWin: 6, pointsIfLoss: -6 }] }];
+        expect(SP.expectedCaptainWeek(week, 2)).toBeCloseTo(3, 12);
     });
 
     describe('h2hExact: the week under way, and the tie bonus', () => {
@@ -300,14 +308,22 @@ describe('standings-projection, basketball inputs (pure)', () => {
         expect(SP.simulateTitleOdds([a, b], 500, { postseasonSd: 0 }).b).toBe(1);
     });
 
-    test('the weekly simulation draws pointsIfLoss and stops the Captain at captainMaxWeek', () => {
+    test('the weekly simulation draws pointsIfLoss and never doubles it', () => {
         const eng = { captainEnabled: true, captainMultiplier: 2 };
-        // Week 19 (past the mode weeks): A's penalised loss must not be doubled.
-        const a = { userId: 'a', postExpected: 0, byWeek: { 19: [{ teamId: 1, games: [{ winProb: 0, pointsIfWin: 0, pointsIfLoss: -2 }] }] } };
-        const b = { userId: 'b', postExpected: -3, byWeek: { 19: [] } };
-        // Undoubled A is -2 > B's -3; doubled A would be -4.
-        expect(SP.simulateTitleOdds([a, b], 200, { engagement: eng, captainMaxWeek: 18, postseasonSd: 0 }).a).toBe(1);
-        expect(SP.simulateTitleOdds([a, b], 200, { engagement: eng, postseasonSd: 0 }).a).toBe(0);
+        // A's captained team is certain to lose 2. Undoubled A is -2 > B's -3;
+        // a doubled penalty would make A -4 and hand B the title.
+        const a = { userId: 'a', postExpected: 0, byWeek: { 1: [{ teamId: 1, games: [{ winProb: 0, pointsIfWin: 0, pointsIfLoss: -2 }] }] } };
+        const b = { userId: 'b', postExpected: -3, byWeek: { 1: [] } };
+        expect(SP.simulateTitleOdds([a, b], 200, { engagement: eng, postseasonSd: 0 }).a).toBe(1);
+    });
+
+    test('the weekly simulation stops the Captain at captainMaxWeek', () => {
+        const eng = { captainEnabled: true, captainMultiplier: 2 };
+        // Week 19: A's certain +2 beats B's 3 only when doubled.
+        const a = { userId: 'a', postExpected: 0, byWeek: { 19: [{ teamId: 1, games: [{ winProb: 1, pointsIfWin: 2 }] }] } };
+        const b = { userId: 'b', postExpected: 3, byWeek: { 19: [] } };
+        expect(SP.simulateTitleOdds([a, b], 200, { engagement: eng, captainMaxWeek: 18, postseasonSd: 0 }).a).toBe(0);
+        expect(SP.simulateTitleOdds([a, b], 200, { engagement: eng, postseasonSd: 0 }).a).toBe(1);
     });
 
     test('postSample replaces the normal draw', () => {

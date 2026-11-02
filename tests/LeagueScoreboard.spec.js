@@ -76,6 +76,13 @@ describe('pointsByTeamGame', () => {
         expect(pointsByTeamGame(users, 2026, 2)).toEqual({ '5:1': 1.7, '5:2': 3.4 });
     });
 
+    test('a captained team\'s penalised loss shows undoubled and takes no share', () => {
+        // Win +5 and Q4 loss −2: the bonus is 5 (the win only), all of it on the win.
+        const users = [{ seasons: [{ season: 2026, weeklyScore: [{ week: 2, captainTeamId: 5, captainBonus: 5, scoreByTeam: [
+            { teamId: 5, gameId: 1, score: 5 }, { teamId: 5, gameId: 2, score: -2 }] }] }] }];
+        expect(pointsByTeamGame(users, 2026, 2)).toEqual({ '5:1': 10, '5:2': -2 });
+    });
+
     test('a captained team that scored nothing earns no bonus (and no division by zero)', () => {
         const users = [{ seasons: [{ season: 2026, weeklyScore: [{ week: 2, captainTeamId: 5, captainBonus: 0, scoreByTeam: [{ teamId: 5, gameId: 1, score: 0 }] }] }] }];
         expect(pointsByTeamGame(users, 2026, 2)).toEqual({ '5:1': 0 });

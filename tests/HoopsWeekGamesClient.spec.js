@@ -72,6 +72,15 @@ describe('byTeam / pointsFor / result', () => {
         expect(hg().pointsFor({ weeklyScore: [{ week: 1, scoreByTeam: [{ teamId: 1, gameId: 100 }] }] }, 1, 1, 100)).toBe(0);
     });
 
+    test('a captained penalised loss shows undoubled and takes no share of the bonus', () => {
+        // +5 win and −2 loss on the Captain: the bonus is 5, all on the win.
+        const entry = { season: 2027, weeklyScore: [{ week: 1, captainTeamId: 1, captainBonus: 5, scoreByTeam: [
+            { teamId: 1, gameId: 100, score: 5 }, { teamId: 1, gameId: 101, score: -2 }
+        ] }] };
+        expect(hg().pointsFor(entry, 1, 1, 100)).toBe(10);
+        expect(hg().pointsFor(entry, 1, 1, 101)).toBe(-2);
+    });
+
     test('final reads W/L and the score from our side; live the half and clock; to come the tip', () => {
         const by = hg().byTeam(ROSTER, [G.final, G.live, G.pre]);
         expect(hg().result(by['1'][0])).toEqual({ tone: 'w', text: 'W 80–70' });

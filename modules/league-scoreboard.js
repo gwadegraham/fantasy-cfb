@@ -34,11 +34,14 @@ const { MAX_GAME_MS } = require('./game-window');
 // A basketball row flagged `noModes` (a conference-tournament game) was not
 // doubled, so it takes no share and is not part of the base it is split by.
 // Football never sets the flag.
+// A penalised loss (negative points) was not doubled either, so it takes no
+// share and the base is the captained team's positive points only.
 function captainShare(w, t) {
     if (!w.captainBonus || t.teamId == null || t.noModes || Number(t.teamId) !== Number(w.captainTeamId)) return 0;
+    const pos = (x) => Math.max(0, Number(x.score) || 0);
     const base = (w.scoreByTeam || []).filter(x => !x.noModes && Number(x.teamId) === Number(w.captainTeamId))
-        .reduce((sum, x) => sum + (Number(x.score) || 0), 0);
-    return base ? w.captainBonus * (Number(t.score) || 0) / base : 0;
+        .reduce((sum, x) => sum + pos(x), 0);
+    return base ? w.captainBonus * pos(t) / base : 0;
 }
 
 function pointsByTeamGame(users, season, week) {

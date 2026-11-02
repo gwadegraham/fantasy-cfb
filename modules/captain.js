@@ -45,11 +45,15 @@ function resolveCaptain(captains, week, roster, priorWeekly) {
 // The extra points from doubling (or N×-ing) the captained team in a week.
 // scoreByTeam may list the captained team more than once (multi-game weeks), so
 // all of its games are boosted. bonus = (sum of captain's scores) × (mult − 1).
+//
+// Only a game's POSITIVE points are multiplied: a captained team's penalised
+// loss (basketball's Q4 −2) counts once, like any other team's, never 2×.
+// Per game, not per week — a +5 win and a −2 loss double to +5, not +3.
 function captainWeeklyBonus(scoreByTeam, captainTeamId, multiplier) {
     if (captainTeamId == null) return 0;
     const mult = multiplier || 2;
     let base = 0;
-    (scoreByTeam || []).forEach(st => { if (Number(st.teamId) === Number(captainTeamId)) base += (st.score || 0); });
+    (scoreByTeam || []).forEach(st => { if (Number(st.teamId) === Number(captainTeamId)) base += Math.max(0, st.score || 0); });
     return Math.round(base * (mult - 1) * 10) / 10;
 }
 

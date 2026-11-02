@@ -205,12 +205,14 @@ function ownerPointsFor(season, teamId, school) {
     var r1 = function (n) { return Math.round(n * 10) / 10; };
     (season && season.weeklyScore || []).forEach(function (w) {
         var captained = w.captainBonus && String(w.captainTeamId) === String(teamId);
+        // Positive points only: a penalised loss was not doubled.
+        var pos = function (s) { return Math.max(0, Number(s.score) || 0); };
         var base = captained ? (w.scoreByTeam || []).filter(mine)
-            .reduce(function (sum, s) { return sum + (Number(s.score) || 0); }, 0) : 0;
+            .reduce(function (sum, s) { return sum + pos(s); }, 0) : 0;
         (w.scoreByTeam || []).forEach(function (s) {
             if (!mine(s)) return;
             var pts = Number(s.score) || 0;
-            var withCaptain = pts + (base ? w.captainBonus * pts / base : 0);
+            var withCaptain = pts + (base ? w.captainBonus * pos(s) / base : 0);
             total += withCaptain;
             if (s.gameId != null) out[String(s.gameId)] = r1(withCaptain);
         });
