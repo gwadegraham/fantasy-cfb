@@ -23,6 +23,10 @@
 // per window; one ESPN calls over is reused for DONE_TTL_MS; a failure for
 // FAIL_TTL_MS, so a broken feed is not hammered by a page polling every 15s.
 // Concurrent misses share one request.
+//
+// A failed refetch keeps serving the game's last good answer for up to
+// STALE_MS: one 503 mid-game must not take the box off every live page for a
+// minute. Past that, a stale box is worse than none.
 
 const { envNum } = require('./env-num');
 
@@ -30,6 +34,7 @@ const TIMEOUT_MS = 5000;
 const LIVE_TTL_MS = envNum('ESPN_SUMMARY_TTL_MS', 20000);
 const DONE_TTL_MS = 30 * 60 * 1000;
 const FAIL_TTL_MS = 60 * 1000;
+const STALE_MS = 5 * 60 * 1000;
 // A busy Saturday is ~150 basketball games; the cap stops a long-lived dyno
 // collecting a season of them, not a slate.
 const MAX_CACHED = 300;
@@ -68,21 +73,29 @@ async function summaryFor(sport, espnId, shape, now = Date.now()) {
     const hit = cache.get(key);
     if (hit && hit.expires > now) return hit.value;
     if (hit && hit.pending) return hit.pending;
+    const last = hit && hit.good && now - hit.good.at < STALE_MS ? hit.good : null;
 
     const pending = fetchSummary(sport, String(espnId))
-        .then(body => ({ value: { value: shape(body), error: null }, ttl: stateOf(body) === 'post' ? DONE_TTL_MS : LIVE_TTL_MS }))
+        .then(body => {
+            const value = { value: shape(body), error: null };
+            return { value, ttl: stateOf(body) === 'post' ? DONE_TTL_MS : LIVE_TTL_MS, good: { value: value.value, at: now } };
+        })
         .catch((e) => {
             console.error(`espn summary: ${e.message}`);
-            return { value: { value: null, error: 'ESPN is unavailable right now' }, ttl: FAIL_TTL_MS };
+            return { value: { value: last ? last.value : null, error: 'ESPN is unavailable right now' }, ttl: FAIL_TTL_MS, good: last };
         })
-        .then(({ value, ttl }) => {
+        .then(({ value, ttl, good }) => {
             cache.delete(key);
-            if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value);
-            cache.set(key, { value, expires: now + ttl });
+            if (cache.size >= MAX_CACHED) {
+                // The oldest SETTLED game: dropping one still in flight would
+                // send its other viewers to ESPN a second time.
+                for (const [k, v] of cache) if (!v.pending) { cache.delete(k); break; }
+            }
+            cache.set(key, { value, expires: now + ttl, good });
             return value;
         });
-    cache.set(key, { pending, expires: 0 });
+    cache.set(key, { pending, expires: 0, good: last });
     return pending;
 }
 
-module.exports = { summaryFor, summaryUrl, stateOf, _cache: cache, LIVE_TTL_MS, DONE_TTL_MS, FAIL_TTL_MS };
+module.exports = { summaryFor, summaryUrl, stateOf, _cache: cache, LIVE_TTL_MS, DONE_TTL_MS, FAIL_TTL_MS, STALE_MS };

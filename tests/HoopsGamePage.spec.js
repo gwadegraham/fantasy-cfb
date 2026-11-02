@@ -558,6 +558,24 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         expect(p.shots.source).toBeUndefined();
     });
 
+    test('the shape ESPN is asked with is bound to THIS game', async () => {
+        const espn = stubEspn();
+        await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress' } });
+        await gamePage.build(500);
+        const SUMMARY = require('./fixtures/espn-hoops-summary-401920982.json');
+        const out = espn.mock.calls[0][2](SUMMARY);
+        expect(out.box).toMatchObject({ gameId: 500, home: { teamId: 1 }, away: { teamId: 2 } });
+    });
+
+    test('a final past the batches\' lookback: no ESPN stand-in, since CBBD will never replace it', async () => {
+        const espn = stubEspn();
+        const p = await gamePage.build(500, { now: GAME.startDate.getTime() + boxScore.LOOKBACK_MS + 1 });
+        expect(p.box).toBeNull();
+        expect(espn).not.toHaveBeenCalled();
+        await gamePage.build(500, { now: GAME.startDate.getTime() + boxScore.LOOKBACK_MS });
+        expect(espn).toHaveBeenCalledTimes(1);
+    });
+
     test('a final whose box landed but not its chart: CBBD\'s box, ESPN\'s chart', async () => {
         stubEspn();
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });

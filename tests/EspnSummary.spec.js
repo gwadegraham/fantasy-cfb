@@ -68,6 +68,32 @@ test('an HTTP error, a changed shape, a timeout or a throwing shape: null with a
     expect((await summary.summaryFor('basketball', '9', bad, 0)).value).toBeNull();
 });
 
+test('a failed refetch keeps serving the last good answer for STALE_MS, then nothing', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    global.fetch = jest.fn(() => ok(body('in')));
+    await summary.summaryFor('basketball', '1', shape, 0);
+    global.fetch = jest.fn(() => Promise.resolve({ ok: false, status: 503 }));
+    const t1 = summary.LIVE_TTL_MS;
+    expect(await summary.summaryFor('basketball', '1', shape, t1)).toEqual({ value: { state: 'in' }, error: 'ESPN is unavailable right now' });
+    // Still failing a minute on: still the last good one, which has not aged.
+    const t2 = t1 + summary.FAIL_TTL_MS;
+    expect((await summary.summaryFor('basketball', '1', shape, t2)).value).toEqual({ state: 'in' });
+    expect((await summary.summaryFor('basketball', '1', shape, summary.STALE_MS)).value).toBeNull();
+});
+
+test('a full cache drops the oldest SETTLED game, never one still in flight', async () => {
+    let release;
+    global.fetch = jest.fn(() => ok(body('in')));
+    const slow = new Promise(r => { release = r; });
+    global.fetch.mockImplementationOnce(() => slow.then(() => ok(body('in'))));
+    const inFlight = summary.summaryFor('basketball', '0', shape, 0);
+    for (let i = 1; i <= 300; i++) await summary.summaryFor('basketball', String(i), shape, 0);
+    expect(summary._cache.has('basketball:0')).toBe(true);
+    expect(summary._cache.has('basketball:1')).toBe(false);
+    release();
+    await inFlight;
+});
+
 test('no usable id or an unknown sport: no call at all', async () => {
     global.fetch = jest.fn();
     expect((await summary.summaryFor('basketball', null, shape)).error).toBe('no ESPN id for this game');

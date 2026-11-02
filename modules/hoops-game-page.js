@@ -122,7 +122,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
     // so the two pages give an unplayed game the same quadrant.
     const nowWeek = final ? null : await teamPage.currentWeek(yr);
     const rankWeek = final || nowWeek === null ? Number(game.week) : nowWeek;
-    const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed, net, apPolls, shots] = await Promise.all([
+    const espnFor = () => espnSummary.summaryFor('basketball', game.sourceId, espnLive.shape(game)).then(r => r.value);
+    const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed, net, apPolls, shots, liveEspn] = await Promise.all([
         HoopsTeam.find({ season: yr, id: { $in: [homeId, awayId] } },
             { id: 1, school: 1, abbreviation: 1, mascot: 1, color: 1, alt_color: 1, logos: 1, _id: 0 }).lean(),
         Number.isFinite(rankWeek) ? teamPage.cachedRanks(yr, rankWeek) : {},
@@ -135,16 +136,20 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         latestNet(yr, [homeId, awayId]),
         hoopsAp.cachedPolls(yr).catch(() => []),
         // A chart is optional: a bad one costs the tab, never the page.
-        final ? shotCharts.forGame(game).catch(() => null) : null
+        final ? shotCharts.forGame(game).catch(() => null) : null,
+        // Live: ESPN's lines, fetched alongside the rest, not after it.
+        live && game.sourceId ? espnFor() : null
     ]);
     const byId = new Map(teams.map(t => [Number(t.id), t]));
     // ESPN fills what CBBD has not stored yet: everything while the game is
-    // on, and after the final whichever of the box and chart has not landed.
-    // Stored CBBD data always wins. A failure just leaves the gap.
-    let espn = null;
-    if (game.sourceId && (live || (final && (!boxed || !shots)))) {
-        espn = (await espnSummary.summaryFor('basketball', game.sourceId, espnLive.shape(game))).value;
-    }
+    // on, and after the final whichever of the box and chart has not landed —
+    // but only inside the batches' lookback. Past it CBBD will never send one,
+    // and an ESPN stand-in would stand in for ever. (A chart for an undrafted
+    // team never comes either; that one goes when the window closes.) Stored
+    // CBBD data always wins. A failure just leaves the gap.
+    const recent = now - new Date(game.startDate).getTime() <= boxScore.LOOKBACK_MS;
+    const espn = liveEspn
+        || (final && recent && game.sourceId && (!boxed || !shots) ? await espnFor() : null);
     // Jersey numbers on the box, from the once-a-season roster import (the
     // key players get theirs through the team page's stats below).
     if (boxed) {

@@ -873,6 +873,64 @@ describe('ESPN stand-in stats', () => {
         expect(q('.hg-src').textContent).toBe('Live stats from ESPN.');
     });
 
+    test('live: leaders come before the team stats; a final keeps team stats first', async () => {
+        await render(liveGame({ box: espnBox() }));
+        expect(txt('.hg-panel > .sp-h')).toMatch(/^Leaders \| Team stats/);
+        await render(payload());
+        expect(txt('.hg-panel > .sp-h')).toMatch(/Team stats66 possessions \| Leaders$/);
+    });
+
+    test('a final\'s ESPN chart promises nothing (CBBD charts only drafted teams)', async () => {
+        await render(payload({ box: null, shots: { source: 'espn', attempts: { home: 1, away: 1 },
+            home: [{ made: true, range: 'rim', x: 25, y: 6 }], away: [{ made: false, range: 'rim', x: 25, y: 6 }] } }));
+        tab('shots');
+        expect(q('.hg-src').textContent).toBe('Shot chart from ESPN.');
+    });
+
+    test('ESPN strings are escaped', async () => {
+        await render(liveGame({ box: espnBox({ players: [player('<img src=x onerror=alert(1)>', { position: '<b>' })] }) }));
+        q('[data-side="home"]') && q('[data-side="home"]').click();
+        tab('box');
+        q('[data-side="home"]').click();
+        expect(document.querySelector('.hg-box img')).toBeNull();
+        expect(document.querySelector('.hg-box b')).toBeNull();
+    });
+
+    test('a live refresh keeps the tapped shot and the Advanced box\'s sideways scroll', async () => {
+        jest.useFakeTimers();
+        try {
+            const shot = { made: true, range: 'rim', x: 25, y: 6, shooter: 'Dailyn Swain', period: 2, clock: '9:00' };
+            const body = liveGame({ box: espnBox(), shots: { source: 'espn', attempts: { home: 0, away: 1 }, home: [], away: [shot] } });
+            window.history.replaceState(null, '', window.location.pathname);
+            document.body.innerHTML = '<title>Game</title><main id="hoops-game" data-game-id="500"></main>';
+            window.ccLeague = { paint: jest.fn() };
+            global.fetch = jest.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) }));
+            (0, eval)(SRC);
+            await jest.advanceTimersByTimeAsync(0);
+            tab('shots');
+            const svg = q('.hg-shot-floor');
+            svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 52, height: 49 });
+            svg.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 26, clientY: 7 }));
+            expect(q('.hg-shot-label')).not.toBeNull();
+            await jest.advanceTimersByTimeAsync(15000);
+            expect(global.fetch).toHaveBeenCalledTimes(2);
+            expect(q('.hg-shot-label')).not.toBeNull();
+            expect(q('.hg-shot-tip').textContent).toContain('D. Swain');
+            // The Advanced box.
+            tab('box');
+            q('[data-adv="1"]').click();
+            q('.hg-box-scroll').scrollLeft = 120;
+            await jest.advanceTimersByTimeAsync(15000);
+            expect(q('.hg-box-scroll').scrollLeft).toBe(120);
+            // A new tab or side drops the pick: back on the chart, nothing is picked.
+            tab('shots');
+            await jest.advanceTimersByTimeAsync(15000);
+            expect(q('.hg-shot-label')).toBeNull();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     test('a live game ESPN has nothing for yet: the preview alone, as before', async () => {
         await render(liveGame());
         expect(q('.sp-tabs')).toBeNull();
