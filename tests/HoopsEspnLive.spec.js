@@ -59,6 +59,34 @@ describe('boxFrom', () => {
     });
 });
 
+// At a neutral site CBBD's home can be ESPN's away: UTEP v Northern Kentucky
+// (2 Nov 2026) was CBBD home UTEP, ESPN home NKU. Same game here, flipped:
+// our home is Notre Dame (ESPN 87), whom ESPN lists as AWAY.
+describe('sides follow ESPN team ids, not ESPN home/away', () => {
+    const FLIPPED = { id: 377909, season: 2027, homeTeamId: 213, awayTeamId: 338 };
+    const IDS = { home: '87', away: '222' };
+
+    test('the box lands on the right team when ESPN\'s home is our away', () => {
+        const box = live.boxFrom(SUMMARY, FLIPPED, IDS);
+        expect(box.home).toMatchObject({ teamId: 213, points: 74, fgAtt: 65 });
+        expect(box.away).toMatchObject({ teamId: 338, points: 72, fgAtt: 52 });
+        expect(box.home.players.some(p => p.name === 'Braeden Smith')).toBe(true);
+    });
+
+    test('and so do the shots', () => {
+        const c = live.shotsFrom(SUMMARY, FLIPPED, IDS);
+        expect(c.attempts).toEqual({ home: 65, away: 52 });
+        expect(c.home.some(s => s.shooter === 'Braeden Smith')).toBe(true);
+    });
+
+    test('ids unknown, or not ESPN\'s two teams: ESPN home/away, as before', () => {
+        for (const ids of [undefined, { home: null, away: '222' }, { home: '1', away: '2' }, { home: '87', away: '87' }]) {
+            expect(live.boxFrom(SUMMARY, GAME, ids).home.points).toBe(72);
+        }
+        expect(live.shape(FLIPPED, IDS)(SUMMARY).box.home.points).toBe(74);
+    });
+});
+
 describe('shotsFrom', () => {
     const shots = () => live.shotsFrom(SUMMARY, GAME);
 

@@ -31,6 +31,11 @@
 //   players summed to 59 while the header said 60, then 63 against 62. A
 //   side's `points` is the header's score, never the players' sum, and
 //   `byPeriod` is left empty so the line score keeps the live poller's.
+// - Home and away are CBBD's, NOT ESPN's. At a neutral site the two can
+//   disagree: UTEP v Northern Kentucky at the Sanford Pentagon (2 Nov 2026)
+//   was CBBD home UTEP, ESPN home NKU, which put NKU's box and shots on
+//   UTEP. Sides are matched on ESPN's team id (HoopsTeam.sourceId) when
+//   both are known, and on ESPN's home/away only when they are not.
 // - ESPN athlete ids are not CBBD's. They go out as `espnId`, never
 //   `athleteId`, which roster.withJerseys would look up in CBBD's roster; the
 //   jersey comes straight from ESPN.
@@ -61,10 +66,13 @@ function competitors(body) {
 }
 
 // ESPN team id of each side, from the header ESPN keys everything else on.
-function sides(body) {
+// `espnIds` is { home, away }: OUR home and away teams' ESPN ids.
+function sides(body, espnIds) {
     const comps = competitors(body);
-    const of = (ha) => comps.find(c => c && c.homeAway === ha);
-    const home = of('home'), away = of('away');
+    const byId = (id) => (id == null ? null : comps.find(c => c && c.team && String(c.team.id) === String(id)));
+    const byHa = (ha) => comps.find(c => c && c.homeAway === ha);
+    const known = espnIds && byId(espnIds.home) && byId(espnIds.away) && String(espnIds.home) !== String(espnIds.away);
+    const home = known ? byId(espnIds.home) : byHa('home'), away = known ? byId(espnIds.away) : byHa('away');
     if (!home || !away || !home.team || !away.team) return null;
     return {
         home: { espnTeam: String(home.team.id), score: int(home.score) },
@@ -128,8 +136,8 @@ function playerLines(group) {
 
 // The box score, in HoopsBoxScore's shape, or null when ESPN has no player
 // lines yet (before tip-off, or a game it does not cover). Pure.
-function boxFrom(body, game) {
-    const s = sides(body);
+function boxFrom(body, game, espnIds) {
+    const s = sides(body, espnIds);
     const bs = body && body.boxscore;
     if (!s || !bs || !Array.isArray(bs.teams) || !Array.isArray(bs.players)) return null;
     const side = (k, teamId) => {
@@ -150,8 +158,8 @@ function rangeOf(p) {
 
 // The shot chart, in hoops-shots.forGame's shape, or null when no attempt is
 // located yet. Pure.
-function shotsFrom(body, game) {
-    const s = sides(body);
+function shotsFrom(body, game, espnIds) {
+    const s = sides(body, espnIds);
     if (!s || !body || !Array.isArray(body.plays)) return null;
     // The shooter's name: plays carry only an athlete id.
     const names = new Map();
@@ -196,8 +204,8 @@ function shotsFrom(body, game) {
 }
 
 // Both at once, for espn-summary's one-shape-per-sport cache.
-function shape(game) {
-    return (body) => ({ box: boxFrom(body, game), shots: shotsFrom(body, game) });
+function shape(game, espnIds) {
+    return (body) => ({ box: boxFrom(body, game, espnIds), shots: shotsFrom(body, game, espnIds) });
 }
 
 module.exports = { boxFrom, shotsFrom, shape, rangeOf };
