@@ -530,12 +530,25 @@
                 + (t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '') + esc(t.school) + '</button>';
         };
         var segs = '<div class="sp-seg">' + seg('away') + seg('home') + '</div>';
-        if (state.tab === 'shots' && d.shots) return segs + shotChart(d);
-        if (!d.box) return noBox(d);
-        if (state.tab === 'box') return segs + boxTable(d);
-        return '<h2 class="sp-h">Keys to the game<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="sp-card">' + factors(d) + '</div>'
+        if (state.tab === 'shots' && d.shots) return segs + shotChart(d) + espnNote(d, d.shots);
+        // A live game keeps its preview under the stats; one with no box
+        // yet is all preview.
+        var after = d.game.live ? '<div class="hg-preview">' + preview(d) + '</div>' : '';
+        if (!d.box) return d.game.live ? after : noBox(d);
+        if (state.tab === 'box') return segs + boxTable(d) + espnNote(d, d.box);
+        // The four factors explain a final; ESPN's lines carry only one of
+        // them, so a stand-in box waits for CBBD's.
+        var keys = d.game.final && d.box.source !== 'espn' ? factors(d) : '';
+        return (keys.length > vsHead(d).length ? '<h2 class="sp-h">Keys to the game<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="sp-card">' + keys + '</div>' : '')
             + '<h2 class="sp-h">Team stats' + (d.box.pace ? '<small>' + fixed(d.box.pace, 0) + ' possessions</small>' : '') + '</h2><div class="sp-card">' + teamStats(d) + '</div>'
-            + '<h2 class="sp-h">Leaders</h2>' + leaders(d);
+            + '<h2 class="sp-h">Leaders</h2>' + leaders(d) + espnNote(d, d.box) + after;
+    }
+
+    // Lines from ESPN stand in until CBBD's post-game data is stored
+    // (modules/hoops-espn-live.js); say so, and that they will change.
+    function espnNote(d, src) {
+        if (!src || src.source !== 'espn') return '';
+        return '<p class="hg-src">' + (d.game.live ? 'Live stats from ESPN.' : 'Early stats from ESPN. The official box score replaces them overnight.') + '</p>';
     }
 
     function paintPanel() {
@@ -562,9 +575,13 @@
             state.side = mine(d.home) ? 'home' : mine(d.away) ? 'away'
                 : (d.home.owner && !d.away.owner ? 'home' : 'away');
         }
+        // A live game with ESPN's lines gets the box and chart tabs, its
+        // preview kept under the Summary.
         root.innerHTML = d.game.final
             ? hero(d) + fantasy(d) + netCard(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
-            : hero(d) + '<div class="hg-preview">' + preview(d) + '</div>';
+            : d.game.live && (d.box || d.shots)
+                ? hero(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
+                : hero(d) + '<div class="hg-preview">' + preview(d) + '</div>';
         var title = document.querySelector('title');
         if (title) title.setAttribute('data-league-title', abbr(d.away) + (d.game.neutralSite ? ' vs ' : ' at ') + abbr(d.home));
         if (window.ccLeague && window.ccLeague.paint) window.ccLeague.paint();

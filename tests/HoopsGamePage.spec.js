@@ -522,6 +522,74 @@ describe('build', () => {
     });
 });
 
+describe('ESPN stands in until CBBD\'s own data is stored', () => {
+    const espnSummary = require('../modules/espn-summary');
+    const HoopsShots = require('../models/hoopsShots');
+    const ESPN_BOX = { gameId: 500, season: SEASON, source: 'espn', home: { teamId: 1, points: 41, players: [{ name: 'Isaiah Evans', points: 12 }] }, away: { teamId: 2, points: 38, players: [] } };
+    const ESPN_SHOTS = { source: 'espn', complete: false, attempts: { home: 1, away: 0 }, home: [{ made: true, range: 'rim', x: 25, y: 6 }], away: [] };
+    const stubEspn = (value = { box: ESPN_BOX, shots: ESPN_SHOTS }) =>
+        jest.spyOn(espnSummary, 'summaryFor').mockResolvedValue({ value, error: value ? null : 'ESPN is unavailable right now' });
+
+    beforeEach(async () => {
+        await HoopsGame.create(Object.assign({}, GAME, { sourceId: '401911532' }));
+    });
+
+    test('a live game: box and chart from ESPN, by the game\'s sourceId — and no CBBD call', async () => {
+        const get = stubCbbd();
+        const espn = stubEspn();
+        await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress', homePoints: 41, awayPoints: 38, period: 2, clock: '8:43' } });
+        const p = await gamePage.build(500);
+        expect(espn).toHaveBeenCalledWith('basketball', '401911532', expect.any(Function));
+        expect(p.box).toEqual(ESPN_BOX);
+        expect(p.shots).toEqual(ESPN_SHOTS);
+        expect(p.preview).not.toBeNull();
+        expect(get).not.toHaveBeenCalled();
+    });
+
+    test('a final with CBBD\'s box and chart stored: those, and ESPN is never asked', async () => {
+        const espn = stubEspn();
+        await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
+        await HoopsShots.create({ gameId: 500, season: SEASON, complete: true, shots: [{ teamId: 1, made: true, range: 'rim', x: 25, y: 6 }] });
+        const p = await gamePage.build(500);
+        expect(espn).not.toHaveBeenCalled();
+        expect(p.box.source).toBeUndefined();
+        expect(p.box.home.points).toBe(75);
+        expect(p.shots.home).toHaveLength(1);
+        expect(p.shots.source).toBeUndefined();
+    });
+
+    test('a final whose box landed but not its chart: CBBD\'s box, ESPN\'s chart', async () => {
+        stubEspn();
+        await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
+        const p = await gamePage.build(500);
+        expect(p.box.home.points).toBe(75);
+        expect(p.box.source).toBeUndefined();
+        expect(p.shots).toEqual(ESPN_SHOTS);
+    });
+
+    test('a final with nothing stored yet: ESPN\'s box, so the page is not empty in the gap', async () => {
+        stubEspn();
+        const p = await gamePage.build(500);
+        expect(p.box).toEqual(ESPN_BOX);
+    });
+
+    test('ESPN down: no box, and the page still builds', async () => {
+        stubEspn(null);
+        const p = await gamePage.build(500);
+        expect([p.box, p.shots]).toEqual([null, null]);
+        expect(p.home.school).toBe('Duke');
+    });
+
+    test('a game still to play, or one with no ESPN id: ESPN is never asked', async () => {
+        const espn = stubEspn();
+        await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'scheduled', homePoints: null, awayPoints: null } });
+        expect((await gamePage.build(500)).box).toBeNull();
+        await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress' }, $unset: { sourceId: 1 } });
+        expect((await gamePage.build(500)).box).toBeNull();
+        expect(espn).not.toHaveBeenCalled();
+    });
+});
+
 describe('GET /hoops/games/:id/page', () => {
     const app = express();
     app.use('/hoops/games', require('../routes/hoopsGames'));

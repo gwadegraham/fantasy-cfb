@@ -380,6 +380,21 @@ module.exports = {
             functions: 96,
             lines: 100
         },
+        // ESPN's game summary (live box + shots), shared by both sports:
+        // never throws, and viewers of one game share one call per window.
+        "./modules/espn-summary.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
+        // ESPN's basketball lines in CBBD's shapes, pinned to a real game.
+        "./modules/hoops-espn-live.js": {
+            statements: 98,
+            branches: 90,
+            functions: 100,
+            lines: 100
+        },
         // A team's ESPN headlines: the roundup filter, the cache, and never
         // throwing for ESPN. The feed is undocumented, so its failure paths
         // are the ones that matter.

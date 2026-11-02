@@ -841,3 +841,56 @@ describe('a live game refreshes itself', () => {
     });
 });
 
+
+// ESPN's lines stand in while a game is on, and after the final until
+// CBBD's box lands (modules/hoops-espn-live.js).
+describe('ESPN stand-in stats', () => {
+    const espnBox = (o) => ({ source: 'espn', home: side(Object.assign({ efgPct: 51, tovPct: undefined, orbPct: undefined, ftRate: undefined, players: [player('Isaiah Evans', { points: 12 })] }, o)),
+        away: side({ efgPct: 44, tovPct: undefined, orbPct: undefined, ftRate: undefined, players: [player('Dailyn Swain', { points: 9 })] }) });
+    const liveGame = (o) => {
+        const p = upcoming();
+        p.game = Object.assign({}, p.game, { live: true, status: 'in_progress', period: 2, clock: '8:43' });
+        p.home = Object.assign({}, p.home, { points: 41 });
+        p.away = Object.assign({}, p.away, { points: 38 });
+        return Object.assign(p, o);
+    };
+
+    test('a live game with ESPN lines: box and chart tabs, the stats, then the preview — and a credit', async () => {
+        await render(liveGame({ box: espnBox(), shots: { source: 'espn', attempts: { home: 0, away: 1 }, home: [], away: [{ made: true, range: 'rim', x: 25, y: 6, shooter: 'Dailyn Swain', period: 2, clock: '9:00' }] } }));
+        expect(txt('[data-tab]')).toBe('Summary | Box score | Shot chart');
+        expect(txt('.sp-h')).toContain('Team stats');
+        expect(txt('.sp-h')).not.toContain('Keys to the game');
+        expect(q('.hg-panel .hg-preview')).not.toBeNull();
+        expect(txt('.hg-preview h2')).toContain('Pregame win probability');
+        expect(q('.hg-src').textContent).toBe('Live stats from ESPN.');
+        expect(q('.hg-fan')).toBeNull();            // nothing banked mid-game
+        tab('box');
+        // Opens on the rostered (away) side, as a final's box does.
+        expect(txt('.hg-box td')).toContain('D. Swain');
+        expect(q('.hg-src').textContent).toBe('Live stats from ESPN.');
+        tab('shots');
+        expect(document.querySelectorAll('.hg-shot-floor circle.mk')).toHaveLength(1);
+        expect(q('.hg-src').textContent).toBe('Live stats from ESPN.');
+    });
+
+    test('a live game ESPN has nothing for yet: the preview alone, as before', async () => {
+        await render(liveGame());
+        expect(q('.sp-tabs')).toBeNull();
+        expect(q('.hg-src')).toBeNull();
+        expect(q('.hg-preview')).not.toBeNull();
+    });
+
+    test('a final on ESPN lines: no keys to the game, and a note that the official box replaces them', async () => {
+        await render(payload({ box: espnBox() }));
+        expect(txt('.sp-h')).not.toContain('Keys to the game');
+        expect(txt('.sp-h')).toContain('Team stats');
+        expect(q('.hg-src').textContent).toBe('Early stats from ESPN. The official box score replaces them overnight.');
+        expect(q('.hg-panel .hg-preview')).toBeNull();
+    });
+
+    test('CBBD\'s own box: keys to the game, and no credit line', async () => {
+        await render(payload());
+        expect(txt('.sp-h')).toContain('Keys to the game');
+        expect(q('.hg-src')).toBeNull();
+    });
+});

@@ -5,6 +5,8 @@
 // team page does it (same rank cache, same owner lookup), so the two pages
 // cannot tell a manager different stories about one game. The box score is
 // read from what the nightly batch stored — the page never calls CBBD.
+// While a game is on, and after the final until that batch lands, the box
+// and shot chart come from ESPN instead (modules/hoops-espn-live.js).
 
 const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
@@ -20,6 +22,9 @@ const stale = require('./hoops-stale-duplicates');
 const { outlets } = require('./hoops-media');
 const { latestNet } = require('./hoops-net');
 const shotCharts = require('./hoops-shots');
+// Namespaces, so a test can stand in for the ESPN call.
+const espnSummary = require('./espn-summary');
+const espnLive = require('./hoops-espn-live');
 
 // A team's record through this game — what it was walking off the floor,
 // not what it is today.
@@ -133,6 +138,13 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         final ? shotCharts.forGame(game).catch(() => null) : null
     ]);
     const byId = new Map(teams.map(t => [Number(t.id), t]));
+    // ESPN fills what CBBD has not stored yet: everything while the game is
+    // on, and after the final whichever of the box and chart has not landed.
+    // Stored CBBD data always wins. A failure just leaves the gap.
+    let espn = null;
+    if (game.sourceId && (live || (final && (!boxed || !shots)))) {
+        espn = (await espnSummary.summaryFor('basketball', game.sourceId, espnLive.shape(game))).value;
+    }
     // Jersey numbers on the box, from the once-a-season roster import (the
     // key players get theirs through the team page's stats below).
     if (boxed) {
@@ -227,8 +239,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         away: side(awayId, homeId, awayRec, awayOwner, game.awayPoints),
         quadrantValues: values,
         rescheduled: replaced ? { id: replaced.id, startDate: replaced.startDate, startTimeTbd: !!replaced.startTimeTbd } : null,
-        box: boxed || null,
-        shots: shots || null,
+        box: boxed || (espn && espn.box) || null,
+        shots: shots || (espn && espn.shots) || null,
         preview
     };
 }
