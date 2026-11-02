@@ -74,7 +74,6 @@ test('the basketball picker names the tip-off, the TBD days and the locked week'
     // instant is 23:00 Sunday in Central.
     expect(text).toContain('vs #12 OPP · Mon · TBD');
     expect(text).toContain('vs BBB · Sat · TBD');
-    expect(text).toContain('Hoops Two play twice');
     expect(text).toContain('Week 1 is locked · Hoops Two is your 2× (default)');
     // The default for the week being picked, worded as the reminder words it.
     expect(text).toContain('No pick yet — Hoops One goes in by default');
@@ -152,4 +151,49 @@ test('a slate without quadrants (football, or a failed read) shows neither', asy
     uhDrawer.captain(body);
     expect(body.querySelector('.cap-q')).toBeNull();
     expect(body.querySelector('.cap-up')).toBeNull();
+});
+
+// #637: the picker's basics, from a new-user walkthrough on opening day.
+describe('picker basics (#637)', () => {
+    test('says how a pick saves and clears, right under the heading', async () => {
+        await hydrateCaptain(USER, '2027');
+        const body = document.createElement('div');
+        uhDrawer.captain(body);
+        const how = body.querySelector('.captain-note').nextElementSibling;
+        expect(how.textContent).toBe('Tap a team to make it your Captain. It saves right away. Tap it again to clear.');
+    });
+
+    test('a locked week has nothing to tap, so no hint', async () => {
+        const locked = Object.assign({}, STATE, { locked: true, current: undefined });
+        global.fetch = jest.fn(url => Promise.resolve({ ok: true, json: () => Promise.resolve(String(url).startsWith('/scoring-config')
+            ? { engagement: { captainEnabled: true } } : locked) }));
+        await hydrateCaptain(USER, '2027');
+        const body = document.createElement('div');
+        uhDrawer.captain(body);
+        expect(body.textContent).not.toContain('Tap a team');
+    });
+
+    test('no roster-wide "play twice" line; the per-card chip carries the count', async () => {
+        const three = JSON.parse(JSON.stringify(STATE));
+        three.slate[1].games.push({ gameId: 13, opp: 'CCC', oppRank: null, ha: 'vs', kickoff: null, day: '2026-11-15T05:00:00.000Z' });
+        global.fetch = jest.fn(url => Promise.resolve({ ok: true, json: () => Promise.resolve(String(url).startsWith('/scoring-config')
+            ? { engagement: { captainEnabled: true } } : three) }));
+        await hydrateCaptain(USER, '2027');
+        const body = document.createElement('div');
+        uhDrawer.captain(body);
+        expect(body.textContent).not.toContain('play twice');
+        expect(body.textContent).not.toContain('doubles both');
+        expect(body.querySelectorAll('.captain-team')[1].querySelector('.cap-2g').textContent).toBe('3 games');
+    });
+
+    test('the tile glance names the Captain without a link out of the tile', async () => {
+        const picked = Object.assign({}, STATE, { teamId: 2, autoTeamId: null });
+        global.fetch = jest.fn(url => Promise.resolve({ ok: true, json: () => Promise.resolve(String(url).startsWith('/scoring-config')
+            ? { engagement: { captainEnabled: true } } : picked) }));
+        await hydrateCaptain(USER, '2027');
+        const glance = document.getElementById('uh-glance-captain');
+        expect(glance.textContent).toContain('Hoops Two');
+        expect(glance.querySelector('a')).toBeNull();
+        expect(document.querySelector('#uh-tile-captain a')).toBeNull();
+    });
 });
