@@ -116,9 +116,17 @@ describe('GET /hoops/games/teams/:season/:week', () => {
         expect(neutral.away).toMatchObject({ id: 1, quadrant: 1, quadrantRank: 40 });
         // Duke is unranked here, so Kansas's side of it is a Q4.
         expect(neutral.home).toMatchObject({ id: 3, quadrant: 4, quadrantRank: null });
-        expect(res.body.quadrantValues).toEqual({ 1: 5, 2: 3, 3: 1, 4: 0 });
+        expect(res.body.quadrantValues).toEqual({ 1: 5, 2: 3, 3: 1, 4: 0, q4Loss: 0 });
         // Captain is off by default, so nothing to multiply by.
         expect(res.body.captainMultiplier).toBeNull();
+    });
+
+    test('?quadrants=1 with the Q4 loss penalty on: q4Loss carries its value', async () => {
+        const ScoringConfig = require('../models/scoringConfig');
+        await ScoringConfig.create({ league: LEAGUE, model: 'hoops', enabled: ['badLoss'] });
+        jest.spyOn(leagueSelection, 'selectedLeague').mockResolvedValue(LEAGUE);
+        const res = await request(app).get(`/hoops/games/teams/${SEASON}/2?ids=1&quadrants=1`);
+        expect(res.body.quadrantValues).toEqual({ 1: 5, 2: 3, 3: 1, 4: 0, q4Loss: -2 });
     });
 
     test('?quadrants=1 with Captain on: the multiplier, and which games it can double', async () => {

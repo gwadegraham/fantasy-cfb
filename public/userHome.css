@@ -641,6 +641,10 @@
 .cap-q.q2 { background: rgba(var(--cc-accent-rgb), .10); color: var(--cc-accent); }
 .cap-up { flex-shrink: 0; font-size: 0.66rem; font-weight: 800; color: var(--cc-success); }
 .cap-up.zero { color: var(--cc-muted-2); font-weight: 500; }
+/* The week's stakes on their own line, under the name: what winning out
+   pays as Captain, and what losing out costs (the Q4 penalty, undoubled). */
+.cap-pay { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.4rem; }
+.cap-down { font-size: 0.66rem; font-weight: 800; color: var(--cc-danger-text); }
 .captain-team.is-captain { border-color: var(--cc-interactive); background: rgba(142, 140, 240, 0.14); font-weight: 700; }
 /* Locked week: cells are read-only (no pointer, no hover lift). */
 .captain-team.is-locked { cursor: default; opacity: 0.6; }
@@ -994,6 +998,7 @@ body.uh-drawer-open { overflow: hidden; }
 .uh-hg-q.q1 { background: rgba(var(--cc-accent-rgb), .22); color: var(--cc-accent); }
 .uh-hg-q.q2 { background: rgba(var(--cc-accent-rgb), .10); color: var(--cc-accent); }
 .uh-hg-if b { color: var(--cc-accent); }
+.uh-hg-loss { color: var(--cc-danger-text); }
 .uh-hg .sp-gr.uh-hg-team { display: flex; align-items: center; color: var(--cc-text); }
 .uh-hg-w { color: var(--cc-success); }
 .uh-hg-l { color: var(--cc-danger-text); }

@@ -140,10 +140,45 @@ test('each game carries its quadrant, and each team what its week pays as Captai
     const [one, two] = [...body.querySelectorAll('.captain-team')];
     expect([...one.querySelectorAll('.cap-q')].map(e => e.textContent)).toEqual(['Q1']);
     expect(one.querySelector('.cap-q').getAttribute('title')).toContain('#20');
-    expect(one.querySelector('.cap-up').textContent).toBe('up to +10');
+    expect(one.querySelector('.cap-up').textContent).toBe('+10 if won');
     // Two games: both chips, and the week's total.
     expect([...two.querySelectorAll('.cap-q')].map(e => e.textContent)).toEqual(['Q2', 'Q4']);
-    expect(two.querySelector('.cap-up').textContent).toBe('up to +6');
+    expect(two.querySelector('.cap-up').textContent).toBe('+6 if both won');
+    // A league with the penalty off sends no lossValue: nothing about losses.
+    expect(body.querySelector('.cap-down')).toBeNull();
+});
+
+test('with the Q4 penalty on, a card shows what losing out costs, undoubled', async () => {
+    const withQ = JSON.parse(JSON.stringify(STATE));
+    Object.assign(withQ.slate[0].games[0], { quadrant: 1, winValue: 10, lossValue: 0 });
+    Object.assign(withQ.slate[1].games[0], { quadrant: 4, winValue: 0, lossValue: -2 });
+    Object.assign(withQ.slate[1].games[1], { quadrant: 4, winValue: 0, lossValue: -2 });
+    global.fetch = jest.fn(url => Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(String(url).startsWith('/scoring-config') ? { engagement: { captainEnabled: true } } : withQ)
+    }));
+    await hydrateCaptain(USER, '2027');
+    const body = document.createElement('div');
+    uhDrawer.captain(body);
+    const [one, two] = [...body.querySelectorAll('.captain-team')];
+    expect(one.querySelector('.cap-pay').textContent).toBe('+10 if won no loss penalty');
+    expect(two.querySelector('.cap-up').textContent).toBe('+0 if both won');
+    expect(two.querySelector('.cap-down').textContent).toBe('−4 if both lost');
+});
+
+test('"no loss penalty" only when every game\'s quadrant is known', async () => {
+    const withQ = JSON.parse(JSON.stringify(STATE));
+    // Team two: a Q1, and an opponent not rated yet (no quadrant, no values).
+    Object.assign(withQ.slate[1].games[0], { quadrant: 1, winValue: 10, lossValue: 0 });
+    global.fetch = jest.fn(url => Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(String(url).startsWith('/scoring-config') ? { engagement: { captainEnabled: true } } : withQ)
+    }));
+    await hydrateCaptain(USER, '2027');
+    const body = document.createElement('div');
+    uhDrawer.captain(body);
+    const two = body.querySelectorAll('.captain-team')[1];
+    expect(two.querySelector('.cap-pay').textContent).toBe('+10 if won');
 });
 
 test('a slate without quadrants (football, or a failed read) shows neither', async () => {

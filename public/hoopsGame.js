@@ -384,19 +384,28 @@
             var q = t.quadrant ? qChip(d, t)
                 : '<span class="hg-q post">' + esc(d.game.tournament || 'Post') + '</span>';
             if (!owner) return '<div class="hg-st-row">' + q + '<span class="who"><b>' + esc(t.school) + '</b> · not on a roster</span></div>';
-            // A win that pays nothing (Q4) says so, rather than "+0, expected +0".
+            // A win that pays nothing (Q4) says so, rather than "+0, expected +0"
+            // — and when the league charges a Q4 loss, the loss is the stake.
             if (v === 0) {
+                var loss = t.quadrant === 4 && typeof vals.q4Loss === 'number' && vals.q4Loss < 0 ? vals.q4Loss : 0;
                 return '<div class="hg-st-row">' + q + '<span class="who"><b>' + owner + '</b> · ' + esc(t.school) + '</span>'
-                    + '<span class="pts zero">no points<small>a Q' + t.quadrant + ' win</small></span></div>';
+                    + (loss
+                        ? '<span class="pts loss">' + String(loss).replace('-', '−') + ' if lost<small>a Q4 win pays 0</small></span>'
+                        : '<span class="pts zero">no points<small>a Q' + t.quadrant + ' win</small></span>')
+                    + '</div>';
             }
-            var exp = v != null && winP != null ? '<small>expected +' + (Math.round(v * winP * 10) / 10) + '</small>' : '';
+            // A league can pay a Q4 win AND charge a Q4 loss: say both.
+            var lossQ4 = t.quadrant === 4 && typeof vals.q4Loss === 'number' && vals.q4Loss < 0
+                ? String(vals.q4Loss).replace('-', '−') + ' if lost' : '';
+            var exp = v != null && winP != null ? '<small>expected +' + (Math.round(v * winP * 10) / 10) + (lossQ4 ? ' · ' + lossQ4 : '') + '</small>'
+                : lossQ4 ? '<small>' + lossQ4 + '</small>' : '';
             return '<div class="hg-st-row">' + q + '<span class="who"><b>' + owner + '</b> · ' + esc(t.school) + '</span>'
                 + '<span class="pts">' + (v != null ? '+' + v : 'ladder') + exp + '</span></div>';
         };
         var both = d.home.owner && d.away.owner;
         var none = !d.home.owner && !d.away.owner;
         if (none) return '';
-        return '<h2 class="sp-h">' + (both ? 'Manager matchup' : 'Fantasy stakes') + '<small>Points for a win</small></h2>'
+        return '<h2 class="sp-h">' + (both ? 'Manager matchup' : 'Fantasy stakes') + '<small>Points at stake</small></h2>'
             + '<div class="sp-card hg-stakes">' + line(d.away, p == null ? null : 1 - p) + line(d.home, p) + '</div>';
     }
 

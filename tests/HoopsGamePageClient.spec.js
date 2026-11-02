@@ -402,6 +402,27 @@ test('one side rostered: fantasy stakes; a Q4 win says it pays nothing', async (
     expect(rows[1]).toBe('Q4Hoop Dreams · Dukeno pointsa Q4 win');
 });
 
+test('one side rostered, Q4 loss penalty on: the stake is the loss', async () => {
+    const p = upcoming();
+    p.away = Object.assign({}, p.away, { owner: null });
+    p.home = Object.assign({}, p.home, { quadrant: 4 });
+    p.quadrantValues = { 1: 5, 2: 3, 3: 1, 4: 0, q4Loss: -2 };
+    await render(p);
+    const rows = Array.from(document.querySelectorAll('.hg-st-row')).map(r => r.textContent);
+    expect(rows[1]).toBe('Q4Hoop Dreams · Duke−2 if losta Q4 win pays 0');
+});
+
+test('a league that pays a Q4 win still shows the loss beside the expectation', async () => {
+    const p = upcoming();
+    p.away = Object.assign({}, p.away, { owner: null });
+    p.home = Object.assign({}, p.home, { quadrant: 4 });
+    p.quadrantValues = { 1: 5, 2: 3, 3: 1, 4: 1, q4Loss: -2 };
+    await render(p);
+    const rows = Array.from(document.querySelectorAll('.hg-st-row')).map(r => r.textContent);
+    expect(rows[1]).toMatch(/^Q4Hoop Dreams · Duke\+1expected \+[\d.]+ · −2 if lost$/);
+    expect(Array.from(document.querySelectorAll('.hg-preview h2')).map(h => h.textContent).join('|')).toContain('Fantasy stakesPoints at stake');
+});
+
 test('nobody rostered, or no league: no stakes section at all', async () => {
     const p = upcoming();
     p.away = Object.assign({}, p.away, { owner: null });

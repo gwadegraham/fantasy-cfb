@@ -962,11 +962,27 @@ function uhQChip(g) {
     const tip = g.quadrantRank ? `Q${q}: opponent ranked #${g.quadrantRank} (T-Rank, then NET), adjusted for venue. As of today's ranks.` : `Q${q}, as of today's ranks`;
     return `<span class="cap-q q${q}" title="${escapeHtml(tip)}">Q${q}</span>`;
 }
+// What the week pays as Captain if every game is won, and — when the league
+// has the Q4 loss penalty on — what it costs if every game is lost. The
+// penalty is never doubled (#643), so the loss side is the plain −2s.
 function uhUpTo(games) {
-    const vals = (games || []).map(g => g.winValue).filter(v => typeof v === 'number' && isFinite(v));
-    if (!vals.length) return '';
-    const total = Math.round(vals.reduce((a, b) => a + b, 0) * 10) / 10;
-    return `<span class="cap-up${total ? '' : ' zero'}" title="As Captain, if ${games.length > 1 ? 'they win every game' : 'they win'} this week">up to +${total}</span>`;
+    const num = (v) => typeof v === 'number' && isFinite(v);
+    const wins = (games || []).map(g => g.winValue).filter(num);
+    if (!wins.length) return '';
+    const r1 = (n) => Math.round(n * 10) / 10;
+    const win = r1(wins.reduce((a, b) => a + b, 0));
+    const n = wins.length;
+    const all = n === 1 ? '' : n === 2 ? 'both ' : 'all ';
+    let html = `<span class="cap-up${win ? '' : ' zero'}" title="As Captain, if ${n > 1 ? 'they win every game' : 'they win'} this week">+${win} if ${all}won</span>`;
+    const losses = (games || []).map(g => g.lossValue).filter(num);
+    if (losses.length) {
+        const loss = r1(losses.reduce((a, b) => a + b, 0));
+        // "No loss penalty" only when every game's quadrant is known: an
+        // opponent not rated yet could still turn out to be a Q4.
+        if (loss < 0) html += ` <span class="cap-down" title="Q4 loss penalty, not doubled by the Captain">${String(loss).replace('-', '−')} if ${all}lost</span>`;
+        else if (losses.length === (games || []).length) html += ` <span class="cap-up zero">no loss penalty</span>`;
+    }
+    return html;
 }
 // The picker dates its tiles by the same rule the matchup card uses, from the
 // same code — h2h-card.js ships in the navbar on every page, so ccH2H is always
@@ -1086,11 +1102,12 @@ async function hydrateCaptain(user, activeYear) {
     const tileBody = (t) => {
         const games = slateBy[t.id] || [];
         const badge = games.length > 1 ? `<span class="cap-2g">${games.length} games</span>` : '';
+        const pay = uhUpTo(games);
         const lines = games.length
             ? games.map(g => `<span class="cap-tg">${uhQChip(g)}${escapeHtml(g.ha)} ${uhRankTag(g.oppRank)}${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff, { dated: uhNeedsDate(g.kickoff, datePlan) })) : ' · ' + uhTbdDay(g.day)}</span>`).join('')
             : `<span class="cap-tg">No game this week</span>`;
         return `<img src="${ccLogo(t.logos)}" alt="">
-            <span class="cap-tid"><span class="cap-tnm"><span class="cap-nm">${escapeHtml(t.school)}</span>${badge}${uhUpTo(games)}</span>${lines}</span>`;
+            <span class="cap-tid"><span class="cap-tnm"><span class="cap-nm">${escapeHtml(t.school)}</span>${badge}</span>${pay ? `<span class="cap-pay">${pay}</span>` : ''}${lines}</span>`;
     };
     // Basketball: the week already being played, once the picker has moved on
     // to the next one (weeks run back to back, so a locked week cannot hold

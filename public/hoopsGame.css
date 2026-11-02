@@ -83,6 +83,7 @@
 .hg-st-row .who b { color: var(--cc-text); }
 .hg-st-row .pts { text-align: right; font-weight: 800; color: var(--cc-accent); font-size: 16px; }
 .hg-st-row .pts.zero { color: var(--cc-muted); font-size: 13px; font-weight: 600; }
+.hg-st-row .pts.loss { color: var(--cc-danger-text); font-size: 13px; }
 .hg-st-row .pts small { display: block; font-size: 10px; font-weight: 500; color: var(--cc-muted-2); }
 .hg-st-row .hg-q { margin-right: 0; }
 .hg-form-row { display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; align-items: center; padding: 9px 14px; font-size: 13px; }

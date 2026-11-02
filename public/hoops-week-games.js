@@ -221,6 +221,11 @@
             var v = Math.round(o.values[q.quadrant] * (cap ? o.captainMultiplier : 1) * 10) / 10;
             ifWon = '<span class="uh-hg-if" title="If they win' + (cap ? ', as your Captain' : '') + '">win +' + v
                 + (cap ? ' <b>' + esc(o.captainMultiplier) + '×</b>' : '') + '</span>';
+            // A Q4 game is not "nothing at stake" when the league charges a
+            // Q4 loss. Never doubled by the Captain (#643).
+            if (q.quadrant === 4 && typeof o.values.q4Loss === 'number' && o.values.q4Loss < 0) {
+                ifWon += ' · <span class="uh-hg-loss" title="If they lose: the Q4 loss penalty">loss ' + String(o.values.q4Loss).replace('-', '−') + '</span>';
+            }
         }
         var href = gameHref(g.id);
         return '<a class="sp-gr uh-hg-row' + (r.tone === 'up' ? ' up' : '') + '" href="' + href + '">'

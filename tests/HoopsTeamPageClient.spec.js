@@ -191,6 +191,18 @@ test('the team sheet: four tiles — each quadrant\'s record, what a win pays, a
     expect(tile(2).querySelector('.ht-tile-wl').textContent).toBe('—');
 });
 
+test('with the Q4 loss penalty on, the Q4 tile says what a loss costs', async () => {
+    await render(payload({ quadrantValues: { 1: 5, 2: 3, 3: 1, 4: 0, q4Loss: -2 } }));
+    const tile = (n) => document.querySelector('.ht-tile[data-q="' + n + '"]');
+    expect(tile(4).querySelector('.ht-tile-sub').textContent).toBe('−2 a loss');
+    expect(tile(3).querySelector('.ht-tile-sub').textContent).toBe('+1 a win');
+});
+
+test('a league that pays a Q4 win AND charges a Q4 loss shows both on the tile', async () => {
+    await render(payload({ quadrantValues: { 1: 5, 2: 3, 3: 1, 4: 1, q4Loss: -2 } }));
+    expect(document.querySelector('.ht-tile[data-q="4"] .ht-tile-sub').textContent).toBe('+1 / −2');
+});
+
 test('one list under the tiles: Q1 first, and a tap switches it', async () => {
     await render(payload());
     const listed = () => Array.from(document.querySelectorAll('.ht-qlist .opp .nm')).map(n => n.textContent);

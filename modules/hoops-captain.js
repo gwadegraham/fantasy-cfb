@@ -192,6 +192,12 @@ async function captainState({ userId, league, season, nowMs = Date.now() }) {
                     // counts what is left.
                     winValue: q && values && !isFinalGame(g) && Number.isFinite(values[q.quadrant])
                         ? values[q.quadrant] * multiplier : null,
+                    // What a loss would cost — NOT multiplied: a Captain
+                    // never doubles a penalty (#643). 0 for a game with no
+                    // penalty at stake; null when the league has the
+                    // penalty off, so the picker says nothing about losses.
+                    lossValue: q && values && !isFinalGame(g) && values.q4Loss < 0
+                        ? (q.quadrant === 4 ? values.q4Loss : 0) : null,
                     // 'N' on a neutral floor, as My Team's Games drawer marks
                     // it — the quadrant beside it is graded on that venue.
                     ha: g.neutralSite ? 'N' : isHome ? 'vs' : '@',

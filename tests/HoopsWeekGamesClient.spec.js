@@ -337,6 +337,16 @@ describe('quadrant chips and what a win pays', () => {
         expect(html).not.toContain('2×');
     });
 
+    test('a Q4 game shows the loss penalty beside its +0, undoubled for the Captain', () => {
+        const entry = Object.assign({}, SEASON_ENTRY, { captains: [{ week: 1, teamId: 1 }] });
+        const html = rowFor([withQ(G.pre, 1, 4, 300)], entry, 1, 102, { values: Object.assign({ q4Loss: -2 }, VALUES), captainMultiplier: 2 });
+        expect(html).toContain('win +0');
+        expect(html).toContain('loss −2');
+        expect(html).not.toContain('−4');
+        // Penalty off: no loss line.
+        expect(rowFor([withQ(G.pre, 1, 4, 300)], entry, 1, 102, { values: VALUES, captainMultiplier: 2 })).not.toContain('loss');
+    });
+
     test('a manual pick beats a frozen default for the same week', () => {
         const entry = { captains: [{ week: 1, teamId: 3, auto: true }, { week: 1, teamId: 1 }] };
         expect(hg().captainFor(entry, 1)).toBe(1);
