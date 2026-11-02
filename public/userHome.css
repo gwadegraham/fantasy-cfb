@@ -636,7 +636,7 @@
 .cap-rk { font-weight: 800; color: var(--cc-info); }
 .cap-rk.top10 { color: var(--cc-amber); }
 /* Basketball: the quadrant a game is graded at, and the week's Captain value. */
-.cap-q { display: inline-block; font-size: 0.58rem; font-weight: 800; border-radius: 4px; padding: 0 0.28rem; margin-right: 0.3rem; line-height: 1.5; background: var(--cc-surface-3); color: var(--cc-muted-2); }
+.cap-q { display: inline-block; vertical-align: middle; font-size: 0.58rem; font-weight: 800; border-radius: 4px; padding: 0 0.28rem; margin-right: 0.3rem; line-height: 1.5; background: var(--cc-surface-3); color: var(--cc-muted-2); }
 .cap-q.q1 { background: rgba(var(--cc-accent-rgb), .22); color: var(--cc-accent); }
 .cap-q.q2 { background: rgba(var(--cc-accent-rgb), .10); color: var(--cc-accent); }
 .cap-up { flex-shrink: 0; font-size: 0.66rem; font-weight: 800; color: var(--cc-success); }
