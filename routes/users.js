@@ -238,6 +238,12 @@ router.post('/me/push', async (req, res) => {
         subs.push(clean);
         account.pushSubscriptions = subs;
         await franchiseRepo.saveBoth(ctx);
+        // public/push-alerts.js repairOnOpen: a device that lost its
+        // subscription re-registered on page load, with no tap. Logged so the
+        // Heroku logs show whether WebKit actually allows that.
+        if (req.body && req.body.via === 'open') {
+            console.log(`Push: device re-registered on open for ${userId} (${subs.length} device(s))`);
+        }
 
         res.json({
             deviceCount: subs.length,
