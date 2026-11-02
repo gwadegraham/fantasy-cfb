@@ -5,7 +5,12 @@
 //     payload = { league, season, managers: [...] }  (from /draft/grades/:league/:season)
 (function () {
     function esc(s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
-    function signed(v) { return (v > 0 ? '+' : '') + v; }
+    // value = draft slot − projected-points rank among every drafted team
+    // (draft-grades computeGrades), so say it in picks, not "slots".
+    function slotWords(v) {
+        var n = Math.abs(v);
+        return 'drafted ' + n + (n === 1 ? ' pick ' : ' picks ') + (v > 0 ? 'later' : 'earlier') + ' than projected';
+    }
 
     function avatar(m) {
         if (m.avatarUrl) {
@@ -31,7 +36,7 @@
         return '<div class="gg-pick ' + cls + '">'
             + '<span class="gg-pick-label">' + label + '</span>'
             + team
-            + '<span class="gg-pick-meta">R' + p.round + ' · ' + p.points + ' proj pts · ' + signed(p.value) + ' slots</span>'
+            + '<span class="gg-pick-meta">R' + p.round + ' · ' + p.points + ' proj pts · ' + slotWords(p.value) + '</span>'
             + '</div>';
     }
 
@@ -59,8 +64,8 @@
     // cfpCount, so a basketball count can never sit under a CFP label).
     function makeCount(m) {
         return m.ncaaCount != null
-            ? { value: m.ncaaCount, label: 'NCAA teams' }
-            : { value: m.cfpCount, label: 'CFP teams' };
+            ? { value: m.ncaaCount, label: 'exp. NCAA teams' }
+            : { value: m.cfpCount, label: 'exp. CFP teams' };
     }
 
     function card(m, currentUserId) {
@@ -81,7 +86,7 @@
             + '</div>'
             + '<div class="gg-stats">'
             +   '<div class="gg-stat"><span class="gg-stat-val">' + m.projPoints + '</span><span class="gg-stat-lbl">proj points</span></div>'
-            +   '<div class="gg-stat"><span class="gg-stat-val">' + m.projWins + '</span><span class="gg-stat-lbl">proj wins</span></div>'
+            +   '<div class="gg-stat"><span class="gg-stat-val">' + m.projWins + '</span><span class="gg-stat-lbl">avg wins / team</span></div>'
             +   '<div class="gg-stat"><span class="gg-stat-val">' + makeCount(m).value + '</span><span class="gg-stat-lbl">' + makeCount(m).label + '</span></div>'
             + '</div>'
             + splitBar(m)

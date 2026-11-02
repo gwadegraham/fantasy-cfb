@@ -1299,6 +1299,45 @@ async function hydrateBetting(user, activeYear) {
     } catch (e) { /* non-fatal */ }
 }
 
+// "4.5" expected teams reads as a count of four and a half; a range is what
+// it means. Whole numbers stay whole.
+function uhFieldRange(n) {
+    const v = Number(n) || 0;
+    const lo = Math.floor(v), hi = Math.ceil(v);
+    return lo === hi ? String(lo) : lo + '–' + hi;
+}
+
+// The draft grade is the roster as drafted: frozen inputs, full season, base
+// scoring only. Standings → Projected Finish is a different number on purpose:
+// banked points plus the remaining schedule on today's inputs, plus Captain
+// and H2H projected forward (routes/standings.js projectionRows). One line
+// says why the two differ. '' when there is no live number to quote.
+function uhDraftLiveLine(row, own) {
+    if (!row || row.projectedFinal == null) return '';
+    const modes = [];
+    if (row.expCaptain > 0) modes.push('Captain');
+    if (row.expH2H > 0) modes.push('head-to-head');
+    const adds = modes.length ? ' with ' + modes.join(' and ') + ' bonuses' : '';
+    return uhPoss(own, true) + ' full projection is ' + row.projectedFinal + adds
+        + ', updated as games are played';
+}
+
+async function hydrateDraftLive(user, season, own) {
+    const el = document.getElementById('uh-draft-live');
+    if (!el) return;
+    try {
+        const res = await fetch('/standings/projections/' + encodeURIComponent(user.league) + '/' + encodeURIComponent(season), {
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+        const row = ((data && data.managers) || []).find(m => String(m.userId) === String(user._id));
+        const line = uhDraftLiveLine(row, own);
+        if (!line) return;
+        el.textContent = line;
+        el.hidden = false;
+    } catch (e) { /* no live number: the line stays hidden */ }
+}
+
 async function hydrateDraft(user, activeYear) {
     const tile = document.getElementById('uh-tile-draft');
     const hide = () => { if (tile) tile.hidden = true; };
@@ -1313,13 +1352,20 @@ async function hydrateDraft(user, activeYear) {
         if (!mine) return hide();   // didn't draft that season
         if (tile) tile.hidden = false;
 
+        const own = uhOwns(user);
         const tier = (mine.grade || '').charAt(0).toLowerCase();
+        const hoops = mine.ncaaCount != null;
+        // projWins is the AVERAGE projected wins of the drafted teams, not a
+        // total (draft-grades computeGrades), and the count is expected teams
+        // in the field — so each label says which.
         const g = document.getElementById('uh-glance-draft');
         if (g) g.innerHTML = `<span class="uh-draft-g"><span class="uh-grade gg-tier-${tier}">${escapeHtml(mine.grade)}</span><span class="uh-draft-stats">`
-            + `<span class="uh-ds"><b class="num">${mine.projPoints}</b>proj pts</span>`
-            + `<span class="uh-ds"><b class="num">${mine.projWins}</b>proj wins</span>`
-            + `<span class="uh-ds"><b class="num">${mine.ncaaCount != null ? mine.ncaaCount : mine.cfpCount}</b>${mine.ncaaCount != null ? 'NCAA teams' : 'CFP teams'}</span>`
-            + `</span></span>`;
+            + `<span class="uh-ds"><b class="num">${mine.projPoints}</b>pts from ${uhPoss(own)} draft</span>`
+            + `<span class="uh-ds"><b class="num">${mine.projWins}</b>avg wins per team</span>`
+            + `<span class="uh-ds"><b class="num">${uhFieldRange(hoops ? mine.ncaaCount : mine.cfpCount)}</b>${hoops ? 'teams in the NCAA field' : 'teams in the CFP'}</span>`
+            + `</span></span>`
+            + `<span class="uh-draft-live" id="uh-draft-live" hidden></span>`;
+        hydrateDraftLive(user, season, own);
 
         uhDrawer.draft = (body) => {
             if (typeof renderDraftGradeCard === 'function') {
@@ -1333,7 +1379,7 @@ async function hydrateDraft(user, activeYear) {
                     ? 'schedule + Torvik preseason ratings + NCAA tournament odds'
                     : 'schedule + SP+ win odds + market CFP odds';
                 renderDraftGradeCard(body, mine, {
-                    note: season + ' preseason grade — projected fantasy points in ' + leagueRef + ' (' + inputs + '). Each draft graded on its own merit.'
+                    note: season + ' preseason grade — projected fantasy points in ' + leagueRef + ' (' + inputs + '), before Captain and head-to-head bonuses. Graded against fixed bands for this league, not against the other rosters.'
                 });
             }
         };
