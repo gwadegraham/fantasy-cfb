@@ -333,7 +333,7 @@ describe('GET /standings/h2h on a basketball league', () => {
         expect(annP).toBe(Math.round((1 - p) / 2 * 100));
     });
 
-    test('bad-loss penalty with Captain: a captained negative final is doubled too', async () => {
+    test('bad-loss penalty with Captain: a captained negative final is NOT doubled', async () => {
         await modes({ captain: true, enabled: ['badLoss'] });
         await HoopsTeam.create({ id: 4, season: SEASON, school: 'Team 4', abbreviation: 'T4', preseason: { rank: 104, barthag: 0.5 } });
         const ann = await manager('Ann', [1], { captains: [{ week: 1, teamId: 1 }] });
@@ -343,13 +343,14 @@ describe('GET /standings/h2h on a basketball league', () => {
         await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
         const { annP } = await annCard(ann._id, 1);
         const p = homeP(0.5, 0.5);
-        // Ann is certain at -4; Bo is 0 if he wins, -2 if he loses: Ann can
-        // never catch him. Undoubled, Ann's -2 would tie Bo's loss.
-        expect(annP).toBe(0);
-        expect(Math.round((1 - p) / 2 * 100)).toBeGreaterThan(0);
+        // Ann is certain at -2 (undoubled); Bo is 0 if he wins, -2 if he
+        // loses, so Ann only ever ties. Doubled, Ann's -4 could never catch
+        // him and she would read 0.
+        expect(annP).toBe(Math.round((1 - p) / 2 * 100));
+        expect(annP).toBeGreaterThan(0);
     });
 
-    test('Captain on an unplayed penalised game doubles its loss too', async () => {
+    test('Captain on an unplayed penalised game does NOT double its loss', async () => {
         await modes({ captain: true, enabled: ['badLoss'] });
         await HoopsTeam.create({ id: 4, season: SEASON, school: 'Team 4', abbreviation: 'T4', preseason: { rank: 104, barthag: 0.5 } });
         const ann = await manager('Ann', [1], { captains: [{ week: 1, teamId: 1 }] });
@@ -359,10 +360,11 @@ describe('GET /standings/h2h on a basketball league', () => {
         await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
         const { annP } = await annCard(ann._id, 1);
         const p = homeP(0.5, 0.5);
-        // Bo is certain at -2. Ann: 0 if she wins, -4 (doubled) if she
-        // loses — so she wins exactly when her team does. Undoubled, a loss
-        // would only tie (-2) and she would read p + (1 - p) / 2.
-        expect(annP).toBe(Math.round(p * 100));
+        // Bo is certain at -2. Ann: 0 if she wins, -2 (undoubled) if she
+        // loses — a tie. So she reads p + (1 - p) / 2; a doubled -4 would
+        // make it exactly p.
+        expect(annP).toBe(Math.round((p + (1 - p) / 2) * 100));
+        expect(annP).not.toBe(Math.round(p * 100));
     });
 
     test('the dev-only in-progress preview answers odds on basketball too', async () => {

@@ -211,8 +211,8 @@ async function scoreHoopsWeekNow(league, { season, week, apply = true } = {}) {
         }
         const result = { accountId: m._id, score, scoreByTeam };
         // Stored exactly as football stores it (modules/scoring.js): only
-        // when it moved the score, negative included, so the pages can
-        // split it back across the captained team's games.
+        // when it moved the score, so the pages can split it back across
+        // the captained team's games. Never negative: a penalty is not doubled.
         if (captainTeamId != null && captainBonus !== 0) {
             result.captainTeamId = captainTeamId;
             result.captainBonus = captainBonus;

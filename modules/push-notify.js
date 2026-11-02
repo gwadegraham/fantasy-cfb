@@ -514,7 +514,7 @@ function buildHoopsPayload(event, game) {
 // Captain for the week — base × (multiplier − 1), the scorer's own formula
 // (modules/captain.js captainWeeklyBonus). The headline points include it,
 // and the bonus is named separately so the manager can see what the pick was
-// worth. It doubles a penalty too, so it can be negative.
+// worth. A penalty is not doubled, so on a penalised loss it is 0.
 function buildHoopsFinalPayload(game, teamName, explain, captainBonus) {
     const isHome = teamName === game.homeTeam;
     const won = isHome ? game.homePoints > game.awayPoints : game.awayPoints > game.homePoints;

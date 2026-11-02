@@ -1076,7 +1076,7 @@ async function hydrateCaptain(user, activeYear) {
         let sub;
         if (state.locked) sub = 'Locked for this week';
         else if (state.lockAt) sub = `Locks ${uhFmtLock(state.lockAt, { tz: true, dated: uhNeedsDate(state.lockAt, datePlan) })}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}`;
-        else sub = 'Doubles this week’s points';
+        else sub = 'Doubles this week’s wins';
         g.innerHTML = lead + `<span class="uh-cap-sub">${sub}</span>`;
     };
     // A team's slate for the focus week, drawn under its name in the picker.
@@ -1179,7 +1179,7 @@ async function hydrateCaptain(user, activeYear) {
             (w.scoreByTeam || []).filter(st => !st.noModes).forEach(st => {
                 const teamBase = (w.scoreByTeam || [])
                     .filter(s => !s.noModes && Number(s.teamId) === Number(st.teamId))
-                    .reduce((sum, s) => sum + (s.score || 0), 0);
+                    .reduce((sum, s) => sum + Math.max(0, s.score || 0), 0);   // a penalty is not doubled
                 if (teamBase > bestBase) bestBase = teamBase;
             });
             const optBonus = Math.round(bestBase * (mult - 1) * 10) / 10;

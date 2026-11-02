@@ -487,3 +487,12 @@ describe('ESPN news (public/team-news.js)', () => {
         expect(global.fetch).not.toHaveBeenCalled();
     });
 });
+
+describe('ownerPointsFor: the Captain share', () => {
+    test('a captained penalised game shows undoubled and takes no share', () => {
+        // +6 and −2 on the Captain: the bonus is 6 (the positive game only).
+        const season = { weeklyScore: [{ week: 1, captainTeamId: DUKE, captainBonus: 6, scoreByTeam: [
+            { teamId: DUKE, gameId: 1, score: 6 }, { teamId: DUKE, gameId: 2, score: -2 }] }] };
+        expect(ownerPointsFor(season, DUKE, 'Duke')).toEqual({ points: { 1: 12, 2: -2 }, total: 10 });
+    });
+});

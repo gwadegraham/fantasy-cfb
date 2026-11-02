@@ -1013,13 +1013,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
         };
         // A projection entry with the captain's multiplier applied to its points.
         // A basketball entry's pointsIfLoss (the opt-in bad-loss penalty) is
-        // multiplied too: the captain multiplies the team's whole score,
-        // negative included (captainWeeklyBonus). Football's entries carry
-        // none, so its object is the same two fields as ever.
+        // NOT multiplied: the captain doubles positive points only
+        // (captainWeeklyBonus). Football's entries carry none, so its object
+        // is the same two fields as ever.
         const capped = (id, w, teamId, e) => {
             if (!(e && isCaptain(id, w, teamId))) return e;
             const out = { winProb: e.winProb, pointsIfWin: e.pointsIfWin * capMult };
-            if (e.pointsIfLoss != null) out.pointsIfLoss = e.pointsIfLoss * capMult;
+            if (e.pointsIfLoss != null) out.pointsIfLoss = e.pointsIfLoss;
             return out;
         };
         // A team's DISPLAYED points for the matchup card, with the captain's
@@ -1040,7 +1040,8 @@ router.get('/h2h/:league/:season', async (req, res) => {
         //
         // Applied before the sort below, so a doubled captain ranks where its
         // displayed score says it should.
-        const displayScore = (id, w, teamId, raw) => (raw != null && isCaptain(id, w, teamId))
+        // A penalised loss shows as scored: it was not doubled.
+        const displayScore = (id, w, teamId, raw) => (raw != null && raw > 0 && isCaptain(id, w, teamId))
             ? raw * capMult : raw;
         // A team's scored points for ONE game. The legacy per-team fallback is
         // only safe when that team played once that week — otherwise it would

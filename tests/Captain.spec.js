@@ -51,6 +51,14 @@ describe('captainWeeklyBonus', () => {
         const sbt = [{ teamId: 1, score: 6 }, { teamId: 1, score: 6 }, { teamId: 2, score: 9 }];
         expect(captainWeeklyBonus(sbt, 1, 2)).toBe(12);   // (6+6) × 1
     });
+    test('a penalised loss is not multiplied', () => {
+        expect(captainWeeklyBonus([{ teamId: 1, score: -2 }], 1, 2)).toBe(0);
+        expect(captainWeeklyBonus([{ teamId: 1, score: -2 }], 1, 3)).toBe(0);
+    });
+    test('per game, not per week: a +5 win and a −2 loss double the +5 only', () => {
+        const sbt = [{ teamId: 1, score: 5 }, { teamId: 1, score: -2 }, { teamId: 2, score: -2 }];
+        expect(captainWeeklyBonus(sbt, 1, 2)).toBe(5);    // not (5 − 2) × 1 = 3
+    });
     test('no captain / not found → 0', () => {
         expect(captainWeeklyBonus([{ teamId: 1, score: 10 }], null, 2)).toBe(0);
         expect(captainWeeklyBonus([{ teamId: 1, score: 10 }], 99, 2)).toBe(0);

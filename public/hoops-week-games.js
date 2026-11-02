@@ -66,14 +66,16 @@
     // the game's: each of the captained team's doubled games gets a share in
     // proportion to its own points — modules/league-scoreboard.js
     // captainShare, the rule the scoreboard already shows. A `noModes` row
-    // (a conference-tournament game) was not doubled and takes none.
+    // (a conference-tournament game) or a penalised loss was not doubled and
+    // takes none.
     function captainShare(w, row) {
         if (!w.captainBonus || row.noModes || String(row.teamId) !== String(w.captainTeamId)) return 0;
+        var pos = function (x) { return Math.max(0, Number(x.score) || 0); };
         var base = 0;
         (w.scoreByTeam || []).forEach(function (x) {
-            if (!x.noModes && String(x.teamId) === String(w.captainTeamId)) base += Number(x.score) || 0;
+            if (!x.noModes && String(x.teamId) === String(w.captainTeamId)) base += pos(x);
         });
-        return base ? w.captainBonus * (Number(row.score) || 0) / base : 0;
+        return base ? w.captainBonus * pos(row) / base : 0;
     }
 
     function pointsFor(seasonEntry, week, teamId, gameId) {
