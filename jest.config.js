@@ -388,6 +388,21 @@ module.exports = {
             functions: 96,
             lines: 100
         },
+        // The gamecast's play log: one shape from ESPN (live) and CBBD
+        // (stored), and the team fouls behind the scoreboard's bonus line.
+        "./modules/hoops-play-log.js": {
+            statements: 100,
+            branches: 95,
+            functions: 100,
+            lines: 100
+        },
+        // ESPN live, CBBD's stored log once final, ESPN only inside the lookback.
+        "./modules/hoops-gamecast.js": {
+            statements: 97,
+            branches: 90,
+            functions: 100,
+            lines: 100
+        },
         // ESPN's game summary (live box + shots), shared by both sports:
         // never throws, and viewers of one game share one call per window.
         "./modules/espn-summary.js": {

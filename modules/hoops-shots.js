@@ -39,6 +39,7 @@ const HoopsShots = require('../models/hoopsShots');
 const HoopsBoxScore = require('../models/hoopsBoxScore');
 const { isFinal, rosterIds } = require('./hoops-scoring-pass');
 const { entryFor } = require('./roster-teams');
+const playLog = require('./hoops-play-log');
 const franchiseRepo = require('./franchise-repo');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -156,6 +157,8 @@ async function fetchGame(game, now) {
         return 'empty';
     }
     const chart = chartFrom(data, game);
+    // The same answer is the gamecast's play log (modules/hoops-play-log.js).
+    chart.log = playLog.fromCbbd(data, game);
     // Complete only when the box score agrees. No box yet is NOT proof:
     // plays posted part-way would otherwise be frozen as whole. The 05:00 job
     // runs the box batch first, so the next pass has one to check against.
@@ -180,11 +183,15 @@ async function ingestShots(season, { now = Date.now(), gameIds = null, teamIds =
     if (!ours.length) return { season: yr, games: 0, stored: 0, skippedReason: 'no drafted team played' };
 
     const done = await HoopsShots.find({ gameId: { $in: ours.map(g => Number(g.id)) } },
-        { gameId: 1, complete: 1, fetches: 1, empties: 1, _id: 0 }).lean();
+        { gameId: 1, complete: 1, fetches: 1, empties: 1, log: { $slice: 1 }, _id: 0 }).lean();
     const byId = new Map(done.map(d => [Number(d.gameId), d]));
     const due = ours.filter(g => {
         const d = byId.get(Number(g.id));
-        return !d || (!d.complete && (d.fetches || 0) < MAX_FETCHES && (d.empties || 0) < MAX_EMPTIES);
+        if (!d) return true;
+        // A chart stored before the play log was kept is fetched once
+        // more for it, inside the lookback and the usual cap.
+        const unlogged = d.complete && !(Array.isArray(d.log) && d.log.length);
+        return (!d.complete || unlogged) && (d.fetches || 0) < MAX_FETCHES && (d.empties || 0) < MAX_EMPTIES;
     });
     if (!due.length) return { season: yr, games: ours.length, stored: 0, skippedReason: 'all charted' };
 
@@ -209,7 +216,7 @@ async function ingestShots(season, { now = Date.now(), gameIds = null, teamIds =
 
 // The page's view of a game's chart, or null. Never calls CBBD.
 async function forGame(game) {
-    const doc = await HoopsShots.findOne({ gameId: Number(game.id) }, { _id: 0, __v: 0 }).lean();
+    const doc = await HoopsShots.findOne({ gameId: Number(game.id) }, { _id: 0, __v: 0, log: 0 }).lean();
     if (!doc || !Array.isArray(doc.shots) || !doc.shots.length) return null;
     const side = (teamId) => doc.shots.filter(s => Number(s.teamId) === Number(teamId))
         .map(({ teamId, ...s }) => s);
@@ -221,4 +228,10 @@ async function forGame(game) {
     };
 }
 
-module.exports = { ingestShots, forGame, chartFrom, rosteredTeamIds, fetchGame, MAX_FETCHES, MAX_EMPTIES, MAX_PER_RUN, LOOKBACK_MS };
+// The stored play log for a final, or null. Never calls CBBD.
+async function logFor(gameId) {
+    const doc = await HoopsShots.findOne({ gameId: Number(gameId) }, { log: 1, _id: 0 }).lean();
+    return doc && Array.isArray(doc.log) && doc.log.length ? doc.log : null;
+}
+
+module.exports = { ingestShots, forGame, logFor, chartFrom, rosteredTeamIds, fetchGame, MAX_FETCHES, MAX_EMPTIES, MAX_PER_RUN, LOOKBACK_MS };

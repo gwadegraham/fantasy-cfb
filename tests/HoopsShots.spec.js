@@ -135,6 +135,35 @@ describe('ingestShots: what gets fetched', () => {
         expect(await HoopsShots.findOne({ gameId: 1 }).lean()).toMatchObject({ complete: true, fetches: 1, attempts: { home: 1, away: 1 } });
     });
 
+    test('the same answer is kept as the gamecast\'s play log; the page\'s chart leaves it out', async () => {
+        await HoopsGame.create(game(1));
+        await boxFor(1, 1, 1);
+        const sub = { playType: 'Substitution', teamId: HOME, period: 1, clock: '10:00', playText: 'In: X' };
+        stubPlays({ 1: [sub, shot(HOME, 1, 60, 250, { made: true, play: { playType: 'LayUpShot', playText: 'Boogie Fland makes layup', homeScore: 2, awayScore: 0, scoreValue: 2, homeWinProbability: 0.6 } }),
+            shot(AWAY, 1, 880, 250, { play: { playType: 'JumpShot', playText: 'Away misses', homeScore: 2, awayScore: 0 } })] });
+        await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));
+
+        const doc = await HoopsShots.findOne({ gameId: 1 }).lean();
+        expect(doc.log).toEqual([
+            { type: 'LayUpShot', text: 'Boogie Fland makes layup', period: 1, clock: '10:00', side: 'home', home: 2, away: 0, wp: 0.6, points: 2 },
+            { type: 'JumpShot', text: 'Away misses', period: 1, clock: '10:00', side: 'away', home: 2, away: 0, wp: null }
+        ]);
+        expect(await shots.logFor(1)).toHaveLength(2);
+        expect((await shots.forGame(game(1))).log).toBeUndefined();
+        expect(await shots.logFor(2)).toBeNull();
+    });
+
+    test('a chart stored before the log was kept is fetched once more for it, then left', async () => {
+        await HoopsGame.create(game(1));
+        await boxFor(1, 1, 0);
+        await HoopsShots.create({ gameId: 1, season: SEASON, complete: true, fetches: 1, shots: [{ teamId: HOME, made: true, x: 1, y: 1 }] });
+        const get = stubPlays({ 1: [shot(HOME, 1, 60, 250, { play: { playType: 'JumpShot', playText: 'x' } })] });
+        await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));
+        await shots.ingestShots(SEASON, Object.assign({ now: NOW }, drafted));
+        expect(get).toHaveBeenCalledTimes(1);
+        expect((await HoopsShots.findOne({ gameId: 1 }).lean()).log).toHaveLength(1);
+    });
+
     test('no drafted team in the game: no call', async () => {
         await HoopsGame.create(game(1, { homeTeamId: 50, awayTeamId: 51 }));
         const get = stubPlays({});

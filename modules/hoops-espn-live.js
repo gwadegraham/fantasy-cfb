@@ -42,6 +42,8 @@
 // - No CBBD advanced lines (ratings, usage, four factors) exist here. eFG%
 //   and TS% are worked out from the counts; the rest stay absent.
 
+const log = require('./hoops-play-log');
+
 // The chart's basket, in feet from the baseline (public/hoopsGame.js).
 const RIM_Y = 5.25;
 const RIM_TYPES = /^(LayUpShot|DunkShot|TipShot)$/;
@@ -203,9 +205,63 @@ function shotsFrom(body, game, espnIds) {
     return { home: out.home, away: out.away, attempts, complete: false, source: 'espn' };
 }
 
-// Both at once, for espn-summary's one-shape-per-sport cache.
-function shape(game, espnIds) {
-    return (body) => ({ box: boxFrom(body, game, espnIds), shots: shotsFrom(body, game, espnIds) });
+// The play log for the gamecast, in modules/hoops-play-log.js's shape, or
+// null before tip-off. Pure. Scores and win probability are turned to OUR
+// home and away — at a neutral site ESPN's home can be our away, and its
+// plays can even disagree with its own header (below) — and each
+// located field-goal attempt carries its spot on the chart's half court.
+function playsFrom(body, game, espnIds) {
+    const s = sides(body, espnIds);
+    if (!s || !body || !Array.isArray(body.plays) || !body.plays.length) return null;
+    // Whose score is in each column is read off the baskets, not the header:
+    // UAB v McNeese (2 Nov 2026) had McNeese as the header's home while every
+    // UAB basket raised the plays' homeScore, and the win probability followed
+    // the plays (13 of 13 scoring changes). Before anyone scores, the header.
+    const votes = new Map();
+    let ph = 0, pa = 0;
+    for (const p of body.plays) {
+        const h = log.num(p && p.homeScore), a = log.num(p && p.awayScore), t = p && p.team && String(p.team.id);
+        if (h === null || a === null) continue;
+        if (t && h > ph && a === pa) votes.set(t, (votes.get(t) || 0) + 1);
+        if (t && a > pa && h === ph) votes.set(t, (votes.get(t) || 0) - 1);
+        ph = h; pa = a;
+    }
+    const lean = (votes.get(s.home.espnTeam) || 0) - (votes.get(s.away.espnTeam) || 0);
+    const c = competitors(body);
+    const espnHome = c.find(x => x && x.homeAway === 'home');
+    // flipped: the plays' homeScore (and homeWinPercentage) is OUR away side's.
+    const flipped = lean !== 0 ? lean < 0 : !!espnHome && espnHome.team && String(espnHome.team.id) === s.away.espnTeam;
+    const wp = new Map((Array.isArray(body.winprobability) ? body.winprobability : [])
+        .filter(w => w && w.playId != null).map(w => [String(w.playId), w.homeWinPercentage]));
+    return body.plays.filter(p => p && !log.NOISE.has(p.type && p.type.text)).map(p => {
+        const team = p.team && String(p.team.id);
+        const h = log.num(p.homeScore), a = log.num(p.awayScore), w = log.prob(wp.get(String(p.id)));
+        const out = {
+            type: (p.type && p.type.text) || null,
+            text: p.text || null,
+            period: log.num(p.period && p.period.number),
+            clock: (p.clock && p.clock.displayValue) || null,
+            side: team === s.home.espnTeam ? 'home' : team === s.away.espnTeam ? 'away' : null,
+            home: flipped ? a : h,
+            away: flipped ? h : a,
+            wp: w === null ? null : flipped ? Math.round((1 - w) * 1000) / 1000 : w
+        };
+        if (p.scoringPlay && log.num(p.scoreValue)) out.points = log.num(p.scoreValue);
+        if (/Technical/i.test(out.type || '') && Array.isArray(p.participants) && p.participants.length) out.player = true;
+        const at = p.coordinate || {};
+        const x = Number(at.x), y = Number(at.y);
+        if (p.shootingPlay && Number(p.pointsAttempted) !== 1 && !/FreeThrow/i.test(out.type || '')
+            && Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 50 && y >= -RIM_Y) {
+            out.shot = { x: round1(50 - x), y: round1(Math.min(Math.max(y + RIM_Y, 0), 47)), made: !!p.scoringPlay };
+        }
+        return out;
+    });
 }
 
-module.exports = { boxFrom, shotsFrom, shape, rangeOf };
+// All three at once, for espn-summary's one-shape-per-sport cache: one ESPN
+// call feeds the box, the chart and the gamecast.
+function shape(game, espnIds) {
+    return (body) => ({ box: boxFrom(body, game, espnIds), shots: shotsFrom(body, game, espnIds), plays: playsFrom(body, game, espnIds) });
+}
+
+module.exports = { boxFrom, shotsFrom, playsFrom, shape, rangeOf };
