@@ -16,6 +16,7 @@
 
 const HoopsGame = require('../models/hoopsGame');
 const { detectHoopsEvents } = require('./hoops-score-events');
+const espnBoard = require('./hoops-espn-scoreboard');
 
 const LIVE = new Set(['in_progress', 'final']);
 
@@ -43,10 +44,28 @@ function changedOnly(set, stored) {
     return Object.keys(out).length ? out : null;
 }
 
+// A live game never runs backwards either. Two feeds now write it (ESPN's
+// running numbers over CBBD's, modules/hoops-espn-scoreboard.js), and on a
+// tick where ESPN fails, CBBD's row — up to a minute older — arrives alone.
+// Writing it would wind the clock back, drop points and, for a game ESPN
+// tipped before CBBD did, un-tip it (and announce the tip-off twice). So an
+// in-progress game ignores a row that is scheduled again, or is behind by
+// espnBoard.behind's rule — which still lets a score correction through once
+// the clock has moved on, rather than freezing the game.
+function behindStored(status, row, stored) {
+    if (!stored || stored.status !== 'in_progress') return false;
+    if (status === 'scheduled') return true;
+    if (status !== 'in_progress') return false;
+    return espnBoard.behind(
+        { period: row.period, clock: row.clock, home: row.homeTeam && row.homeTeam.points, away: row.awayTeam && row.awayTeam.points },
+        { period: stored.period, clock: stored.clock, home: stored.homePoints, away: stored.awayPoints });
+}
+
 function updateFor(row, stored) {
     if (!row || row.id == null || !row.status) return null;
     const status = String(row.status).toLowerCase();
     if (stored && stored.status === 'final' && status !== 'final') return null;
+    if (behindStored(status, row, stored)) return null;
     const set = { status };
     if (LIVE.has(status)) {
         const home = num(row.homeTeam && row.homeTeam.points);
@@ -71,12 +90,16 @@ function updateFor(row, stored) {
 // which games went final on this pass (with the week they belong to, for the
 // completion batch), and the push-alert events this pass produced, keyed by
 // game id (modules/hoops-score-events.js).
-async function applyScoreboard(rows) {
+//
+// `espn` (Map<espnEventId, event>, from modules/hoops-espn-scoreboard.js) lays
+// ESPN's fresher running score and clock over each matched row, keyed by the
+// stored game's sourceId; `fromEspn` counts the rows it changed.
+async function applyScoreboard(rows, { espn = null } = {}) {
     const list = (rows || []).filter(r => r && r.id != null);
-    if (!list.length) return { rows: 0, matched: 0, mismatched: 0, updated: 0, newlyFinal: [], events: {} };
+    if (!list.length) return { rows: 0, matched: 0, mismatched: 0, updated: 0, fromEspn: 0, newlyFinal: [], events: {} };
     const ids = list.map(r => Number(r.id));
     const stored = await HoopsGame.find({ id: { $in: ids } }, {
-        id: 1, status: 1, week: 1, season: 1, seasonType: 1, homeTeamId: 1, awayTeamId: 1, homePoints: 1, awayPoints: 1,
+        id: 1, sourceId: 1, status: 1, week: 1, season: 1, seasonType: 1, homeTeamId: 1, awayTeamId: 1, homePoints: 1, awayPoints: 1,
         homePeriodPoints: 1, awayPeriodPoints: 1, period: 1, clock: 1, homeWinner: 1, awayWinner: 1, _id: 0
     }).lean();
     const byId = new Map(stored.map(g => [Number(g.id), g]));
@@ -85,7 +108,9 @@ async function applyScoreboard(rows) {
     const newlyFinal = [];
     const events = {};
     let mismatched = 0;
-    for (const row of list) {
+    let fromEspn = 0;
+    for (const cbbdRow of list) {
+        let row = cbbdRow;
         const prev = byId.get(Number(row.id));
         if (!prev) continue;
         // The id is assumed to be /games' id (unverified until a real game
@@ -95,8 +120,10 @@ async function applyScoreboard(rows) {
         const home = Number(row.homeTeam && row.homeTeam.id);
         const away = Number(row.awayTeam && row.awayTeam.id);
         if (home !== Number(prev.homeTeamId) || away !== Number(prev.awayTeamId)) { mismatched++; continue; }
+        if (espn && prev.sourceId != null) row = espnBoard.overlay(row, espn.get(String(prev.sourceId)));
         const set = updateFor(row, prev);
         if (!set) continue;
+        if (row !== cbbdRow) fromEspn++;
         ops.push({ updateOne: { filter: { id: Number(row.id) }, update: { $set: set } } });
         const detected = detectHoopsEvents(prev, Object.assign({}, prev, set));
         if (detected.length) events[Number(row.id)] = detected;
@@ -111,7 +138,7 @@ async function applyScoreboard(rows) {
         }
     }
     if (ops.length) await HoopsGame.bulkWrite(ops, { ordered: false });
-    return { rows: list.length, matched: byId.size - mismatched, mismatched, updated: ops.length, newlyFinal, events };
+    return { rows: list.length, matched: byId.size - mismatched, mismatched, updated: ops.length, fromEspn, newlyFinal, events };
 }
 
-module.exports = { applyScoreboard, updateFor };
+module.exports = { applyScoreboard, updateFor, behindStored };
