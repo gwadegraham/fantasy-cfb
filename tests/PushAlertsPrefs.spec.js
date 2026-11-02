@@ -29,8 +29,13 @@ const PANEL = `
 
 let patched;
 let posted;
+let stateReads;
+let postedVia;
 
 const THIS_DEVICE = 'https://push.example/this-device';
+const JSDOM_UA = window.navigator.userAgent;
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1';
+const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Safari/605.1.15';
 
 // Lets render() finish, including the re-render after an automatic subscribe.
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(r => setTimeout(r, 0)); };
@@ -40,7 +45,12 @@ const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(r =>
 // server has on file, which is the ordinary "alerts are on" case.
 async function mountPanel(prefs = {}, state = {}, device = {}) {
     document.body.innerHTML = PANEL;
-    const dev = Object.assign({ endpoint: THIS_DEVICE, permission: 'granted', subscribeFails: false }, device);
+    const dev = Object.assign({ endpoint: THIS_DEVICE, permission: 'granted', subscribeFails: false,
+        ua: JSDOM_UA, installed: false, openPanel: true }, device);
+    // `installed`: running as the home-screen app. Redefined every call, so a
+    // test that sets it cannot leak into the next.
+    Object.defineProperty(window.navigator, 'userAgent', { value: dev.ua, configurable: true });
+    Object.defineProperty(window.navigator, 'standalone', { value: dev.installed, configurable: true });
 
     // supported() needs all three, or the panel renders "this browser can't".
     let browserSub = dev.endpoint ? { endpoint: dev.endpoint, toJSON: () => ({ endpoint: dev.endpoint }) } : null;
@@ -70,32 +80,38 @@ async function mountPanel(prefs = {}, state = {}, device = {}) {
 
     patched = [];
     posted = [];
+    stateReads = 0;
+    postedVia = [];
     window.fetch = jest.fn((url, opts) => {
         if (String(url).indexOf('/users/me/push/prefs') === 0) {
             patched.push(JSON.parse(opts.body));
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         }
         if (String(url) === '/users/me/push' && opts && opts.method === 'POST') {
-            const endpoint = JSON.parse(opts.body).subscription.endpoint;
+            const body = JSON.parse(opts.body);
+            const endpoint = body.subscription.endpoint;
             posted.push(endpoint);
+            postedVia.push(body.via || null);
             server.endpoints = server.endpoints.concat(endpoint);
             server.deviceCount = server.endpoints.length;
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ deviceCount: server.deviceCount }) });
         }
+        if (String(url) === '/users/me/push') stateReads++;
         return Promise.resolve({ ok: true, json: () => Promise.resolve(Object.assign({}, server)) });
     });
 
-    // The module is an IIFE that publishes window.PushAlerts on load.
+    // The module is an IIFE that publishes window.PushAlerts on load — and
+    // starts the on-open repair, which is what `openPanel: false` isolates.
     // eslint-disable-next-line no-eval
     window.eval(SOURCE);
-    window.PushAlerts.mount(document.querySelector('[push-alerts]'));
+    if (dev.openPanel) window.PushAlerts.mount(document.querySelector('[push-alerts]'));
     await settle();
 }
 
 const leadRow = () => document.querySelector('.push-pref-lead').closest('.push-pref');
 const leadSelect = () => document.querySelector('.push-pref-lead');
 
-afterEach(() => { delete window.PushAlerts; });
+afterEach(() => { delete window.PushAlerts; window.localStorage.clear(); });
 
 describe('the lead-time dropdown', () => {
     it('renders on the Captain row with every offered choice', async () => {
@@ -335,5 +351,91 @@ describe('whether alerts are on for THIS device', () => {
         expect(posted).toEqual([]);
         expect(status()).toMatch(/but not this one/);
         expect(buttons()).toContain('Turn on for this device');
+    });
+});
+
+// A Safari update threw away the installed app's subscription (1 Nov 2026: a
+// Captain reminder went to the dead endpoint 34 minutes before its manager
+// opened the panel). The repair now runs on every page load, panel or not.
+describe('the repair on app open', () => {
+    const DEAD = 'https://push.example/before-the-update';
+    const lostIt = { endpoint: null, permission: 'granted', ua: IPHONE_UA, installed: true, openPanel: false };
+
+    it('re-registers the installed phone app without the panel being opened', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, lostIt);
+        expect(window.Notification.requestPermission).not.toHaveBeenCalled();
+        expect(posted).toEqual(['https://push.example/fresh']);
+        expect(postedVia).toEqual(['open']);             // so the server logs it
+    });
+
+    // "Turn off" here clears every device on the server; turning alerts back
+    // on from the iPad must not quietly bring this phone back with it.
+    it('stays off on a device whose alerts were turned off there', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, Object.assign({}, lostIt, { openPanel: true }));
+        expect(posted).toHaveLength(1);
+        const off = [...document.querySelectorAll('[push-actions] button')].find(b => b.textContent === 'Turn off');
+        off.click();
+        await settle();
+
+        // Later: alerts are back on from another device; this phone reopens.
+        await mountPanel({}, { endpoints: ['https://push.example/ipad'] }, lostIt);
+        expect(posted).toEqual([]);
+        // Nor does opening the panel do it — it offers the button instead.
+        await mountPanel({}, { endpoints: ['https://push.example/ipad'] }, Object.assign({}, lostIt, { openPanel: true }));
+        expect(posted).toEqual([]);
+        expect([...document.querySelectorAll('[push-actions] button')].map(b => b.textContent))
+            .toContain('Turn on for this device');
+    });
+
+    it('turning alerts on here again lifts that, so the repair works next time', async () => {
+        window.localStorage.setItem('cc_push_off_here', '1');
+        await mountPanel({}, { endpoints: [DEAD] }, Object.assign({}, lostIt, { openPanel: true, permission: 'default' }));
+        window.Notification.requestPermission = jest.fn(() => Promise.resolve('granted'));
+        [...document.querySelectorAll('[push-actions] button')].find(b => b.textContent === 'Turn on for this device').click();
+        await settle();
+        expect(posted).toEqual(['https://push.example/fresh']);
+
+        await mountPanel({}, { endpoints: [DEAD] }, lostIt);
+        expect(posted).toEqual(['https://push.example/fresh']);
+    });
+
+    it('makes no request at all on a device that still has its subscription', async () => {
+        await mountPanel({}, {}, Object.assign({}, lostIt, { endpoint: THIS_DEVICE }));
+        expect(stateReads).toBe(0);
+        expect(posted).toEqual([]);
+    });
+
+    it('makes no request on a device that never granted permission', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, Object.assign({}, lostIt, { permission: 'default' }));
+        expect(stateReads).toBe(0);
+        expect(posted).toEqual([]);
+    });
+
+    it('leaves a desktop browser alone, even with permission granted', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, Object.assign({}, lostIt, { ua: MAC_UA }));
+        expect(posted).toEqual([]);
+    });
+
+    it('leaves a phone\'s Safari tab alone — only the home-screen app', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, Object.assign({}, lostIt, { installed: false }));
+        expect(posted).toEqual([]);
+    });
+
+    it('never re-registers after alerts were turned off', async () => {
+        await mountPanel({}, { deviceCount: 0, endpoints: [] }, lostIt);
+        expect(posted).toEqual([]);
+    });
+
+    it('does not silently re-add a subscription the server dropped', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, Object.assign({}, lostIt, { endpoint: THIS_DEVICE }));
+        expect(posted).toEqual([]);
+    });
+
+    // Opened on My Team while the load-time repair is still in flight: one
+    // registration, not two.
+    it('and the panel opened at the same moment subscribe once between them', async () => {
+        await mountPanel({}, { endpoints: [DEAD] }, Object.assign({}, lostIt, { openPanel: true }));
+        expect(posted).toEqual(['https://push.example/fresh']);
+        expect(document.querySelector('[push-status]').textContent).toBe('Alerts are on for this device and 1 other.');
     });
 });

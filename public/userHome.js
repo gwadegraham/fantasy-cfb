@@ -1612,7 +1612,12 @@ function setupEditModal(data, season, franchiseEditable) {
         // Mounted on first open rather than at load: it costs a fetch and a
         // service-worker registration, and most page views never open this modal.
         // mount() is idempotent, so re-opening is free.
-        if (window.PushAlerts) window.PushAlerts.mount(document.querySelector('[push-alerts]'));
+        // push-alerts.js loads from the navbar, after this file, so a ?setup=1
+        // open can run before it has; every deferred script has run by
+        // DOMContentLoaded.
+        const mountAlerts = () => { if (window.PushAlerts) window.PushAlerts.mount(document.querySelector('[push-alerts]')); };
+        if (window.PushAlerts || document.readyState !== 'loading') mountAlerts();
+        else document.addEventListener('DOMContentLoaded', mountAlerts, { once: true });
     }
     function close() { modal.hidden = true; }
 

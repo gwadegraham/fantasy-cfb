@@ -79,6 +79,10 @@
             || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     }
 
+    function isPhone() {
+        return isIOS() || /Android/i.test(navigator.userAgent);
+    }
+
     function supported() {
         return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
     }
@@ -105,7 +109,25 @@
         return res.json();
     }
 
-    async function subscribe(vapidPublicKey) {
+    // Set by "Turn off" on THIS device and cleared by turning alerts on here.
+    // Turning off clears every device on the server, so once alerts are turned
+    // back on from another device, deviceCount > 0 alone would let a silent
+    // re-register switch this one back on too. Browser storage, so it is
+    // per-device; unreadable storage counts as "not turned off here".
+    var OFF_KEY = 'cc_push_off_here';
+    function turnedOffHere() {
+        try { return window.localStorage.getItem(OFF_KEY) === '1'; } catch (e) { return false; }
+    }
+    function markTurnedOffHere(off) {
+        try {
+            if (off) window.localStorage.setItem(OFF_KEY, '1');
+            else window.localStorage.removeItem(OFF_KEY);
+        } catch (e) { /* best effort */ }
+    }
+
+    // `via` marks a registration made by the on-open repair, so the server can
+    // log it — the only way to see whether WebKit allows it without a tap.
+    async function subscribe(vapidPublicKey, via) {
         var reg = await registerWorker();
         await navigator.serviceWorker.ready;
 
@@ -129,12 +151,13 @@
         var res = await fetch('/users/me/push', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ subscription: sub.toJSON() })
+            body: JSON.stringify(via ? { subscription: sub.toJSON(), via: via } : { subscription: sub.toJSON() })
         });
         if (!res.ok) {
             var err = await res.json().catch(function () { return {}; });
             throw new Error(err.message || 'Could not register this device.');
         }
+        markTurnedOffHere(false);
         return res.json();
     }
 
@@ -158,12 +181,45 @@
         }
     }
 
+    // ---- repair on open -----------------------------------------------------
+    //
+    // A Safari update can throw away an installed app's subscription the same
+    // way a reinstall does, and Apple goes on accepting pushes to the old
+    // endpoint, so the server cannot tell. The panel below already re-registers
+    // such a device without a prompt, but only when someone opens it — and on
+    // 1 Nov 2026 a Captain reminder went to a dead endpoint 34 minutes before
+    // its manager happened to open the panel. So the same repair runs on every
+    // page load of the installed phone app (this file is loaded from the navbar).
+    //
+    // Phones and tablets only, and only the home-screen app: a desktop browser
+    // that once granted permission but never turned alerts on must not start
+    // receiving them because a phone has them on. Never on a device whose
+    // alerts were turned off here (see turnedOffHere).
+    //
+    // Costs nothing on a healthy device: the browser's own subscription is a
+    // local read, and the server is asked only when this device has permission
+    // but no subscription. The guards are the panel's own (see render()).
+    async function repairOnOpen() {
+        try {
+            if (!supported() || !isStandalone() || !isPhone()) return false;
+            if (Notification.permission !== 'granted' || turnedOffHere()) return false;
+            if (await thisDeviceEndpoint()) return false;
+            var state = await getState();
+            if (!state.configured || !(state.deviceCount > 0)) return false;
+            await subscribe(state.vapidPublicKey, 'open');
+            return true;
+        } catch (e) {
+            return false;   // the panel's button is still there
+        }
+    }
+
     async function unsubscribe() {
         try {
             var reg = await registerWorker();
             var sub = await reg.pushManager.getSubscription();
             if (sub) await sub.unsubscribe();
         } catch (e) { /* the server record is what matters; clear it regardless */ }
+        markTurnedOffHere(true);
         await fetch('/users/me/push', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
@@ -325,6 +381,11 @@
                 return;
             }
 
+            // A repair started at page load may still be in flight. Both reads
+            // below must see its result, or the panel subscribes a second time
+            // and reports the device it just registered as "not this one".
+            await repairing;
+
             var state;
             try { state = await getState(); }
             catch (e) { return say(e.message, 'error'); }
@@ -350,7 +411,7 @@
             // would switch alerts back on where they were turned off.
             // deviceCount > 0 keeps it from undoing "Turn off" on this device.
             // Once per mount, so a failing POST falls through to the button.
-            if (state.deviceCount > 0 && !here && !autoTried && canAsk
+            if (state.deviceCount > 0 && !here && !autoTried && canAsk && !turnedOffHere()
                 && window.Notification && Notification.permission === 'granted') {
                 autoTried = true;
                 try {
@@ -427,5 +488,7 @@
         render();
     }
 
-    window.PushAlerts = { mount: mount };
+    var repairing = repairOnOpen();
+
+    window.PushAlerts = { mount: mount, repairOnOpen: repairOnOpen };
 })();
