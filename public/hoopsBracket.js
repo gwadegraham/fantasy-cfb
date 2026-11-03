@@ -266,7 +266,7 @@
                     + (o ? '<tr class="tot"><td>March total</td><td>' + pts(t.points) + '</td></tr>'
                         : '<tr class="nt"><td colspan="2">No one in this league banked these.</td></tr>') + '</table>'
                 : '<div class="mmb-sub">No games played yet.</div>')
-            + '<a class="mmb-teamlink" href="/hoops/team/' + t.id + '">Team page →</a>';
+            + '<a class="mmb-teamlink" href="/hoops/team/' + t.id + (data.seasons && data.seasons[0] !== data.season ? '?season=' + data.season : '') + '">Team page →</a>';
         lastFocus = document.activeElement;
         sheet.hidden = false;
         var x = sheet.querySelector('.mmb-sheet-x');

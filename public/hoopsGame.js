@@ -14,7 +14,8 @@
     function ma(m, a) { return (m == null ? '—' : m) + '-' + (a == null ? '—' : a); }
     function abbr(t) { return t.abbreviation || t.school; }
     function teamLink(t, inner) {
-        return t.hasPage ? '<a href="/hoops/team/' + encodeURIComponent(t.id) + '">' + inner + '</a>' : inner;
+        var season = data && data.game.past ? '?season=' + encodeURIComponent(data.game.season) : '';
+        return t.hasPage ? '<a href="/hoops/team/' + encodeURIComponent(t.id) + season + '">' + inner + '</a>' : inner;
     }
 
     var state = { tab: 'summary', side: 'away', adv: false };

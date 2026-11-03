@@ -253,7 +253,12 @@ async function viewerCaptain(owner, viewerId, cfg, season, teamId, now) {
     return weeks.size ? { weeks, multiplier: eng.captainMultiplier, playingWeek: playing ? playing.week : null } : null;
 }
 
-async function build(teamId, { season, league = null, viewerId = null, now = Date.now() } = {}) {
+// `past`: a finished season before the active one, backfilled for its
+// schedule and results only (modules/hoops-ncaa-backfill.js). No league
+// played it, and none of the week-by-week ranks a quadrant is graded on were
+// kept, so its games carry no quadrant, owner or Captain, and the tags and
+// portal moves (which describe the season going on now) are left off.
+async function build(teamId, { season, league = null, viewerId = null, now = Date.now(), past = false } = {}) {
     const id = Number(teamId);
     const yr = Number(season);
     if (!Number.isFinite(id) || !Number.isFinite(yr)) return null;
@@ -267,6 +272,7 @@ async function build(teamId, { season, league = null, viewerId = null, now = Dat
     // nothing left to play there is nothing to double, and no reason to ask.
     // .exec(): a Mongoose query runs once per await, and these are awaited twice.
     const listedP = HoopsGame.find({ season: yr, $or: [{ homeTeamId: id }, { awayTeamId: id }] }).sort({ startDate: 1 }).lean().exec();
+    if (past) league = null;
     const ownerP = ownership(league, yr, id);
     const cfgP = league ? ScoringConfig.findOne({ league }).lean().exec() : Promise.resolve(null);
     const captainP = Promise.all([listedP, ownerP, cfgP])
@@ -289,11 +295,11 @@ async function build(teamId, { season, league = null, viewerId = null, now = Dat
         cfgP.then(doc => quadrantValues(league, doc)),
         latestNet(yr, [id]),
         // A failed tag read costs the tags, not the page, as in the pool.
-        stylesFor(yr, [id]).catch(err => {
+        past ? { source: null, byTeam: {} } : stylesFor(yr, [id]).catch(err => {
             console.error(`hoops team page ${id}: style tags not read: ${err.message}`);
             return { source: null, byTeam: {} };
         }),
-        turnoverFor(yr, [id], { full: true }).catch(err => {
+        past ? { source: null, byTeam: {} } : turnoverFor(yr, [id], { full: true }).catch(err => {
             console.error(`hoops team page ${id}: roster turnover not read: ${err.message}`);
             return { source: null, byTeam: {} };
         }),
@@ -317,7 +323,7 @@ async function build(teamId, { season, league = null, viewerId = null, now = Dat
     // a future week nobody has rated.
     const nowWeek = await currentWeek(yr);
     const ranksByWeek = new Map();
-    for (const g of games) {
+    for (const g of past ? [] : games) {
         const wk = isFinal(g) || nowWeek === null ? Number(g.week) : nowWeek;
         if (Number.isFinite(wk) && !ranksByWeek.has(wk)) ranksByWeek.set(wk, null);
     }
@@ -375,7 +381,7 @@ async function build(teamId, { season, league = null, viewerId = null, now = Dat
             // quadrant win when the game is regular season (isRegular in
             // modules/hoops-detectors.js). Conference tournaments are
             // 'regular' to CBBD and do get a quadrant, exactly as scored.
-            quadrant: paid ? paid.quadrant : postseason ? null : quadrantFor(oppRank, venue),
+            quadrant: paid ? paid.quadrant : postseason || past ? null : quadrantFor(oppRank, venue),
             postseason,
             tournament: postseason ? (String(g.tournament || '').trim() || 'Postseason') : null,
             final,
@@ -407,6 +413,7 @@ async function build(teamId, { season, league = null, viewerId = null, now = Dat
 
     return {
         season: yr,
+        past: !!past,
         team: {
             id, school: team.school, mascot: team.mascot || null,
             conference: team.conference || null, color: team.color || null,

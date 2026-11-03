@@ -15,7 +15,27 @@
     var esc = kit.esc, fixed = kit.fixed, record = kit.record;
     function venueMark(v) { return v === 'home' ? 'vs' : v === 'away' ? '@' : 'N'; }
     function won(g) { return g.us > g.them; }
-    function teamHref(id) { return '/hoops/team/' + encodeURIComponent(id); }
+    // A past season's page links on to the same season of each opponent.
+    function teamHref(id) {
+        return '/hoops/team/' + encodeURIComponent(id) + (data && data.past ? '?season=' + encodeURIComponent(data.season) : '');
+    }
+    // The season this page was asked for (?season=), or '' for the current one.
+    var ASKED = (function () {
+        var m = /[?&]season=(\d{4})(?:&|$)/.exec(window.location.search || '');
+        return m ? m[1] : '';
+    })();
+    function seasonLabel(y) { return (y - 1) + '\u2013' + String(y).slice(-2); }
+
+    // Every season this team has a schedule for (#659's backfill), newest
+    // first. Links, not buttons: each season is its own page and URL.
+    function seasonPills(d) {
+        if (!d.seasons || d.seasons.length < 2) return '';
+        return '<nav class="ht-seasons" aria-label="Season">' + d.seasons.map(function (y) {
+            var href = '/hoops/team/' + encodeURIComponent(d.team.id) + (y === d.currentSeason ? '' : '?season=' + y);
+            return '<a class="ht-season' + (y === d.season ? ' on' : '') + '" href="' + href + '"'
+                + (y === d.season ? ' aria-current="page"' : '') + '>' + seasonLabel(y) + '</a>';
+        }).join('') + '</nav>';
+    }
 
     // A to-scale-in-spirit full court, drawn as thin strokes and stood on
     // end so one basket sits behind the name and half court runs along the
@@ -73,7 +93,7 @@
             + '<div class="ht-rec">'
             + '<div><div class="n">' + record(done) + '</div><div class="l">Overall</div></div>'
             + (t.conference ? '<div><div class="n">' + record(conf) + '</div><div class="l">' + esc(t.conference) + '</div></div>' : '')
-            + '<div><div class="n">' + record(q1) + '</div><div class="l">vs Q1</div></div>'
+            + (d.past ? '' : '<div><div class="n">' + record(q1) + '</div><div class="l">vs Q1</div></div>')
             + '</div></section>';
     }
 
@@ -457,7 +477,7 @@
             + (g.notes ? '<span class="note">' + esc(g.notes) + '</span>' : '') + (g.opponent.hasPage === false ? '</span>' : '</a>')
             + '<a class="res" href="' + gameHref + '">' + res + '</a>'
             + (g.quadrant ? qChip(d, g)
-                : '<span class="ht-qt post" title="Scored on the tournament ladder">' + esc(g.tournament || 'Post') + '</span>')
+                : g.postseason ? '<span class="ht-qt post" title="Scored on the tournament ladder">' + esc(g.tournament || 'Post') + '</span>' : '<span class="ht-qt none"></span>')
             + '<span class="p' + (g.points ? '' : ' z') + '">' + pts + '</span></div>';
     }
 
@@ -494,9 +514,19 @@
     var state = { tab: 'resume', q: 1, allGames: false, school: '' };
     var data = null;
 
-    function tabFromHash() {
+    // A past season was never played in a league and kept no quadrant ranks,
+    // stats or news: its page is the schedule and the conference table.
+    function tabsFor(d) {
+        return (d.past ? PAST_TABS : TABS).filter(function (t) {
+            return t !== 'conference' || (d.standings && d.standings.length && d.team.conference);
+        });
+    }
+    var PAST_TABS = ['schedule', 'conference'];
+
+    function tabFromHash(d) {
         var h = (window.location.hash || '').replace('#', '');
-        return TABS.indexOf(h) !== -1 ? h : 'resume';
+        var list = tabsFor(d);
+        return list.indexOf(h) !== -1 ? h : list[0];
     }
 
     // With News as a fifth tab, the one conference whose name pushed the last
@@ -507,7 +537,7 @@
 
     function tabs(d) {
         var label = { resume: 'Resume', schedule: 'Schedule', stats: 'Stats', conference: confShort(d.team.conference), news: 'News' };
-        var list = TABS.filter(function (t) { return t !== 'conference' || (d.standings && d.standings.length && d.team.conference); });
+        var list = tabsFor(d);
         return kit.tabs(list.map(function (t) { return [t, label[t]]; }), state.tab);
     }
 
@@ -542,14 +572,15 @@
     function render(d) {
         data = d;
         state.school = d.team.school;
-        state.tab = tabFromHash();
-        if (state.tab === 'conference' && !(d.standings && d.standings.length)) state.tab = 'resume';
+        state.tab = tabFromHash(d);
+        // A finished season reads whole, not as "the last five".
+        state.allGames = !!d.past;
         // Open on the most valuable quadrant that has games in it.
         var withGames = [1, 2, 3, 4].filter(function (q) { return d.games.some(function (g) { return g.quadrant === q; }); });
         state.q = withGames.length ? withGames[0] : 1;
         var done = d.games.filter(function (g) { return g.final; });
         var upcoming = d.games.filter(function (g) { return !g.final; });
-        root.innerHTML = hero(d, done) + ownerStrip(d, done, upcoming) + tabs(d)
+        root.innerHTML = hero(d, done) + seasonPills(d) + ownerStrip(d, done, upcoming) + tabs(d)
             + '<div class="ht-panel" role="tabpanel">' + panel(d, done) + '</div>';
         var t = document.querySelector('title');
         if (t) t.setAttribute('data-league-title', d.team.school);
@@ -585,7 +616,7 @@
 
     function load() {
         var id = root.getAttribute('data-team-id');
-        return kit.load('/hoops/teams/' + encodeURIComponent(id) + '/page', render, root, 'team');
+        return kit.load('/hoops/teams/' + encodeURIComponent(id) + '/page' + (ASKED ? '?season=' + ASKED : ''), render, root, 'team');
     }
 
     // Names are re-fitted when the room changes: a resize, or the webfont

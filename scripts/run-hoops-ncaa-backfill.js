@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 //
-// Store past NCAA tournaments for the March Madness bracket page.
+// Store past basketball seasons: NCAA tournaments for the March Madness
+// bracket page, and teams and full schedules for past-season team pages.
 //
 //   npm run hoops:ncaa-backfill                    <- the last 3 seasons
 //   npm run hoops:ncaa-backfill -- 2024 2026       <- named seasons
@@ -8,9 +9,10 @@
 //   npm run hoops:ncaa-backfill -- --force         <- refetch a season already stored
 //   heroku run -a fantasy-cfb npm run hoops:ncaa-backfill    <- the prod fill
 //
-// Two billable CBBD calls per season (its tournament games and its teams), and
-// none for either one already stored in full (so a re-run is free). Writes
-// hoopsgames and hoopsteams rows for past seasons only.
+// Per season: its NCAA tournament (1 billable CBBD call), its teams (1) and its
+// full schedule (about 11), and nothing for any part already stored in full
+// (so a re-run is free). Writes hoopsgames and hoopsteams rows for past
+// seasons only.
 
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config();
@@ -34,7 +36,8 @@ async function main() {
     const line = (r, what) => (r.status === 'stored'
         ? `already stored (${r.stored} ${what}), no call made`
         : `${r.status}, ${r.fetched} ${what} fetched, ${r.written} written (CBBD calls left: ${r.remainingCalls ?? '?'})`);
-    results.forEach(r => console.log(`${r.season} tournament: ${line(r, 'games')}\n${r.season} teams: ${line(r.teams, 'teams')}`));
+    results.forEach(r => console.log(`${r.season} tournament: ${line(r, 'games')}\n${r.season} teams: ${line(r.teams, 'teams')}`
+        + `\n${r.season} schedule: ${line(r.schedule, 'games')}`));
     return 0;
 }
 

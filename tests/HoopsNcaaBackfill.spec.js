@@ -35,9 +35,24 @@ const teamList = (n = backfill.FULL_TEAMS) => Array.from({ length: n }, (_, i) =
     conference: 'SEC', logos: [`https://cdn.example/${i + 1}.png`, `https://cdn.example/dark/${i + 1}.png`]
 }));
 
-// Games through cbbdGet, teams through fetchTeams; the logo probe is a CDN
-// request, stubbed to "every logo loads".
-function stubCbbd(bySeason, teamsBySeason = {}) {
+// A season's regular-season schedule, in /games shape: n final games from
+// mid-November, two a day.
+const REGULAR = 6;
+const schedule = (season, n = REGULAR, o = {}) => Array.from({ length: n }, (_, i) => game(season * 10000 + i, season, Object.assign({
+    seasonType: 'regular', tournament: null, gameNotes: null, neutralSite: false,
+    startDate: new Date(Date.UTC(season - 1, 10, 10 + Math.floor(i / 2))).toISOString()
+}, o)));
+
+// Games through cbbdGet (the tournament) and fetchGamesInRange (the full
+// schedule), teams through fetchTeams; the logo probe is a CDN request,
+// stubbed to "every logo loads".
+function stubCbbd(bySeason, teamsBySeason = {}, schedules = {}) {
+    jest.spyOn(cbbd, 'fetchGamesInRange').mockImplementation(async (season, seasonType) => {
+        const s = schedules[season];
+        if (s instanceof Error) throw s;
+        const games = seasonType === 'regular' ? (s && s.regular) || schedule(season) : (s && s.postseason) || [];
+        return { games, windows: seasonType === 'regular' ? 8 : 3, remainingCalls: 29680, capHits: (s && s.capHits && s.capHits[seasonType]) || [] };
+    });
     jest.spyOn(cbbd, 'fetchTeams').mockImplementation(async (season) => {
         const data = teamsBySeason[season];
         if (data instanceof Error) throw data;
@@ -51,12 +66,14 @@ function stubCbbd(bySeason, teamsBySeason = {}) {
     });
 }
 
+const fullRegular = backfill.LIMITS.regular;
 beforeEach(async () => {
+    backfill.LIMITS.regular = REGULAR;
     await SportSeason.create([{ sport: 'football', season: 2026, status: 'in-season' }, { sport: 'basketball', season: ACTIVE, status: 'in-season' }]);
     await seasons.prime();
 });
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => { backfill.LIMITS.regular = fullRegular; jest.restoreAllMocks(); });
 
 describe('lastSeasons', () => {
     it('is the n seasons before the active one, oldest first', () => {
@@ -93,7 +110,7 @@ describe('backfill', () => {
         const forced = await backfill.backfill([2026], { force: true });
         expect(forced[0].status).toBe('written');
         expect(spy).toHaveBeenCalledTimes(2);
-        expect(await HoopsGame.countDocuments({ season: 2026 })).toBe(67);
+        expect(await HoopsGame.countDocuments({ season: 2026, tournament: 'NCAA' })).toBe(67);
     });
 
     it('re-fetches a season stored only in part', async () => {
@@ -102,7 +119,7 @@ describe('backfill', () => {
         const out = await backfill.backfill([2026]);
         expect(spy).toHaveBeenCalledTimes(1);
         expect(out[0]).toMatchObject({ status: 'written', stored: 10 });
-        expect(await HoopsGame.countDocuments({ season: 2026 })).toBe(67);
+        expect(await HoopsGame.countDocuments({ season: 2026, tournament: 'NCAA' })).toBe(67);
     });
 
     it('fetches but writes nothing on a dry run', async () => {
@@ -201,5 +218,70 @@ describe('backfill', () => {
     it('backfillTeams runs on its own with default options', async () => {
         stubCbbd({});
         expect((await backfill.backfillTeams(2026)).status).toBe('written');
+    });
+
+    describe('the full schedule', () => {
+        it('stores the regular season and postseason through the season upsert, the postseason from March only', async () => {
+            const post = [game(9001, 2026, { tournament: 'NIT', homeSeed: 2, awaySeed: 7 })];
+            stubCbbd({ 2026: tournament(2026) }, {}, { 2026: { postseason: post } });
+            const [out] = await backfill.backfill([2026]);
+            expect(out.schedule).toMatchObject({ status: 'written', fetched: REGULAR + 1, written: REGULAR + 1, calls: 11 });
+            expect(cbbd.fetchGamesInRange).toHaveBeenCalledWith(2026, 'regular', cbbd.seasonRange(2026).start, cbbd.seasonRange(2026).end);
+            expect(cbbd.fetchGamesInRange).toHaveBeenCalledWith(2026, 'postseason', new Date('2026-03-01T00:00:00Z'), cbbd.seasonRange(2026).end);
+            expect(await HoopsGame.countDocuments({ season: 2026, seasonType: 'regular' })).toBe(REGULAR);
+            expect(await HoopsGame.findOne({ id: 9001 }).lean()).toMatchObject({ tournament: 'NIT', homePoints: 80 });
+        });
+
+        it('renumbers the tournament already stored once November arrives as week 1', async () => {
+            stubCbbd({ 2026: tournament(2026) });
+            await backfill.backfill([2026]);
+            const first = await HoopsGame.findOne({ season: 2026, seasonType: 'regular' }).sort({ startDate: 1 }).lean();
+            const ncaa = await HoopsGame.findOne({ season: 2026, tournament: 'NCAA' }).lean();
+            expect(first.week).toBe(1);
+            expect(ncaa.week).toBeGreaterThan(15);
+        });
+
+        it('spends nothing on a season whose schedule is stored, and re-fetches it on force', async () => {
+            stubCbbd({ 2026: tournament(2026) });
+            await backfill.backfill([2026]);
+            const [again] = await backfill.backfill([2026]);
+            expect(again.schedule).toMatchObject({ status: 'stored', calls: 0, stored: REGULAR });
+            expect(cbbd.fetchGamesInRange).toHaveBeenCalledTimes(2);
+            await backfill.backfill([2026], { force: true });
+            expect(cbbd.fetchGamesInRange).toHaveBeenCalledTimes(4);
+        });
+
+        it('fetches but writes no schedule on a dry run', async () => {
+            stubCbbd({ 2026: tournament(2026) });
+            const [out] = await backfill.backfill([2026], { dryRun: true });
+            expect(out.schedule).toMatchObject({ status: 'dry-run', written: 0, calls: 11 });
+            expect(await HoopsGame.countDocuments({})).toBe(0);
+        });
+
+        it.each([
+            ['a window at the page cap', { capHits: { regular: ['2025-11-01..2025-11-30'] } }, /row cap in 2025-11-01/],
+            ['rows from another season', { regular: schedule(2026).concat(schedule(2025, 1)) }, /another season/],
+            ['a season still being played', { regular: schedule(2026, REGULAR, { status: 'scheduled' }) }, /not a finished season/]
+        ])('writes no schedule for %s', async (_label, sched, message) => {
+            stubCbbd({ 2026: tournament(2026) }, {}, { 2026: sched });
+            await expect(backfill.backfill([2026])).rejects.toThrow(message);
+            expect(await HoopsGame.countDocuments({ seasonType: 'regular' })).toBe(0);
+        });
+
+        it('a failed schedule write says so and points at --force', async () => {
+            stubCbbd({ 2026: tournament(2026) });
+            await backfill.backfillSeason(2026);
+            jest.spyOn(HoopsGame, 'bulkWrite').mockRejectedValueOnce(new Error('E11000 duplicate key'));
+            await expect(backfill.backfillSchedule(2026)).rejects.toThrow(/schedule write failed partway.*--force/);
+        });
+
+        it('falls back to the regular season\'s remaining calls when the postseason sends none', async () => {
+            stubCbbd({});
+            cbbd.fetchGamesInRange.mockImplementation(async (season, type) => ({
+                games: type === 'regular' ? schedule(season) : [], windows: 1, capHits: [],
+                remainingCalls: type === 'regular' ? 29000 : null
+            }));
+            expect((await backfill.backfillSchedule(2026)).remainingCalls).toBe(29000);
+        });
     });
 });

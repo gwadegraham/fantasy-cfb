@@ -5,6 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const HoopsTeam = require('../models/hoopsTeam');
+const HoopsGame = require('../models/hoopsGame');
 const cbbd = require('../modules/cbbd-client');
 const audit = require('../modules/audit-log');
 const { activeSeason } = require('../modules/active-season');
@@ -358,14 +359,30 @@ router.get('/:id/page', async (req, res) => {
             console.error(`hoops team page: league selection failed: ${e.message}`);
         }
         const basketball = !!league && seasons.sportForLeague(league) === 'basketball';
-        const season = basketball ? seasons.seasonForLeague(league) : seasons.activeSeason('basketball');
-        if (season == null) return res.status(404).json({ message: 'No basketball season is active' });
+        const current = basketball ? seasons.seasonForLeague(league) : seasons.activeSeason('basketball');
+        if (current == null) return res.status(404).json({ message: 'No basketball season is active' });
+        // ?season= names an earlier season, one backfilled with its schedule
+        // (modules/hoops-ncaa-backfill.js). The current season is the default
+        // and naming it is the same page; a later one does not exist yet.
+        const asked = req.query.season == null || req.query.season === '' ? Number(current) : Number(req.query.season);
+        if (!Number.isInteger(asked) || asked > Number(current)) return res.status(404).json({ message: 'No such basketball season' });
+        const past = asked < Number(current);
         // Who is looking, so a game in their Captain week shows the doubled
         // win. The app's account id lives in the Auth0 profile's nested metadata.
         const meta = (req.effUser && req.effUser.user_metadata) || {};
         const viewerId = (meta.metadata && meta.metadata.userId) || null;
-        const page = await teamPage.build(id, { season, league: basketball ? league : null, viewerId });
+        const [page, stored] = await Promise.all([
+            teamPage.build(id, { season: asked, league: basketball ? league : null, viewerId, past }),
+            // The seasons this team has a schedule for: the switcher's pills.
+            // Per season, so each check rides the (season, team) indexes —
+            // one distinct across the whole collection would scan it.
+            HoopsGame.distinct('season').then(all => Promise.all(all.map(Number).filter(s => s < Number(current))
+                .map(s => HoopsGame.exists({ season: s, seasonType: 'regular', $or: [{ homeTeamId: id }, { awayTeamId: id }] })
+                    .then(hit => (hit ? s : null)))))
+        ]);
         if (!page) return res.status(404).json({ message: 'No such basketball team this season' });
+        page.seasons = [Number(current)].concat(stored.filter(s => s != null).sort((a, b) => b - a));
+        page.currentSeason = Number(current);
         return res.json(page);
     } catch (err) {
         console.error(`hoops team page ${req.params.id}: ${err && err.message}`);

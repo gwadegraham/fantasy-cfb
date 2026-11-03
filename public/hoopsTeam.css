@@ -21,6 +21,14 @@
 .ht-rec .n { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 .ht-rec .l { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--cc-muted); margin-top: 4px; }
 
+/* ---- season switcher (past seasons, #659's backfill) --------------------- */
+.ht-seasons { display: flex; gap: 6px; margin: 12px 0 0; overflow-x: auto; scrollbar-width: none; }
+.ht-seasons::-webkit-scrollbar { display: none; }
+.ht-season { flex: none; font: 600 12px Poppins, sans-serif; padding: 4px 12px; border-radius: var(--cc-r-pill);
+    border: 1px solid var(--cc-border-2); color: var(--cc-muted); text-decoration: none; }
+.ht-season:hover { color: var(--cc-text); text-decoration: none; }
+.ht-season.on { background: var(--cc-text); color: var(--cc-bg); border-color: var(--cc-text); }
+
 /* ---- whose roster ------------------------------------------------------ */
 .ht-own { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0;
     padding: 12px 14px; border-radius: var(--cc-r-md); background: var(--cc-surface);
@@ -148,6 +156,8 @@
 .sp-gr { grid-template-columns: 44px minmax(0, 1fr) auto 28px 26px; }
 .ht-qt { font-size: 10px; font-weight: 800; text-align: center; border-radius: 4px; padding: 2px 0; background: var(--cc-surface-3); }
 .ht-qt.post { font-size: 9px; letter-spacing: .3px; color: var(--cc-amber); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A past season's regular game: no quadrant was kept, so the column stays empty. */
+.ht-qt.none { background: none; }
 .ht-qt.q1 { background: rgba(var(--cc-accent-rgb), .22); color: var(--cc-accent); }
 /* The tap-to-explain mark (#639) on the T-Rank chip and the Q chips: small,
    muted, and not read aloud (the chip's tip carries the words). */

@@ -417,6 +417,14 @@ describe('build', () => {
         expect(p.home.record).toBeNull();
     });
 
+    test('a game from a season before the active one is past; the active season\'s is not', async () => {
+        expect((await gamePage.build(500)).game.past).toBe(false);
+        await HoopsGame.updateOne({ id: 500 }, { $set: { season: SEASON - 1 } });
+        expect((await gamePage.build(500)).game.past).toBe(true);
+        jest.spyOn(seasons, 'activeSeason').mockReturnValue(null);
+        expect((await gamePage.build(500)).game.past).toBe(false);
+    });
+
     test('a seed of 0 or blank is no seed', async () => {
         await HoopsGame.updateOne({ id: 500 }, { $set: { seasonType: 'postseason', tournament: 'NCAA', homeSeed: 0 } });
         const p = await gamePage.build(500);
