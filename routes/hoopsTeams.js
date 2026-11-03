@@ -374,8 +374,8 @@ router.get('/:id/page', async (req, res) => {
         const [page, stored] = await Promise.all([
             teamPage.build(id, { season: asked, league: basketball ? league : null, viewerId, past }),
             // The seasons this team has a schedule for: the switcher's pills.
-            // Per season, so each check rides the (season, team) indexes —
-            // one distinct across the whole collection would scan it.
+            // distinct('season') reads the season index; then one indexed
+            // (season, team) lookup per past season.
             HoopsGame.distinct('season').then(all => Promise.all(all.map(Number).filter(s => s < Number(current))
                 .map(s => HoopsGame.exists({ season: s, seasonType: 'regular', $or: [{ homeTeamId: id }, { awayTeamId: id }] })
                     .then(hit => (hit ? s : null)))))

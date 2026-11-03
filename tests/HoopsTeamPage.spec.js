@@ -594,7 +594,11 @@ describe('GET /hoops/teams/:id/page', () => {
         });
 
         test('serves that season: its games and record, no quadrant, owner or Captain', async () => {
+            // An owner WITH a roster entry for the past season, so only the
+            // past-season rule can keep it off the page.
             await owner([1]);
+            await Franchise.updateOne({ league: LEAGUE }, { $push: { seasons: { season: PAST, franchiseName: 'Old Dreams',
+                teamRefs: [{ id: 1, sport: 'basketball' }], weeklyScore: [] } } });
             const res = await request(app).get(`/hoops/teams/1/page?season=${PAST}`);
             expect(res.status).toBe(200);
             expect(res.body).toMatchObject({ season: PAST, past: true, owner: null, captainMultiplier: null, style: null, turnover: null });
