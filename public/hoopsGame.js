@@ -65,7 +65,8 @@
                 + '<span class="hg-nm-t" title="' + esc(t.school).toUpperCase() + '"'
                 + (t.abbreviation ? ' data-abbr="' + esc(t.abbreviation).toUpperCase() + '"' : '') + '>'
                 + esc(t.school).toUpperCase() + '</span></div>')
-                + (t.record ? '<div class="hg-rec">' + t.record.w + '–' + t.record.l + '</div>' : '') + fouls(k) + '</div>';
+                + (t.record || t.seed ? '<div class="hg-rec">' + [t.seed ? t.seed + ' seed' : '', t.record ? t.record.w + '–' + t.record.l : ''].filter(Boolean).join(' · ') + '</div>' : '')
+                + fouls(k) + '</div>';
         };
         var scored = g.final || (g.live && H.points != null && A.points != null);
         var homeWon = scored && H.points > A.points;

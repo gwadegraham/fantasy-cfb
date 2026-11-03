@@ -27,6 +27,15 @@ const shotCharts = require('./hoops-shots');
 const gamecast = require('./hoops-gamecast');
 const playLog = require('./hoops-play-log');
 
+// The record to show, or null when the season's regular season is not
+// stored: a past season backfilled for the bracket page holds only its
+// tournament, and a "1–0" counted from that reads as the team's season.
+async function recordFor(teamId, game) {
+    const regular = String(game.seasonType || '').toLowerCase() === 'regular'
+        || await HoopsGame.exists({ season: game.season, seasonType: 'regular' });
+    return regular ? recordThrough(teamId, game) : null;
+}
+
 // A team's record through this game — what it was walking off the floor,
 // not what it is today.
 async function recordThrough(teamId, game) {
@@ -128,8 +137,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         HoopsTeam.find({ season: yr, id: { $in: [homeId, awayId] } },
             { id: 1, school: 1, abbreviation: 1, mascot: 1, color: 1, alt_color: 1, logos: 1, _id: 0 }).lean(),
         Number.isFinite(rankWeek) ? teamPage.cachedRanks(yr, rankWeek) : {},
-        recordThrough(homeId, game),
-        recordThrough(awayId, game),
+        recordFor(homeId, game),
+        recordFor(awayId, game),
         teamPage.ownership(league, yr, homeId),
         teamPage.ownership(league, yr, awayId),
         teamPage.quadrantValues(league),
@@ -187,6 +196,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
 
     const side = (teamId, oppId, rec, owner, points) => {
         const t = byId.get(teamId);
+        const rawSeed = teamId === homeId ? game.homeSeed : game.awaySeed;
+        const seedOf = rawSeed == null ? null : Number(rawSeed);
         const venue = venueFor(teamId, { homeId: game.homeTeamId, awayId: game.awayTeamId, neutralSite: game.neutralSite });
         const oppRank = ranks[String(oppId)];
         // Paid already: the quadrant it was PAID at (#502), as the team page
@@ -219,6 +230,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
             net: net[String(teamId)] || null,
             // Through this game when played; going INTO it when not.
             record: rec,
+            // The tournament seed, on a seeded tournament's game (NCAA, NIT).
+            seed: postseason && Number.isInteger(seedOf) ? seedOf : null,
             points: (final || live) && Number.isFinite(Number(points)) && points != null ? Number(points) : null,
             // Postseason games are paid on the tournament ladder, not as a
             // quadrant (isRegular in hoops-detectors) — same rule as the team page.

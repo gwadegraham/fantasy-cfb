@@ -12,6 +12,7 @@ const { useMongo } = require('./helpers/mongo');
 const backfill = require('../modules/hoops-ncaa-backfill');
 const cbbd = require('../modules/cbbd-client');
 const HoopsGame = require('../models/hoopsGame');
+const HoopsTeam = require('../models/hoopsTeam');
 const SportSeason = require('../models/sportSeason');
 const seasons = require('../modules/active-season');
 
@@ -28,7 +29,21 @@ const game = (id, season, o = {}) => Object.assign({
 const tournament = (season, n = backfill.FULL_TOURNAMENT, base = season * 1000) =>
     Array.from({ length: n }, (_, i) => game(base + i, season));
 
-function stubCbbd(bySeason) {
+// A season's D-I teams in CBBD's /teams shape.
+const teamList = (n = backfill.FULL_TEAMS) => Array.from({ length: n }, (_, i) => ({
+    id: i + 1, school: `School ${i + 1}`, abbreviation: `S${i + 1}`, primaryColor: '9d2235', secondaryColor: 'ffffff',
+    conference: 'SEC', logos: [`https://cdn.example/${i + 1}.png`, `https://cdn.example/dark/${i + 1}.png`]
+}));
+
+// Games through cbbdGet, teams through fetchTeams; the logo probe is a CDN
+// request, stubbed to "every logo loads".
+function stubCbbd(bySeason, teamsBySeason = {}) {
+    jest.spyOn(cbbd, 'fetchTeams').mockImplementation(async (season) => {
+        const data = teamsBySeason[season];
+        if (data instanceof Error) throw data;
+        return { data: data || teamList(), remainingCalls: 29690 };
+    });
+    jest.spyOn(cbbd, 'logoUrlsThatExist').mockImplementation(async (urls) => new Set(urls));
     return jest.spyOn(cbbd, 'cbbdGet').mockImplementation(async (path, params) => {
         const data = bySeason[params.season];
         if (data instanceof Error) throw data;
@@ -134,5 +149,51 @@ describe('backfill', () => {
         stubCbbd({ 2024: tournament(2024), 2025: new Error('CBBD /games 500'), 2026: tournament(2026) });
         await expect(backfill.backfill([2024, 2025, 2026])).rejects.toThrow(/500/);
         expect(await HoopsGame.distinct('season')).toEqual([2024]);
+    });
+
+    it('stores each season\'s teams beside its tournament, logos and colours included, without touching the active season', async () => {
+        await HoopsTeam.create({ id: 1, season: ACTIVE, school: 'School 1 today', logos: ['https://cdn.example/now.png'] });
+        stubCbbd({ 2026: tournament(2026) });
+        const [out] = await backfill.backfill([2026]);
+        expect(out.teams).toMatchObject({ status: 'written', fetched: backfill.FULL_TEAMS, calls: 1 });
+        expect(cbbd.fetchTeams).toHaveBeenCalledWith(2026);
+        const past = await HoopsTeam.findOne({ id: 1, season: 2026 }).lean();
+        expect(past).toMatchObject({ school: 'School 1', color: '#9d2235', logos: ['https://cdn.example/1.png', 'https://cdn.example/dark/1.png'] });
+        expect(await HoopsTeam.findOne({ id: 1, season: ACTIVE }).lean()).toMatchObject({ school: 'School 1 today', logos: ['https://cdn.example/now.png'] });
+    });
+
+    it('spends nothing on a season whose teams are stored, and re-fetches them on force', async () => {
+        stubCbbd({ 2026: tournament(2026) });
+        await backfill.backfill([2026]);
+        const [again] = await backfill.backfill([2026]);
+        expect(again.teams).toMatchObject({ status: 'stored', calls: 0, stored: backfill.FULL_TEAMS });
+        expect(cbbd.fetchTeams).toHaveBeenCalledTimes(1);
+        await backfill.backfill([2026], { force: true });
+        expect(cbbd.fetchTeams).toHaveBeenCalledTimes(2);
+    });
+
+    it('fetches teams but writes none on a dry run', async () => {
+        stubCbbd({ 2026: tournament(2026) });
+        const [out] = await backfill.backfill([2026], { dryRun: true });
+        expect(out.teams).toMatchObject({ status: 'dry-run', written: 0, calls: 1 });
+        expect(await HoopsTeam.countDocuments({})).toBe(0);
+    });
+
+    it('writes no teams from a short list', async () => {
+        stubCbbd({ 2026: tournament(2026) }, { 2026: teamList(40) });
+        await expect(backfill.backfill([2026])).rejects.toThrow(/40 teams/);
+        expect(await HoopsTeam.countDocuments({})).toBe(0);
+    });
+
+    it('a failed logo probe stores the teams without logos rather than broken ones', async () => {
+        stubCbbd({ 2026: tournament(2026) });
+        cbbd.logoUrlsThatExist.mockRejectedValue(new Error('CDN down'));
+        await backfill.backfill([2026]);
+        expect((await HoopsTeam.findOne({ id: 1, season: 2026 }).lean()).logos).toEqual([]);
+    });
+
+    it('backfillTeams runs on its own with default options', async () => {
+        stubCbbd({});
+        expect((await backfill.backfillTeams(2026)).status).toBe('written');
     });
 });

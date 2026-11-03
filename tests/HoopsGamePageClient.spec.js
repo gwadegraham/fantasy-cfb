@@ -139,6 +139,21 @@ test('postseason: the tournament, not a quadrant', async () => {
     expect(txt('.hg-q')).toBe('NCAA | NCAA');
 });
 
+test('a seeded game shows the seed beside the record, or alone when there is no record', async () => {
+    const p = payload();
+    p.home = Object.assign({}, p.home, { seed: 1, record: { w: 30, l: 4 } });
+    p.away = Object.assign({}, p.away, { seed: 16, record: null });
+    await render(p);
+    expect([...document.querySelectorAll('.hg-rec')].map(e => e.textContent)).toEqual(['16 seed', '1 seed · 30–4']);
+});
+
+test('no seed and no record: no line under the name', async () => {
+    const p = payload();
+    p.away = Object.assign({}, p.away, { record: null });
+    await render(p);
+    expect(document.querySelectorAll('.hg-rec')).toHaveLength(1);
+});
+
 test('final without a box: it lands overnight — unless the game is too old to get one', async () => {
     const recent = payload({ box: null });
     recent.game = Object.assign({}, recent.game, { startDate: new Date(Date.now() - 12 * 3600e3).toISOString() });

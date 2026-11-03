@@ -13,16 +13,25 @@
 // The write is routes/hoopsGames.js's own upsert, so a backfilled row is the
 // same shape the season ingest writes and a later full ingest updates it in
 // place rather than duplicating it.
+//
+// Each season's teams come too (one more call): without a hoopsteams row for
+// the season, a past game's page has no logo, colours or team link. Written
+// through routes/hoopsTeams.js's upsert and logo probe, keyed on (id, season),
+// so the active season's rows are never touched.
 
 const cbbd = require('./cbbd-client');
 const seasons = require('./active-season');
 const HoopsGame = require('../models/hoopsGame');
+const HoopsTeam = require('../models/hoopsTeam');
 const hoopsGames = require('../routes/hoopsGames');
+const hoopsTeams = require('../routes/hoopsTeams');
 
 const NCAA = 'NCAA';
 // A full field of 68 plays 67 games; the 76-team field (2027 on) plays 75.
 // Below this a stored season is partial and gets fetched again.
 const FULL_TOURNAMENT = 67;
+// D-I has had 350+ teams every season since 2011; fewer stored is partial.
+const FULL_TEAMS = 350;
 
 async function storedCount(season) {
     return HoopsGame.countDocuments({ season, tournament: NCAA, status: 'final' });
@@ -72,6 +81,30 @@ function activeSeason() {
     return active;
 }
 
+// One season's D-I teams. Same return shape as backfillSeason.
+async function backfillTeams(season, { force = false, dryRun = false } = {}) {
+    const before = await HoopsTeam.countDocuments({ season });
+    if (!force && before >= FULL_TEAMS) {
+        return { season, status: 'stored', fetched: 0, written: 0, calls: 0, stored: before };
+    }
+    const { data, remainingCalls } = await cbbd.fetchTeams(season);
+    if (data.length < FULL_TEAMS) throw new Error(`${season}: CBBD returned ${data.length} teams, expected ${FULL_TEAMS}+; nothing written.`);
+    const out = { season, fetched: data.length, calls: 1, remainingCalls, stored: before };
+    if (dryRun) return Object.assign(out, { status: 'dry-run', written: 0 });
+
+    // Which logos load, before any is stored (free: a CDN request, not a
+    // CBBD call). A failed probe stores no logos rather than broken ones.
+    let haveLogo;
+    try {
+        haveLogo = await cbbd.logoUrlsThatExist(data.filter(t => !hoopsTeams.overrideFor(t)).map(t => hoopsTeams.probeUrl(hoopsTeams.apiLogos(t))));
+    } catch (err) {
+        haveLogo = new Set();
+    }
+    const ops = data.map(t => hoopsTeams.buildUpsertOp(t, season, haveLogo)).filter(Boolean);
+    const res = await HoopsTeam.bulkWrite(ops, { ordered: false });
+    return Object.assign(out, { status: 'written', written: (res.upsertedCount || 0) + (res.matchedCount || 0) });
+}
+
 // Seasons in ascending order; refuses the active season and anything later.
 async function backfill(list, opts = {}) {
     const active = activeSeason();
@@ -79,7 +112,8 @@ async function backfill(list, opts = {}) {
     if (bad.length) throw new Error(`Past seasons only (the active basketball season is ${active}): ${bad.join(', ')}`);
     const results = [];
     for (const season of [...new Set(list)].sort((a, b) => a - b)) {
-        results.push(await backfillSeason(season, opts));
+        const games = await backfillSeason(season, opts);
+        results.push(Object.assign(games, { teams: await backfillTeams(season, opts) }));
     }
     return results;
 }
@@ -91,4 +125,4 @@ function lastSeasons(n) {
     return Array.from({ length: n }, (_, i) => active - n + i);
 }
 
-module.exports = { backfill, backfillSeason, lastSeasons, FULL_TOURNAMENT };
+module.exports = { backfill, backfillSeason, backfillTeams, lastSeasons, FULL_TOURNAMENT, FULL_TEAMS };
