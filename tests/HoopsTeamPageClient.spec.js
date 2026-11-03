@@ -487,6 +487,44 @@ describe('Next up (#506)', () => {
     });
 });
 
+describe('the viewer\'s Captain (#635)', () => {
+    const captained = () => {
+        const p = payload({ captainMultiplier: 2, captainPlayingWeek: 1 });
+        p.games[3].captain = true;       // Virginia, Q1: +5 doubles to +10
+        return p;
+    };
+    test('Next up shows the doubled win, the 2× chip and a Captain line', async () => {
+        await render(captained());
+        const card = document.querySelector('.ht-next');
+        expect(card.querySelector('.ht-next-pay').textContent).toBe('+10 if won · 2×');
+        expect(card.querySelector('.ht-cap').textContent).toBe('2×');
+        expect(card.querySelector('.ht-next-cap').textContent).toBe('Your Captain this week');
+    });
+    test('a Captain week still ahead is named, not called "this week"', async () => {
+        const p = captained();
+        p.captainPlayingWeek = 0;        // week 0 under way; Virginia is in week 1
+        await render(p);
+        expect(document.querySelector('.ht-next-cap').textContent).toBe('Your Captain · Week 1');
+        expect(document.querySelector('.ht-cap').getAttribute('title')).toBe('Your Captain · Week 1');
+    });
+    test('the schedule doubles only the Captain week\'s games', async () => {
+        await render(captained(), 200, 'schedule');
+        expect(txt('.sp-gr.up .res')).toBe('+10 if won · 2× | +1 if won');
+    });
+    test('not the Captain: the plain win, no chip, no line', async () => {
+        await render(payload());
+        expect(document.querySelector('.ht-next .ht-cap')).toBeNull();
+        expect(document.querySelector('.ht-next-cap')).toBeNull();
+        expect(document.querySelector('.ht-next-pay').textContent).toBe('+5 if won');
+    });
+    test('a Captain flag without a multiplier doubles nothing', async () => {
+        const p = captained();
+        p.captainMultiplier = null;
+        await render(p);
+        expect(document.querySelector('.ht-next-pay').textContent).toBe('+5 if won');
+    });
+});
+
 describe('standings peek (#506)', () => {
     const conf = (n, at) => Array.from({ length: n }, (_, i) => ({
         teamId: i === at ? 72 : 900 + i, school: i === at ? 'Duke' : 'Team ' + (i + 1), logo: null, confW: n - i, confL: i, w: 10, l: 2

@@ -26,7 +26,10 @@ const { entryFor } = require('./roster-teams');
 const { captainShare } = require('./league-scoreboard');
 const { pickLogo } = require('../public/logo.js');
 const ScoringConfig = require('../models/scoringConfig');
-const { resolveConfig, overridesFromDoc } = require('./scoring-defaults');
+const { resolveConfig, overridesFromDoc, engagementForSeason } = require('./scoring-defaults');
+const { isModeGame, seasonModeWeeks, captainGames, captainFocus, lockedWeek } = require('./hoops-modes');
+const { autoCaptainTeamId } = require('./captain');
+const { pickParts } = require('./hoops-captain');
 
 // A week's ranks are fixed once the week is rated, and a team page reads up
 // to ~20 of them, each a full-league read. Cached briefly per process so a
@@ -110,9 +113,10 @@ function standingsFrom(teams, games) {
 
 // What a win in each quadrant pays in THIS league — a commissioner can
 // change them, so the page reads the config rather than the defaults.
-async function quadrantValues(league) {
+// `doc` is the league's ScoringConfig when the caller already has it read.
+async function quadrantValues(league, doc) {
     if (!league) return null;
-    const doc = await ScoringConfig.findOne({ league }).lean();
+    if (doc === undefined) doc = await ScoringConfig.findOne({ league }).lean();
     const v = resolveConfig(league, overridesFromDoc(doc)).values || {};
     return { 1: v.q1Win ?? null, 2: v.q2Win ?? null, 3: v.q3Win ?? null, 4: v.q4Win ?? null };
 }
@@ -196,13 +200,51 @@ async function ownership(league, season, teamId) {
             // team. Never sent to the client; only a `mine` flag is.
             accountId: m._id != null ? String(m._id) : null,
             points,
-            banked
+            banked,
+            // Kept server-side for the viewer's Captain (viewerCaptain).
+            entry
         };
     }
     return null;
 }
 
-async function build(teamId, { season, league = null, now = Date.now() } = {}) {
+// The weeks this team is the VIEWER's Captain (#635), and the multiple —
+// or null. Only the owner's own page: anyone else's Captain is theirs.
+// Resolved the way the scoring pass does (modules/hoops-scoring-pass.js):
+// the manager's pick, else the default FROZEN at the lock, else the
+// auto-captain from the weeks before — and only in a mode week.
+//
+// The auto-captain stops at the week the picker offers (captainFocus): it is
+// a default only until someone picks, and with nothing scored yet it is the
+// roster's first team — every week of the season would read 2× on one page.
+// Past that week only an actual entry counts, as in My Team's Games drawer.
+//
+// `playingWeek` is the week under way (else the one on offer), so the page
+// can say "this week" only of that one. `cfg` is the league's ScoringConfig.
+async function viewerCaptain(owner, viewerId, cfg, season, teamId, now) {
+    if (!owner || !owner.accountId || viewerId == null || owner.accountId !== String(viewerId)) return null;
+    const eng = engagementForSeason(cfg && cfg.engagementBySeason, season);
+    if (!eng.captainEnabled) return null;
+    const entry = owner.entry;
+    const ids = rosterIds(entry);
+    const modeWeeks = await seasonModeWeeks(season);
+    const games = await captainGames(season, ids, modeWeeks);
+    const focus = captainFocus(games, ids, now);
+    const playing = lockedWeek(games, ids, now) || focus;
+    const weeks = new Set();
+    for (const wk of modeWeeks) {
+        const parts = pickParts(entry.captains, wk);
+        const prior = (entry.weeklyScore || []).filter(e => Number(e.week) < wk);
+        const cap = parts.picked != null ? parts.picked
+            : parts.frozenAuto != null ? parts.frozenAuto
+            : focus && wk > focus.week ? null
+            : autoCaptainTeamId(ids.map(x => ({ id: x })), prior);
+        if (cap === teamId) weeks.add(wk);
+    }
+    return weeks.size ? { weeks, multiplier: eng.captainMultiplier, playingWeek: playing ? playing.week : null } : null;
+}
+
+async function build(teamId, { season, league = null, viewerId = null, now = Date.now() } = {}) {
     const id = Number(teamId);
     const yr = Number(season);
     if (!Number.isFinite(id) || !Number.isFinite(yr)) return null;
@@ -210,16 +252,32 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
     const team = await HoopsTeam.findOne({ id, season: yr }).lean();
     if (!team) return null;
 
-    const [listed, rated, confTeams, stats, owner, values, net, styles, turnover] = await Promise.all([
-        HoopsGame.find({ season: yr, $or: [{ homeTeamId: id }, { awayTeamId: id }] }).sort({ startDate: 1 }).lean(),
+    // The viewer's Captain (#635) is chained off the reads it needs, so it
+    // runs beside the rest rather than after: the owner, the league's config
+    // (one read, shared with the point values) and the schedule — with
+    // nothing left to play there is nothing to double, and no reason to ask.
+    // .exec(): a Mongoose query runs once per await, and these are awaited twice.
+    const listedP = HoopsGame.find({ season: yr, $or: [{ homeTeamId: id }, { awayTeamId: id }] }).sort({ startDate: 1 }).lean().exec();
+    const ownerP = ownership(league, yr, id);
+    const cfgP = league ? ScoringConfig.findOne({ league }).lean().exec() : Promise.resolve(null);
+    const captainP = Promise.all([listedP, ownerP, cfgP])
+        .then(([listed, owner, cfg]) => (listed.some(g => !isFinal(g)) ? viewerCaptain(owner, viewerId, cfg, yr, id, now) : null))
+        // A failed read costs the 2×, not the page, as the other optional reads.
+        .catch(err => {
+            console.error(`hoops team page ${id}: Captain not read: ${err.message}`);
+            return null;
+        });
+
+    const [listed, rated, confTeams, stats, owner, values, net, styles, turnover, captain] = await Promise.all([
+        listedP,
         HoopsTeam.find({ season: yr, 'preseason.adjOE': { $type: 'number' } },
             { 'preseason.adjOE': 1, 'preseason.adjDE': 1, _id: 0 }).lean(),
         team.conference
             ? HoopsTeam.find({ season: yr, conference: team.conference }, { id: 1, school: 1, logos: 1, _id: 0 }).lean()
             : [],
         HoopsTeamStats.findOne({ season: yr, teamId: id }, { _id: 0, __v: 0 }).lean(),
-        ownership(league, yr, id),
-        quadrantValues(league),
+        ownerP,
+        cfgP.then(doc => quadrantValues(league, doc)),
         latestNet(yr, [id]),
         // A failed tag read costs the tags, not the page, as in the pool.
         stylesFor(yr, [id]).catch(err => {
@@ -229,7 +287,8 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
         turnoverFor(yr, [id], { full: true }).catch(err => {
             console.error(`hoops team page ${id}: roster turnover not read: ${err.message}`);
             return { source: null, byTeam: {} };
-        })
+        }),
+        captainP
     ]);
 
     // Jersey numbers, joined on athleteId from the once-a-season roster
@@ -311,6 +370,10 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
             postseason,
             tournament: postseason ? (String(g.tournament || '').trim() || 'Postseason') : null,
             final,
+            // A game still to play in the viewer's Captain week: a win pays
+            // `captainMultiplier` times over. Never a conference tournament
+            // or postseason game (noModes), which Captain does not double.
+            captain: !!captain && !final && captain.weeks.has(Number(g.week)) && isModeGame(g),
             us: final ? Number(home ? g.homePoints : g.awayPoints) : null,
             them: final ? Number(home ? g.awayPoints : g.homePoints) : null,
             points: final && Object.prototype.hasOwnProperty.call(points, String(g.id)) ? points[String(g.id)] : null
@@ -364,6 +427,10 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
             : null,
         owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName, name: owner.name } : null,
         quadrantValues: values,
+        // What a Captain win is multiplied by, when any game is `captain`.
+        captainMultiplier: out.some(g => g.captain) ? captain.multiplier : null,
+        // The Captain week under way, so only its games say "this week".
+        captainPlayingWeek: out.some(g => g.captain) ? captain.playingWeek : null,
         games: out,
         standings,
         stats: stats || null

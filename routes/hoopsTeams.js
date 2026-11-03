@@ -360,7 +360,11 @@ router.get('/:id/page', async (req, res) => {
         const basketball = !!league && seasons.sportForLeague(league) === 'basketball';
         const season = basketball ? seasons.seasonForLeague(league) : seasons.activeSeason('basketball');
         if (season == null) return res.status(404).json({ message: 'No basketball season is active' });
-        const page = await teamPage.build(id, { season, league: basketball ? league : null });
+        // Who is looking, so a game in their Captain week shows the doubled
+        // win. The app's account id lives in the Auth0 profile's nested metadata.
+        const meta = (req.effUser && req.effUser.user_metadata) || {};
+        const viewerId = (meta.metadata && meta.metadata.userId) || null;
+        const page = await teamPage.build(id, { season, league: basketball ? league : null, viewerId });
         if (!page) return res.status(404).json({ message: 'No such basketball team this season' });
         return res.json(page);
     } catch (err) {
