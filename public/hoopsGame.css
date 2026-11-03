@@ -9,7 +9,7 @@
 .hg-side { text-align: center; min-width: 0; }
 .hg-side a { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .hg-side img { width: 56px; height: 56px; object-fit: contain; }
-.hg-nm { font-family: Graduate, serif; font-size: 17px; line-height: 1.1; }
+.hg-nm { font-family: Graduate, serif; font-size: 17px; line-height: 1.1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .hg-nm small { font-family: Poppins, sans-serif; font-size: 11px; color: var(--cc-muted); margin-right: 3px; }
 .hg-rec { font-size: 11px; color: var(--cc-muted); margin-top: 3px; }
 .hg-score { display: flex; gap: 10px; align-items: center; font-size: 38px; font-weight: 800; font-variant-numeric: tabular-nums; }

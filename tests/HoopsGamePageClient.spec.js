@@ -973,3 +973,24 @@ describe('ESPN stand-in stats', () => {
         expect(q('.hg-src')).toBeNull();
     });
 });
+
+describe('a name too wide for the board falls back to its abbreviation', () => {
+    test('each side carries its full name and its abbreviation, and the page fits them on render', async () => {
+        const spy = jest.spyOn(window.ccSportPage, 'fitNames');
+        await render(payload());
+        const t = Array.from(document.querySelectorAll('.hg-side .hg-nm-t'));
+        expect(t.map(n => [n.getAttribute('title'), n.getAttribute('data-abbr')])).toEqual([['TEXAS', 'TEX'], ['DUKE', 'DUKE']]);
+        expect(spy).toHaveBeenCalledWith(document.getElementById('hoops-game'), '.hg-nm-t[data-abbr]');
+        spy.mockRestore();
+    });
+
+    test('when the full name overflows, the abbreviation is shown', async () => {
+        await render(payload());
+        // jsdom has no layout: fake an overflowing name box, as MASSACHUSETTS beside a score.
+        const nm = document.querySelector('.hg-side .hg-nm');
+        Object.defineProperty(nm, 'scrollWidth', { value: 200, configurable: true });
+        Object.defineProperty(nm, 'clientWidth', { value: 100, configurable: true });
+        window.ccSportPage.fitNames(document.getElementById('hoops-game'), '.hg-nm-t[data-abbr]');
+        expect(document.querySelector('.hg-side .hg-nm-t').textContent).toBe('TEX');
+    });
+});

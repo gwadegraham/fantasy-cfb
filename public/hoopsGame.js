@@ -58,7 +58,13 @@
         };
         var side = function (t, k) {
             return '<div class="hg-side">' + teamLink(t, (t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '')
-                + '<div class="hg-nm">' + (t.rank ? '<small>' + t.rank + '</small>' : '') + esc(t.school).toUpperCase() + '</div>')
+                // A one-word name too wide for its third of the board
+                // ("MASSACHUSETTS") cannot wrap and ran into the score: it
+                // falls back to the abbreviation, only when it clips (fitHero).
+                + '<div class="hg-nm">' + (t.rank ? '<small>' + t.rank + '</small>' : '')
+                + '<span class="hg-nm-t" title="' + esc(t.school).toUpperCase() + '"'
+                + (t.abbreviation ? ' data-abbr="' + esc(t.abbreviation).toUpperCase() + '"' : '') + '>'
+                + esc(t.school).toUpperCase() + '</span></div>')
                 + (t.record ? '<div class="hg-rec">' + t.record.w + '–' + t.record.l + '</div>' : '') + fouls(k) + '</div>';
         };
         var scored = g.final || (g.live && H.points != null && A.points != null);
@@ -652,6 +658,19 @@
         if (top && root.querySelector('.hg-pbp-list')) root.querySelector('.hg-pbp-list').scrollTop = top;
     }
 
+    // Each side's name at full length, or its abbreviation where the full
+    // one would overflow its column. Re-run on resize and once the
+    // Graduate webfont lands, since both change the width it needs.
+    function fitHero() { kit.fitNames(root, '.hg-nm-t[data-abbr]'); }
+    var heroWatched = false;
+    function watchHero() {
+        if (heroWatched) return;
+        heroWatched = true;
+        var t;
+        window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(fitHero, 120); });
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitHero);
+    }
+
     // `keep`: a live refresh repaints with the viewer's tab, team and box
     // mode left as they were, rather than snapping back to the defaults.
     function render(d, keep) {
@@ -693,6 +712,8 @@
         if (title) title.setAttribute('data-league-title', abbr(d.away) + (d.game.neutralSite ? ' vs ' : ' at ') + abbr(d.home));
         if (window.ccLeague && window.ccLeague.paint) window.ccLeague.paint();
         kit.countUp(root);
+        fitHero();
+        watchHero();
         if (scrollLeft && root.querySelector('.hg-box-scroll')) root.querySelector('.hg-box-scroll').scrollLeft = scrollLeft;
         if (pbpTop && root.querySelector('.hg-pbp-list')) root.querySelector('.hg-pbp-list').scrollTop = pbpTop;
         state.pick = null;
