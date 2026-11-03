@@ -149,6 +149,10 @@
 .ht-qt { font-size: 10px; font-weight: 800; text-align: center; border-radius: 4px; padding: 2px 0; background: var(--cc-surface-3); }
 .ht-qt.post { font-size: 9px; letter-spacing: .3px; color: var(--cc-amber); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ht-qt.q1 { background: rgba(var(--cc-accent-rgb), .22); color: var(--cc-accent); }
+/* The tap-to-explain mark (#639) on the T-Rank chip and the Q chips: small,
+   muted, and not read aloud (the chip's tip carries the words). */
+.ht-info { font-style: normal; font-size: .85em; font-weight: 600; opacity: .7; margin-left: 1px; }
+.ht-qt .ht-info { font-size: 8px; }
 
 @media (max-width: 640px) {
     .ht-rot .full { display: none; }

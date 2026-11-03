@@ -74,6 +74,10 @@ function gateGames(rows, nowMs) {
             homePoints: g.homePoints, awayPoints: g.awayPoints,
             startDate: g.startDate ? new Date(g.startDate).toISOString() : null,
             startTimeTbd: !!g.startTimeTbd,
+            // The card marks a neutral floor "N", as the Captain picker and
+            // the team page do (#639); "@" on one surface and "N" on another
+            // read as two different games.
+            neutralSite: !!g.neutralSite,
             status: g.status
         }));
 }
@@ -104,7 +108,7 @@ async function h2hInputs({ users, season, weeks, nowMs = Date.now(), withProject
     const fields = {
         id: 1, week: 1, seasonType: 1, conferenceGame: 1, tournament: 1, gameNotes: 1,
         homeTeamId: 1, awayTeamId: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1,
-        status: 1, startDate: 1, startTimeTbd: 1, _id: 0
+        status: 1, startDate: 1, startTimeTbd: 1, neutralSite: 1, _id: 0
     };
     const rows = ids.length && last ? await HoopsGame.find({
         season: Number(season), seasonType: 'regular',

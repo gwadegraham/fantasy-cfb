@@ -15,6 +15,7 @@
 //   window.ccSportPage.vsRow / vsHead                   a stat-comparison row (.sp-vs), two-colour bars
 //   window.ccSportPage.syncStickyTop()                  re-measure the navbar offset
 //   window.ccSportPage.qtipAttrs(text, title)           make a chip tap to show `text` (phones have no hover)
+//   window.ccSportPage.quadrantLine(q, values, rank)    one line on what a Q chip means and pays
 //
 // It also pins the sticky tabs under the navbar (--sp-sticky-top), measured.
 // Works in the browser and under Node (module.exports) for tests.
@@ -267,6 +268,21 @@
         return ' data-qtip="' + esc(text) + '" role="button" tabindex="0" aria-expanded="false"'
             + (title ? ' title="' + esc(title) + '"' : '');
     }
+
+    // What a Q chip means, in one line a new manager can read (#639): the
+    // quadrant in plain words and what it pays, from the league's own
+    // quadrantValues ({ 1..4, q4Loss }) — never hard-coded, as a league sets
+    // them. `rank` (the opponent's T-Rank/NET) is said when known.
+    var QUAD_WORD = { 1: 'top-quality', 2: 'good', 3: 'middling', 4: 'weak' };
+    function quadrantLine(q, values, rank) {
+        var line = 'Q' + q + ' = ' + QUAD_WORD[q] + ' opponent for where it’s played.';
+        if (values && values[q] != null) {
+            var loss = q === 4 && typeof values.q4Loss === 'number' && values.q4Loss < 0
+                ? String(values.q4Loss).replace('-', '−') : '';
+            line += ' A win pays ' + (values[q] ? '+' + values[q] : 'nothing') + (loss ? '; a loss costs ' + loss : '') + '.';
+        }
+        return line + (rank ? ' Graded vs #' + rank + '.' : '');
+    }
     var bubble = null, openChip = null;
     function closeTip() {
         if (openChip) openChip.setAttribute('aria-expanded', 'false');
@@ -317,6 +333,7 @@
     api.vsRow = vsRow;
     api.vsHead = vsHead;
     api.qtipAttrs = qtipAttrs;
+    api.quadrantLine = quadrantLine;
 
     if (global.document) {
         syncStickyTop();

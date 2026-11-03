@@ -95,6 +95,19 @@ describe('build', () => {
         expect(p.games[0].quadrant).toBe(1);
     });
 
+    // #639: the team's OWN AP rank today, for the chip beside T-Rank — the
+    // ESPN preview says "No. 15", and the header said only "T-Rank #8".
+    test('the team carries its own AP rank today, or null outside the poll', async () => {
+        await HoopsGame.create(game(10, 1, 2, 1));
+        jest.spyOn(require('../modules/hoops-ap'), 'cachedPolls').mockResolvedValue([
+            { at: Date.parse('2026-10-01T00:00:00Z'), ranks: { 1: 9 } },
+            { at: Date.parse('2026-10-20T00:00:00Z'), ranks: { 1: 15, 2: 3 } },
+            { at: Date.parse('2099-01-01T00:00:00Z'), ranks: { 1: 1 } }
+        ]);
+        expect((await teamPage.build(1, { season: SEASON })).apRank).toBe(15);
+        expect((await teamPage.build(3, { season: SEASON })).apRank).toBeNull();
+    });
+
     test('the opponent shows its AP rank at tip-off; the quadrant keeps the scoring rank', async () => {
         await HoopsGame.create([
             game(10, 1, 2, 1, { homePoints: 62, awayPoints: 74 }),   // 10 Nov 2026

@@ -424,6 +424,10 @@ async function build(teamId, { season, league = null, viewerId = null, now = Dat
         // `games`: NCAA re-sorts its quadrants daily on the current NET,
         // while ours are banked when each game is played.
         net: net[String(id)] || null,
+        // The AP poll's rank today, shown beside T-Rank (#639) so the ESPN
+        // preview's "No. 15" is not the only place the poll appears. Display
+        // only, as on every game row.
+        apRank: hoopsAp.rankAt(apPolls, id, now),
         // Plain style tags (#542) and the leaderboard they came from — last
         // season's until this one has enough games — or null if none.
         style: styles.source && (styles.byTeam[String(id)] || []).length

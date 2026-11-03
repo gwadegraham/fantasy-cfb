@@ -392,6 +392,28 @@ describe('GET /standings/h2h on a basketball league', () => {
         expect(annP).toBe(Math.round((1 - 0.1 / 2) * 100));
     });
 
+    // #639: the same game was "N PUR" in the Captain picker and on the team
+    // page but "@ PUR" on this card — CBBD still names a home side at a
+    // neutral floor. Both the finished and the unplayed card say "N".
+    test('a neutral-site game is marked N, on a finished week and an unplayed one', async () => {
+        await modes();
+        const ann = await manager('Ann', [1]);
+        await manager('Bo', [2]);
+        await HoopsGame.create([
+            game(1, ELITE, 1, { neutralSite: true }), game(1, 2, NOBODY),
+            game(2, ELITE, 1, Object.assign({ neutralSite: true }, later)), game(2, 1, NOBODY, later), game(2, NOBODY, 2, later)
+        ]);
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
+        const res = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}`);
+        expect(res.body.sport).toBe('basketball');
+        const rows = (w) => {
+            const c = res.body.schedule.find(s => s.week === w).games[0];
+            return c.aTeams.concat(c.bTeams).map(t => t.ha + ' ' + t.opp);
+        };
+        expect(rows(1)).toEqual(expect.arrayContaining(['N ELT', 'vs NOB']));
+        expect(rows(2)).toEqual(expect.arrayContaining(['N ELT', 'vs NOB', '@ NOB']));
+    });
+
     test('a rank read that fails grades Q4 instead of failing the payload', async () => {
         await modes();
         const ann = await manager('Ann', [1]);
