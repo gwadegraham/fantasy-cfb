@@ -364,6 +364,44 @@ function gameStatus(game, now) {
     return t <= now ? 'live' : 'scheduled';
 }
 
+// Sort key for a matchup-card row: when its game tips. A basketball week is
+// two or three games per team, so a card grouped by team (or by score) put
+// ISU's Monday and Friday games side by side and the two columns never lined
+// up in time — nobody could see what was on tonight. Rows go in tip order
+// instead, and a game keeps that place whatever its status.
+//
+// A TBD game's startDate is midnight EASTERN of its day (the placeholder
+// ccKickoff explains), so taken literally it would lead its day. It goes to
+// the END of that Eastern day instead: after every game with a real time,
+// before anything the next morning. No usable date sorts last.
+//
+// "End of the day" is the next Eastern midnight, not 24h on: the clocks change
+// on a Sunday in November (the season's opening week) and in March, when an
+// Eastern day is 25 or 23 hours long.
+const DAY_MS = 864e5;
+const etParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hourCycle: 'h23',
+    year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric'
+});
+// Eastern's offset from UTC at an instant, in ms (−4h in EDT, −5h in EST).
+function etOffset(t) {
+    const p = {};
+    etParts.formatToParts(new Date(t)).forEach(x => { p[x.type] = Number(x.value); });
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(t / 1000) * 1000;
+}
+function tipKey(game) {
+    const t = game && game.startDate ? Date.parse(game.startDate) : NaN;
+    if (isNaN(t)) return Infinity;
+    if (!game.startTimeTbd) return t;
+    return t + DAY_MS + etOffset(t) - etOffset(t + DAY_MS) - 1;
+}
+// Comparator over { tip, school } rows (tip from tipKey). Ties break by team
+// name so two games at the same time never swap places between polls.
+function byTip(a, b) {
+    if (a.tip !== b.tip) return a.tip < b.tip ? -1 : 1;
+    return String(a.school || '').localeCompare(String(b.school || ''));
+}
+
 // A week is "final" (counts toward records) only once every drafted-team game
 // that week is completed. `games` is the week's games involving rostered teams.
 function isWeekFinal(games) {
@@ -437,7 +475,7 @@ function matchupOutcome(aEntries, bEntries) {
 
 module.exports = {
     buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H,
-    gameStatus, isWeekFinal, matchupWinProb, matchupOutcome,
+    gameStatus, tipKey, byTip, isWeekFinal, matchupWinProb, matchupOutcome,
     H2H_MAX_WEEK, h2hWeekRange, seasonEntry, baseWeekScore, persistedBonus,
     h2hManagerIds, h2hRoster, pinnedH2HIds, computeH2HAwards, applyAwards
 };

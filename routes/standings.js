@@ -18,7 +18,7 @@ const { buildWeeklyRecaps, indexUpsets, indexHoopsResults, completedWeeks } = re
 // Shared with the classic standings table and My Team, so a tied placement reads
 // the same everywhere.
 const { competitionRanks } = require('../public/league-rank.js');
-const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore,
+const { gameStatus, tipKey, byTip, matchupWinProb, H2H_MAX_WEEK, baseWeekScore,
         h2hRoster, pinnedH2HIds, computeH2HAwards, h2hWeekRange } = require('../modules/h2h');
 const { findPoll } = require('../modules/scoring-detectors');
 const { holdUntil } = require('../modules/league-scoreboard');
@@ -1038,8 +1038,6 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // scored week in the league. Note that means no H2H bonus line belongs
         // on this card — that bonus is not in the number it totals to.
         //
-        // Applied before the sort below, so a doubled captain ranks where its
-        // displayed score says it should.
         // A penalised loss shows as scored: it was not doubled.
         const displayScore = (id, w, teamId, raw) => (raw != null && raw > 0 && isCaptain(id, w, teamId))
             ? raw * capMult : raw;
@@ -1095,6 +1093,10 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // Standings-only: the ranked table is ready; return before the matchup
         // win-prob build (which needs the projections skipped above).
 
+        // Rows go in tip order (modules/h2h.js byTip), finished weeks included,
+        // so a card doesn't reshuffle the moment its week settles. The sort key
+        // rides on the row only for the sort; it is not part of the payload.
+        const dropTip = ({ tip, ...row }) => row;
         // Schedule payload: final weeks + the current in-progress week. Final
         // weeks show scored contributing teams; the current week shows each
         // rostered team's live game status (final / live / kickoff time).
@@ -1116,16 +1118,15 @@ router.get('/h2h/:league/:season', async (req, res) => {
                         gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
                     }
                 }
-                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(displayScore(id, w, t.teamId, t.score)), status: 'final', captain: isCaptain(id, w, t.teamId), opp, ha, oppRank, gameScore, gameId: g ? g.id : null };
+                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(displayScore(id, w, t.teamId, t.score)), status: 'final', captain: isCaptain(id, w, t.teamId), opp, ha, oppRank, gameScore, gameId: g ? g.id : null, tip: tipKey(g) };
             })
-            .sort((a, b) => b.score - a.score);
+            .sort(byTip).map(dropTip);
         // The kickoff INSTANT, not a rendered string. This used to format here
         // with no timeZone, so it came out in the dyno's zone (UTC) — every
         // kickoff five hours late, and night games landing on the wrong weekday
         // entirely. Every other date in the app renders in Central; the client
         // now does that for these too, off the ISO. null = time not yet firm.
         const kickAt = (g) => (!g || !g.startDate || g.startTimeTbd) ? null : g.startDate;
-        const statusOrder = { final: 0, live: 1, scheduled: 2 };
         // flatMap, not map: a team with two games that week gets a row for each,
         // so neither is hidden and the footer's game count is honest. A team with
         // no game contributes nothing (a bye).
@@ -1140,8 +1141,8 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (g.homePoints != null && g.awayPoints != null) {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
-            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(displayScore(id, w, t.id, scored.score)) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: isHome ? 'vs' : '@', oppRank: rankByName[oppName] || null, gameScore, gameId: g.id, captain: isCaptain(id, w, t.id) };
-        })).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
+            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(displayScore(id, w, t.id, scored.score)) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: isHome ? 'vs' : '@', oppRank: rankByName[oppName] || null, gameScore, gameId: g.id, captain: isCaptain(id, w, t.id), tip: tipKey(g) };
+        })).sort(byTip).map(dropTip);
 
         // Projected pre-game odds for a matchup: each manager's teams that play
         // that week, run through the win-probability model. Integer percents that

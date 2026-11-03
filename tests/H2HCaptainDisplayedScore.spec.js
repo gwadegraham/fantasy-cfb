@@ -157,15 +157,9 @@ describe('the matchup card shows the Captain doubled', () => {
         expect(rows).toBe(headline);
     });
 
-    // Doubling is applied before the route sorts, so the captain ranks by what
-    // the card actually shows. Oregon's raw 4 already leads USC's 2, so this
-    // pins ordering by the displayed number rather than the stored one.
-    test('rows are ordered by the displayed score', async () => {
-        const ann = await seed();
-        const { teams } = await cardFor(ann);
-        const scores = teams.map(t => t.score);
-        expect(scores).toEqual([...scores].sort((a, b) => b - a));
-    });
+    // Rows used to be ordered by this displayed score, and a test here pinned
+    // it. They now go in tip order (tests/H2HCardTipOrder.spec.js), so score
+    // no longer decides position at all.
 
     test('a league with the captain off shows raw scores and no badge', async () => {
         const ann = await seed({ captainEnabled: false });
