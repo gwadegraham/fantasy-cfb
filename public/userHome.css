@@ -850,6 +850,8 @@ body.uh-drawer-open { overflow: hidden; }
 .uh-draft-stats { display: flex; gap: 16px; flex-wrap: wrap; }
 .uh-ds { display: flex; flex-direction: column; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--cc-muted-2); }
 .uh-ds b { font-size: 15px; font-weight: 800; color: var(--cc-text); letter-spacing: 0; text-transform: none; }
+.uh-draft-live { display: block; margin-top: 10px; font-size: 12px; line-height: 1.4; color: var(--cc-muted-2); }
+.uh-draft-live[hidden] { display: none; }
 
 .uh-sched-lbl { display: block; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cc-info); font-weight: 800; margin-bottom: 7px; }
 .uh-sched-row { display: flex; align-items: center; }

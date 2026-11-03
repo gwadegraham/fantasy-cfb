@@ -248,7 +248,7 @@ async function renderBento(data, yearOverride) {
         hydrateRecap(data, activeYear);
         hydrateBetting(data, activeYear);
     }
-    hydrateDraft(data, activeYear);
+    hydrateDraft(data, activeYear, { live: !isPastSeason });
     hydrateRoster(data, activeYear);
     hydrateTrajectory(data, activeYear);
     hydrateGames(data, activeYear);
@@ -1087,7 +1087,9 @@ async function hydrateCaptain(user, activeYear) {
         if (!g) return;
         const t = state.teamId != null ? teamById[state.teamId] : null;
         const lead = t
-            ? `<a href="/team?team=${t.id}" class="uh-cap-glance" style="color:inherit;text-decoration:none"><img src="${ccLogo(t.logos)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></a>`
+            // A span, not a link: the whole tile opens the picker (#637), and
+            // a team-page link here sent people changing their pick elsewhere.
+            ? `<span class="uh-cap-glance"><img src="${ccLogo(t.logos)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></span>`
             : `<span class="captain-unset">${state.locked ? 'No pick · Wk ' + state.week : 'Set for Wk ' + state.week}</span>`;
         let sub;
         if (state.locked) sub = 'Locked for this week';
@@ -1096,9 +1098,8 @@ async function hydrateCaptain(user, activeYear) {
         g.innerHTML = lead + `<span class="uh-cap-sub">${sub}</span>`;
     };
     // A team's slate for the focus week, drawn under its name in the picker.
-    // Two games is the case worth flagging: CFBD folds the opening weekend into
-    // week 1, so a few teams play twice — and the captain doubles BOTH of them,
-    // which a grid of bare logos gives no way to see.
+    // More than one game gets an "N games" chip: the captain doubles every
+    // one of them, which a grid of bare logos gives no way to see.
     const tileBody = (t) => {
         const games = slateBy[t.id] || [];
         const badge = games.length > 1 ? `<span class="cap-2g">${games.length} games</span>` : '';
@@ -1139,14 +1140,10 @@ async function hydrateCaptain(user, activeYear) {
         const lockLine = state.lockAt
             ? `<span class="cap-lock">Locks ${uhFmtLock(state.lockAt, { dated: uhNeedsDate(state.lockAt, datePlan) })} CT${lockClause}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}</span>`
             : `<span class="cap-lock">Locks when your first team ${verb[0]} off</span>`;
-        const twoGamers = (season.teams || []).filter(t => (slateBy[t.id] || []).length > 1);
-        const twoLine = twoGamers.length
-            ? `<span class="cap-lock"><b>${twoGamers.map(t => escapeHtml(t.school)).join('</b>, <b>')}</b> play twice — captaining one doubles both games</span>`
-            : '';
         // The default this week, worded as the lock reminder words it.
         const autoT = state.teamId == null && state.autoTeamId != null ? teamById[state.autoTeamId] : null;
         const autoLine = autoT ? `<span class="cap-lock">No pick yet — <b>${escapeHtml(autoT.school)}</b> goes in by default</span>` : '';
-        container.innerHTML = `<p class="captain-note">Pick your <b>2×</b> for Week ${state.week}.</p>${currentLine()}${autoLine}${lockLine}${twoLine}
+        container.innerHTML = `<p class="captain-note">Pick your <b>2×</b> for Week ${state.week}.</p><span class="cap-lock cap-how">Tap a team to make it your Captain. It saves right away. Tap it again to clear.</span>${currentLine()}${autoLine}${lockLine}
             <div class="captain-grid">${(season.teams || []).map(t => `
                 <button type="button" class="captain-team${Number(state.teamId) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(state.teamId) === Number(t.id)}">${tileBody(t)}</button>`).join('')}</div>`;
         container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
@@ -1316,27 +1313,93 @@ async function hydrateBetting(user, activeYear) {
     } catch (e) { /* non-fatal */ }
 }
 
-async function hydrateDraft(user, activeYear) {
+// The draft grade is the roster as drafted: full season, base scoring only
+// (basketball's inputs are frozen at the last pick; football's are live unless
+// a MarketSnapshot is pinned — routes/draft.js). Standings → Projected Finish
+// is a different number on purpose: banked plus the remaining schedule on
+// today's inputs, plus Captain and H2H projected forward (routes/standings.js
+// projectionRows). One line says why the two differ. '' when there is no live
+// number to quote.
+//
+// `modes` comes from the league's engagement settings, not from expCaptain /
+// expH2H: projectedFinal includes banked points that already carry past
+// bonuses, so a forward term of 0 late in a season does not mean no bonuses.
+function uhDraftLiveLine(row, own, modes) {
+    if (!row || row.projectedFinal == null) return '';
+    const adds = (modes && modes.length) ? ' with ' + modes.join(' and ') + ' bonuses' : '';
+    return uhPoss(own, true) + ' full projection is ' + row.projectedFinal + adds
+        + ', updated as games are played';
+}
+
+// The bonus modes a league has on for a season, in words.
+function uhModeNames(eng) {
+    const out = [];
+    if (eng && eng.captainEnabled) out.push('Captain');
+    if (eng && eng.h2hEnabled) out.push('head-to-head');
+    return out;
+}
+
+async function uhEngagement(league, season) {
+    try {
+        const r = await fetch('/scoring-config/' + encodeURIComponent(league) + '?season=' + encodeURIComponent(season), { headers: { Accept: 'application/json' } });
+        if (r.ok) { const c = await r.json(); return (c && c.engagement) || null; }
+    } catch (e) { /* no modes known: name none */ }
+    return null;
+}
+
+async function hydrateDraftLive(user, season, own, modes) {
+    const el = document.getElementById('uh-draft-live');
+    if (!el) return;
+    try {
+        const res = await fetch('/standings/projections/' + encodeURIComponent(user.league) + '/' + encodeURIComponent(season), {
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const row = ((data && data.managers) || []).find(m => String(m.userId) === String(user._id));
+        const line = uhDraftLiveLine(row, own, modes);
+        if (!line) return;
+        el.textContent = line;
+        el.hidden = false;
+    } catch (e) { /* no live number: the line stays hidden */ }
+}
+
+// opts.live: also quote the live Projected Finish number. Off for a past
+// season, which has no remaining schedule to project.
+async function hydrateDraft(user, activeYear, opts) {
+    const live = !opts || opts.live !== false;
     const tile = document.getElementById('uh-tile-draft');
     const hide = () => { if (tile) tile.hidden = true; };
     if (!user || !user.league || !(user.seasons || []).length) return hide();
     const season = activeYear;
     try {
-        const res = await fetch('/draft/grades/' + encodeURIComponent(user.league) + '/' + encodeURIComponent(season), {
-            headers: { 'Accept': 'application/json' }
-        });
+        const [res, eng] = await Promise.all([
+            fetch('/draft/grades/' + encodeURIComponent(user.league) + '/' + encodeURIComponent(season), {
+                headers: { 'Accept': 'application/json' }
+            }),
+            uhEngagement(user.league, season)
+        ]);
         const data = await res.json();
         const mine = (data.managers || []).find(m => String(m.userId) === String(user._id));
         if (!mine) return hide();   // didn't draft that season
+        const modes = uhModeNames(eng);
         if (tile) tile.hidden = false;
 
+        const own = uhOwns(user);
         const tier = (mine.grade || '').charAt(0).toLowerCase();
+        // projWins is the AVERAGE projected wins of the drafted teams, not a
+        // total (draft-grades computeGrades), and the count is expected teams
+        // in the field (draftGrades.js words it for both surfaces).
         const g = document.getElementById('uh-glance-draft');
         if (g) g.innerHTML = `<span class="uh-draft-g"><span class="uh-grade gg-tier-${tier}">${escapeHtml(mine.grade)}</span><span class="uh-draft-stats">`
-            + `<span class="uh-ds"><b class="num">${mine.projPoints}</b>proj pts</span>`
-            + `<span class="uh-ds"><b class="num">${mine.projWins}</b>proj wins</span>`
-            + `<span class="uh-ds"><b class="num">${mine.ncaaCount != null ? mine.ncaaCount : mine.cfpCount}</b>${mine.ncaaCount != null ? 'NCAA teams' : 'CFP teams'}</span>`
-            + `</span></span>`;
+            + `<span class="uh-ds"><b class="num">${mine.projPoints}</b>pts from ${uhPoss(own)} draft</span>`
+            + `<span class="uh-ds"><b class="num">${mine.projWins}</b>avg wins per team</span>`
+            + (typeof draftGradeFieldCount === 'function'
+                ? `<span class="uh-ds"><b class="num">${escapeHtml(draftGradeFieldCount(mine).value)}</b>${draftGradeFieldCount(mine).label}</span>`
+                : '')
+            + `</span></span>`
+            + `<span class="uh-draft-live" id="uh-draft-live" hidden></span>`;
+        if (live) hydrateDraftLive(user, season, own, modes);
 
         uhDrawer.draft = (body) => {
             if (typeof renderDraftGradeCard === 'function') {
@@ -1350,7 +1413,7 @@ async function hydrateDraft(user, activeYear) {
                     ? 'schedule + Torvik preseason ratings + NCAA tournament odds'
                     : 'schedule + SP+ win odds + market CFP odds';
                 renderDraftGradeCard(body, mine, {
-                    note: season + ' preseason grade — projected fantasy points in ' + leagueRef + ' (' + inputs + '). Each draft graded on its own merit.'
+                    note: season + ' preseason grade — projected fantasy points in ' + leagueRef + ' (' + inputs + ')' + (modes.length ? ', before ' + modes.join(' and ') + ' bonuses' : '') + '. Graded against fixed bands for this league, not against the other rosters.'
                 });
             }
         };
