@@ -1071,7 +1071,9 @@ async function hydrateCaptain(user, activeYear) {
         if (!g) return;
         const t = state.teamId != null ? teamById[state.teamId] : null;
         const lead = t
-            ? `<a href="/team?team=${t.id}" class="uh-cap-glance" style="color:inherit;text-decoration:none"><img src="${ccLogo(t.logos)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></a>`
+            // A span, not a link: the whole tile opens the picker (#637), and
+            // a team-page link here sent people changing their pick elsewhere.
+            ? `<span class="uh-cap-glance"><img src="${ccLogo(t.logos)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></span>`
             : `<span class="captain-unset">${state.locked ? 'No pick · Wk ' + state.week : 'Set for Wk ' + state.week}</span>`;
         let sub;
         if (state.locked) sub = 'Locked for this week';
@@ -1080,9 +1082,8 @@ async function hydrateCaptain(user, activeYear) {
         g.innerHTML = lead + `<span class="uh-cap-sub">${sub}</span>`;
     };
     // A team's slate for the focus week, drawn under its name in the picker.
-    // Two games is the case worth flagging: CFBD folds the opening weekend into
-    // week 1, so a few teams play twice — and the captain doubles BOTH of them,
-    // which a grid of bare logos gives no way to see.
+    // More than one game gets an "N games" chip: the captain doubles every
+    // one of them, which a grid of bare logos gives no way to see.
     const tileBody = (t) => {
         const games = slateBy[t.id] || [];
         const badge = games.length > 1 ? `<span class="cap-2g">${games.length} games</span>` : '';
@@ -1122,14 +1123,10 @@ async function hydrateCaptain(user, activeYear) {
         const lockLine = state.lockAt
             ? `<span class="cap-lock">Locks ${uhFmtLock(state.lockAt, { dated: uhNeedsDate(state.lockAt, datePlan) })} CT${lockClause}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}</span>`
             : `<span class="cap-lock">Locks when your first team ${verb[0]} off</span>`;
-        const twoGamers = (season.teams || []).filter(t => (slateBy[t.id] || []).length > 1);
-        const twoLine = twoGamers.length
-            ? `<span class="cap-lock"><b>${twoGamers.map(t => escapeHtml(t.school)).join('</b>, <b>')}</b> play twice — captaining one doubles both games</span>`
-            : '';
         // The default this week, worded as the lock reminder words it.
         const autoT = state.teamId == null && state.autoTeamId != null ? teamById[state.autoTeamId] : null;
         const autoLine = autoT ? `<span class="cap-lock">No pick yet — <b>${escapeHtml(autoT.school)}</b> goes in by default</span>` : '';
-        container.innerHTML = `<p class="captain-note">Pick your <b>2×</b> for Week ${state.week}.</p>${currentLine()}${autoLine}${lockLine}${twoLine}
+        container.innerHTML = `<p class="captain-note">Pick your <b>2×</b> for Week ${state.week}.</p><span class="cap-lock cap-how">Tap a team to make it your Captain. It saves right away. Tap it again to clear.</span>${currentLine()}${autoLine}${lockLine}
             <div class="captain-grid">${(season.teams || []).map(t => `
                 <button type="button" class="captain-team${Number(state.teamId) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(state.teamId) === Number(t.id)}">${tileBody(t)}</button>`).join('')}</div>`;
         container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
