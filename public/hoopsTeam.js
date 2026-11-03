@@ -120,7 +120,12 @@
         [1, 2, 3, 4].forEach(function (q) {
             var done = d.games.filter(function (g) { return g.quadrant === q && g.final; });
             var left = d.games.filter(function (g) { return g.quadrant === q && !g.final; }).length;
-            var pay = vals && vals[q] != null ? (vals[q] ? '+' + vals[q] + ' a win' : 'no pts') : '';
+            // A Q4 win pays nothing, but a Q4 loss can cost (the league's
+            // opt-in penalty): say that instead of "no pts".
+            var lossQ4 = q === 4 && vals && typeof vals.q4Loss === 'number' && vals.q4Loss < 0;
+            var lossTxt = lossQ4 ? String(vals.q4Loss).replace('-', '−') : '';
+            var pay = vals && vals[q] != null
+                ? (vals[q] ? '+' + vals[q] + (lossTxt ? ' / ' + lossTxt : ' a win') : lossTxt ? lossTxt + ' a loss' : 'no pts') : '';
             h += '<button type="button" role="tab" class="ht-tile ht-q' + q + (state.q === q ? ' on' : '') + '" data-q="' + q + '"'
                 + ' aria-selected="' + (state.q === q) + '">'
                 + '<span class="ht-tile-q">Q' + q + '</span>'

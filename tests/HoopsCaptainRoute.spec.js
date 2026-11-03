@@ -150,6 +150,22 @@ describe('GET /users/me/captain on a basketball league', () => {
         expect(again.body.slate.find(s => s.teamId === 1).games[1]).toMatchObject({ opp: 'ROD', ha: 'N', quadrant: 2, winValue: 6 });
     });
 
+    test('with the Q4 loss penalty on, each game says what a loss costs, never doubled', async () => {
+        require('../modules/hoops-team-page').clearRankCache();
+        // Ranked 300: a Q4 at home.
+        await HoopsTeam.create({ id: 92, season: SEASON, school: 'Low Opp', abbreviation: 'LOW', preseason: { rank: 300 } });
+        await HoopsGame.create(hg(1, 2, '2099-11-08T00:30:00.000Z', { awayTeamId: 92, awayTeam: 'Low Opp' }));
+        const ScoringConfig = require('../models/scoringConfig');
+        // Penalty off (the default): no loss line at all.
+        const off = await request(app).get('/users/me/captain').set('Cookie', cookie(HOOPS));
+        expect(off.body.slate.find(s => s.teamId === 2).games.find(g => g.opp === 'LOW')).toMatchObject({ quadrant: 4, lossValue: null });
+        await ScoringConfig.create({ league: HOOPS, model: 'hoops', enabled: ['badLoss'] });
+        const on = await request(app).get('/users/me/captain').set('Cookie', cookie(HOOPS));
+        // −2, not the Captain's −4 (#643); a Q1 game risks nothing.
+        expect(on.body.slate.find(s => s.teamId === 2).games.find(g => g.opp === 'LOW')).toMatchObject({ quadrant: 4, winValue: 0, lossValue: -2 });
+        expect(on.body.slate.find(s => s.teamId === 1).games[0]).toMatchObject({ quadrant: 1, lossValue: 0 });
+    });
+
     test('a failed quadrant or config read costs the chips, never the picker', async () => {
         const teamPage = require('../modules/hoops-team-page');
         jest.spyOn(teamPage, 'quadrantsForGames').mockRejectedValue(new Error('ranks down'));

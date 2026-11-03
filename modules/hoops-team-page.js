@@ -26,7 +26,7 @@ const { entryFor } = require('./roster-teams');
 const { captainShare } = require('./league-scoreboard');
 const { pickLogo } = require('../public/logo.js');
 const ScoringConfig = require('../models/scoringConfig');
-const { resolveConfig, overridesFromDoc, engagementForSeason } = require('./scoring-defaults');
+const { resolveConfig, overridesFromDoc, engagementForSeason, MODELS, ruleEnabled } = require('./scoring-defaults');
 const { isModeGame, seasonModeWeeks, captainGames, captainFocus, lockedWeek } = require('./hoops-modes');
 const { autoCaptainTeamId } = require('./captain');
 const { pickParts } = require('./hoops-captain');
@@ -113,12 +113,21 @@ function standingsFrom(teams, games) {
 
 // What a win in each quadrant pays in THIS league — a commissioner can
 // change them, so the page reads the config rather than the defaults.
+//
+// `q4Loss`: what a Q4 loss costs (negative), or 0 when the league has the
+// opt-in bad-loss penalty off. Shown beside Q4's "+0" so a Q4 game does not
+// read as nothing at stake. Never multiplied by the Captain (#643).
+//
 // `doc` is the league's ScoringConfig when the caller already has it read.
 async function quadrantValues(league, doc) {
     if (!league) return null;
     if (doc === undefined) doc = await ScoringConfig.findOne({ league }).lean();
-    const v = resolveConfig(league, overridesFromDoc(doc)).values || {};
-    return { 1: v.q1Win ?? null, 2: v.q2Win ?? null, 3: v.q3Win ?? null, 4: v.q4Win ?? null };
+    const cfg = resolveConfig(league, overridesFromDoc(doc));
+    const v = cfg.values || {};
+    const rule = ((MODELS[cfg.model] || {}).structure || {}).regularWin || [];
+    const bad = rule.find(r => r.condition === 'badLoss');
+    const q4Loss = bad && ruleEnabled(bad, cfg.disabled, cfg.enabled) && Number(v.badLoss) < 0 ? Number(v.badLoss) : 0;
+    return { 1: v.q1Win ?? null, 2: v.q2Win ?? null, 3: v.q3Win ?? null, 4: v.q4Win ?? null, q4Loss };
 }
 
 // Each side's quadrant for a batch of games, by the team page's own rule: a
