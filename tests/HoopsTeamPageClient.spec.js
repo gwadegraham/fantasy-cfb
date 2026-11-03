@@ -477,6 +477,10 @@ test('an API error is shown, not a blank page', async () => {
 });
 
 describe('Next up (#506)', () => {
+    // The fixture's games tip on 10 Nov 2026; pin the clock before then, or
+    // Next up drops them as stale once the real date passes.
+    beforeEach(() => { jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-09T12:00:00.000Z')); });
+    afterEach(() => { jest.restoreAllMocks(); });
     test('the first game still to play, linked to its preview, with what a win pays', async () => {
         await render(payload());
         const card = document.querySelector('.ht-next');
@@ -687,5 +691,47 @@ describe('ESPN news (public/team-news.js)', () => {
         document.querySelector('[data-tab="news"]').click();
         for (let i = 0; i < 3; i++) await flush();
         expect(document.querySelector('.ht-panel a.sp-news-row').getAttribute('href')).toBe('https://www.espn.com/pv');
+    });
+});
+
+describe('the Q4 loss penalty on game rows, Next up and the owner strip (#634)', () => {
+    // The fixture's games tip on 10 Nov 2026; pin the clock before then, or
+    // Next up drops them as stale once the real date passes.
+    beforeEach(() => { jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-09T12:00:00.000Z')); });
+    afterEach(() => { jest.restoreAllMocks(); });
+    const PEN = { 1: 5, 2: 3, 3: 1, 4: 0, q4Loss: -2 };
+    const q4 = (id, o) => g(id, Object.assign({ final: false, us: null, them: null, points: null, quadrant: 4,
+        opponent: { id: 90 + id, school: 'Low ' + id, rank: 340 } }, o));
+
+    test('a penalised Q4 game still to play says what a loss costs', async () => {
+        await render(payload({ quadrantValues: PEN, games: [q4(7), q4(8)] }));
+        expect(document.querySelector('.ht-next-pay').textContent).toBe('−2 if lost');
+        tab('schedule');
+        expect(document.querySelector('.sp-gr.up .res').textContent).toBe('−2 if lost');
+        // Two Q4s left: the strip names the risk beside the upside.
+        expect(txt('.ht-own')).toContain('up to +0 still on the table · −4 if every Q4 is lost');
+    });
+
+    test('the risk counts only Q4 games still to play: not finals, postseason or stale ones', async () => {
+        const games = [
+            q4(7),                                                              // counts
+            g(8, { quadrant: 4, points: -2, us: 60, them: 70 }),                // a final Q4 loss: banked, not at risk
+            q4(9, { quadrant: null, tournament: 'NCAA' }),                      // postseason: no quadrant
+            q4(10, { startDate: '2026-11-08T00:00:00.000Z' })                   // 36h past tip, no final
+        ];
+        await render(payload({ quadrantValues: PEN, games }));
+        expect(txt('.ht-own')).toContain('· −2 if every Q4 is lost');
+    });
+
+    test('penalty off: a Q4 row says nothing, and the strip names no risk', async () => {
+        await render(payload({ games: [q4(7)] }));
+        expect(document.querySelector('.ht-next-pay')).toBeNull();
+        expect(txt('.ht-own')).not.toContain('if every Q4 is lost');
+    });
+
+    test('a league that pays a Q4 win shows both; the Captain doubles the win only', async () => {
+        const vals = Object.assign({}, PEN, { 4: 1 });
+        await render(payload({ quadrantValues: vals, captainMultiplier: 2, games: [q4(7, { captain: true, week: 1 })] }));
+        expect(document.querySelector('.ht-next-pay').textContent).toBe('+2 if won · 2× · −2 if lost');
     });
 });
