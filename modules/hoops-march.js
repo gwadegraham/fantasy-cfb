@@ -61,8 +61,11 @@ const RANKS = 365;   // D-I teams; the drift integrates over March ranks 1..RANK
 // field is 76 and the play-in is the Opening Round: 12 games, 24 teams, and
 // still 64 in the round of 64 — so only this rung's mass changes. Until
 // there is a 76-team tournament to fit on, the fitted curve is scaled to
-// carry 24 teams; who exactly fills the extra 16 slots (last at-larges or
-// low auto-bids) is not known yet, so the shape is kept.
+// carry 24 teams. Keeping its shape is the right call: the First Four was 4
+// lowest at-larges + 4 lowest auto-bids, the Opening Round is the 12 lowest
+// of each (NCAA.com, 7 May 2026) — the same half-and-half mix, so both humps
+// of the curve (the bubble, ranks ~30-70, and the 16-line, ~200-350) triple.
+// Seeds are not modelled here; the upset curve is by rank.
 const FITTED_PLAY_IN_TEAMS = 8;
 const PLAY_IN_TEAMS = 24;
 

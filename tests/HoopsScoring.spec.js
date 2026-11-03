@@ -151,8 +151,12 @@ describe('the NCAA ladder', () => {
             const upset = { homeSeed: 11, awaySeed: 10 };
             expect(score(1, ncaa('Opening Round', upset))).toBe(1);
             expect(score(1, ncaa('Opening Round', upset))).toBe(score(1, ncaa('First Four', upset)));
-            // equal seeds, still no upset
+            // AQs play AQs and at-larges play at-larges, usually on one seed
+            // line: equal seeds are a 0 gap, and a missing seed is no upset.
             expect(score(1, ncaa('Opening Round', { homeSeed: 16, awaySeed: 16 }))).toBe(0);
+            expect(score(1, ncaa('Opening Round', { homeSeed: 11, awaySeed: 11 }))).toBe(0);
+            expect(score(1, ncaa('Opening Round', { homeSeed: 12, awaySeed: null }))).toBe(0);
+            expect(score(1, ncaa('Opening Round', { homeSeed: '', awaySeed: 10 }))).toBe(0);
         });
         test('a league that raised the old ncaaFirstFour key still gets paid it', () => {
             // Stored configs keep the key: only the label changed.
