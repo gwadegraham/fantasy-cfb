@@ -1077,3 +1077,35 @@
     margin-left: max(20px, (100% - 1200px) / 2);
     margin-right: max(20px, (100% - 1200px) / 2);
 }
+
+/* ================================================================= */
+/* "Which one is me?" — the viewer's own row (#638)                   */
+/* ================================================================= */
+/* A violet rail and a faint tint, so it reads as "you" without competing
+   with the leader's gold. When the viewer IS the leader the gold wins and
+   only the tag says so. Specific enough to beat the H2H cell fill
+   (.fl-table.mode-h2h tbody .standings-row:not(.medal-1) td). */
+.std-you {
+    display: inline-block;
+    flex-shrink: 0;
+    margin-left: 2px;
+    padding: 1px 6px;
+    border-radius: var(--cc-r-pill);
+    background: var(--cc-interactive);
+    color: var(--cc-bg);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    line-height: 1.4;
+}
+.fl-table tbody .standings-row.std-me:not(.medal-1) > td,
+.fl-table tbody .standings-row.std-me:not(.medal-1) > th { background-color: #1b1d3a; }
+.fl-table tbody .standings-row.std-me:not(.medal-1) .rank-cell { box-shadow: inset 3px 0 0 var(--cc-interactive); }
+/* Tablet+ preseason tiles: the row itself is the card. */
+@media only screen and (min-width: 48em) {
+    .fl-table.std-no-teams tbody .standings-row.std-me:not(.medal-1) { border-color: var(--cc-interactive); }
+    .fl-table.std-no-teams tbody .standings-row.std-me:not(.medal-1) > td,
+    .fl-table.std-no-teams tbody .standings-row.std-me:not(.medal-1) > th { background: none; }
+    .fl-table.std-no-teams tbody .standings-row.std-me:not(.medal-1) .rank-cell { box-shadow: none; }
+}

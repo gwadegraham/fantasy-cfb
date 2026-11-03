@@ -839,6 +839,18 @@ body.uh-drawer-open { overflow: hidden; }
 .uh-rg-star { color: var(--cc-amber); font-size: 11px; }
 .uh-rg-pts { font-weight: 800; color: var(--cc-text); font-variant-numeric: tabular-nums; flex: none; }
 
+/* Roster · next up (#638): before any points, each team's next game as logos
+   only — [logo] [2×] vs [logo] · tip — so a row stays narrow on a phone. */
+.uh-nu { display: flex; flex-direction: column; gap: 7px; }
+.uh-nu-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.uh-nu-logo { width: 22px; height: 22px; object-fit: contain; flex: none; }
+.uh-nu-blank { display: inline-block; border-radius: 50%; background: var(--cc-surface-3); }
+.uh-nu-cap { flex: none; padding: 0 5px; border-radius: var(--cc-r-pill); background: var(--cc-amber); color: var(--cc-bg); font-size: 11px; font-weight: 800; line-height: 16px; }
+.uh-nu-vs { color: var(--cc-muted-2); font-size: 12px; }
+.uh-nu-when { color: var(--cc-muted-bright); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.uh-nu-row.live .uh-nu-when { color: var(--cc-success); font-weight: 700; }
+.uh-nu-more { color: var(--cc-muted-2); font-size: 12px; }
+
 .uh-cap-sub { display: block; color: var(--cc-muted-2); font-size: 12px; margin-top: 6px; }
 
 /* Trajectory / Draft / Schedule glances + roster toggle (#230 polish 2) */

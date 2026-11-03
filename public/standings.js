@@ -223,7 +223,16 @@ async function getUsers() {
 function displayUsers(data) {
     // Base render: ranked by cumulative points. loadH2H() re-renders this same
     // table with adjusted totals + a Record column when the league runs H2H.
-    renderStandingsTable(rankedRows(data, weekOpts), { h2h: false, moveLabel: settledWeekLabel(data, weekOpts) });
+    renderStandingsTable(rankedRows(data, { ...weekOpts, viewerId: viewerId() }), { h2h: false, moveLabel: settledWeekLabel(data, weekOpts) });
+}
+
+// The logged-in manager's account id — what the users payload's _id and the
+// H2H payload's userId both carry — so the table can mark their row (#638).
+function viewerId() {
+    try {
+        return (userState.user_metadata && userState.user_metadata.metadata && userState.user_metadata.metadata.userId)
+            || window.localStorage.getItem('userId') || null;
+    } catch (e) { return null; }
 }
 
 // Narrow weekOpts with the calendar's answer, and repaint the highlights if it
@@ -716,6 +725,7 @@ function h2hRows(d) {
         score: m.adjustedTotal,
         gap: i === 0 ? 0 : Math.round((leader - m.adjustedTotal) * 10) / 10,
         preseason: preseason,
+        me: viewerId() != null && String(m.userId) === String(viewerId()),
         delta: deltaById[m.userId] != null ? deltaById[m.userId] : null,
         record: m.record || '',
         base: Math.round((m.adjustedTotal - m.h2hBonus) * 10) / 10,

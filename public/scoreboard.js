@@ -96,12 +96,25 @@ function ownerAvatarHtml(o) {
 // The points stay outside the link: they belong to the game, not the manager,
 // and folding them in would make a 20px chip and its badge one wide target
 // sitting between two others.
+// The logged-in manager's account id — what an owner's userId carries — so
+// their own badges stand out and "My teams" can find them (#638).
+function sbViewerId() {
+    try {
+        var inner = (window.userState && userState.user_metadata && userState.user_metadata.metadata) || {};
+        return inner.userId || window.localStorage.getItem('userId') || null;
+    } catch (e) { return null; }
+}
+function isMine(side) {
+    var me = sbViewerId();
+    return !!(me && side && side.owner && String(side.owner.userId) === String(me));
+}
+
 function ownerHtml(side) {
     var o = side.owner;
     if (!o) return '';
     var pts = (o.points != null && o.points > 0) ? '<span class="sb-owner-pts">+' + o.points + '</span>' : '';
     var label = o.franchise ? o.franchise + ' (' + o.name + ')' : o.name;
-    return '<span class="sb-owner">'
+    return '<span class="sb-owner' + (isMine(side) ? ' is-me' : '') + '">'
         + '<a class="sb-owner-link" href="/userHome?user=' + esc(o.userId) + '"'
         + ' title="' + esc(label) + '" aria-label="' + esc(label) + '">'
         + ownerAvatarHtml(o) + '</a>' + pts + '</span>';
@@ -218,6 +231,7 @@ function visibleGames() {
     }
     return sbState.games.filter(function (g) {
         if (sbState.filter === 'league') return g.leagueGame;
+        if (sbState.filter === 'mine') return isMine(g.home) || isMine(g.away);
         if (sbState.filter === 'top25') return g.ranked;
         return true;
     });

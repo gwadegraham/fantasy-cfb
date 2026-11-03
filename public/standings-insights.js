@@ -27,6 +27,14 @@ const weekly = (u) => season(u).weeklyScore || [];
 const cum = (u) => season(u).cumulativeScore || 0;
 const initialName = (u) => `${u.firstName} ${u.lastName ? u.lastName[0] : ''}.`;
 const franchiseName = (u) => season(u).franchiseName || null;
+// What the league view calls a manager everywhere outside the table, too: the
+// franchise name the table shows, the initialled real name only for a manager
+// who has not set one (#638). A new member reads "ArkyBearIllini" in the table;
+// a highlight saying "Michael Z." gave them nothing to match it to.
+const displayName = (u) => franchiseName(u) || initialName(u);
+// Is this payload row the person looking at the page? Ids compare as strings:
+// the users payload carries ObjectId strings, the session a plain string.
+const isViewer = (id, viewerId) => viewerId != null && viewerId !== '' && String(id) === String(viewerId);
 // Cumulative points through the first `n` weekly entries (matches how the
 // season total is summed).
 const cumThrough = (u, n) => weekly(u).slice(0, n).reduce((s, w) => s + (w.score || 0), 0);
@@ -172,6 +180,7 @@ export function rankedRows(users, opts) {
         score: cum(u),
         gap: i === 0 ? 0 : leader - cum(u),
         preseason: preseason,
+        me: isViewer(u._id, opts && opts.viewerId),
         delta: (prev && nowSettled) ? (prev[i].rank - nowSettled[i].rank) : null
     }));
 }
@@ -274,14 +283,20 @@ function inlineTeamLogos(teams) {
     }).join('');
 }
 
+// "Which one is me?" (#638): the viewer's own row carries a small tag beside
+// the name, and .std-me tints the row. Only the leader used to stand out.
+function youTagHtml(r) {
+    return r.me ? '<span class="std-you">You</span>' : '';
+}
+
 // Classic full-width standings row (points-only): rank · avatar/name · the
 // team-logo strip filling the middle · score. This is the original layout — the
 // logos are what make the wide row read as full, not empty.
 function classicRowHtml(r, moveLabel) {
     const medal = (!r.preseason && r.rank <= 3) ? ` medal-${r.rank}` : '';
-    return `<tr class="standings-row${medal}">
+    return `<tr class="standings-row${medal}${r.me ? ' std-me' : ''}">
         <th class="sticky-header rank-cell">${rankNumHtml(r)}${movementHtml(r.delta, moveLabel)}</th>
-        <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${escapeHtml(r.franchise || r.name)}</span></a></th>
+        <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${escapeHtml(r.franchise || r.name)}</span>${youTagHtml(r)}</a></th>
         <td class="team-item"><div class="team-logos">${inlineTeamLogos(r.teams)}</div></td>
         <th class="sticky-header-score"><span class="score-num" data-count="${r.score}">${r.score}</span><br>${gapHtml(r)}</th>
     </tr>`;
@@ -295,9 +310,9 @@ function h2hRowHtml(r, moveLabel) {
     const medal = (!r.preseason && r.rank <= 3) ? ` medal-${r.rank}` : '';
     const logos = (r.teams || []).map(teamLogoLink).join('');
     const who = escapeHtml(r.franchise || r.name);
-    return `<tr class="standings-row${medal}">
+    return `<tr class="standings-row${medal}${r.me ? ' std-me' : ''}">
         <td class="rank-cell">${rankNumHtml(r)}${movementHtml(r.delta, moveLabel)}</td>
-        <td class="name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${who}</span></a></td>
+        <td class="name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${who}</span>${youTagHtml(r)}</a></td>
         <td class="team-item h2h-teams-cell"><div class="team-logos">${inlineTeamLogos(r.teams)}</div></td>
         <td class="rec-cell">${escapeHtml(r.record || '—')}</td>
         <td class="score-cell"><span class="score-num" data-count="${r.score}">${r.score}</span><span class="score-sub">${gapHtml(r)}<span class="score-math">${r.base} <span class="bonus">+${r.bonus}</span></span></span></td>
@@ -352,7 +367,7 @@ function teamTotals(users) {
                     if (Number(st.teamId) === Number(team.id) || st.team === team.school) total += (st.score || 0);
                 });
             });
-            totals.push({ team: team.mascot, school: team.school, id: team.id, owner: initialName(u), logo: ccLogo(team.logos), score: total });
+            totals.push({ team: team.mascot, school: team.school, id: team.id, owner: displayName(u), logo: ccLogo(team.logos), score: total });
         });
     });
     return totals.sort((a, b) => b.score - a.score);
@@ -397,8 +412,8 @@ export function buildHighlights(users, opts) {
     const byLatest = played.slice().sort((a, b) => latestScore(b) - latestScore(a));
     if (haveWeek && byLatest.length) {
         const w = byLatest[0], l = byLatest[byLatest.length - 1];
-        cards.push({ icon: 'trophy', title: 'Big Winner', tag: thisWeekLabel, name: initialName(w), value: `+${latestScore(w)}`, tone: 'good' });
-        cards.push({ icon: 'heartbreak', title: 'Big Loser', tag: thisWeekLabel, name: initialName(l), value: `+${latestScore(l)}`, tone: 'bad' });
+        cards.push({ icon: 'trophy', title: 'Big Winner', tag: thisWeekLabel, name: escapeHtml(displayName(w)), value: `+${latestScore(w)}`, tone: 'good' });
+        cards.push({ icon: 'heartbreak', title: 'Big Loser', tag: thisWeekLabel, name: escapeHtml(displayName(l)), value: `+${latestScore(l)}`, tone: 'bad' });
     }
 
     // Hot / cold streak (last 2 weeks) — the two weeks ending at the settled
@@ -407,8 +422,8 @@ export function buildHighlights(users, opts) {
     const twoWk = (u) => weekly(u).slice(Math.max(0, weeks - 2), weeks).reduce((s, w) => s + (w.score || 0), 0);
     const byStreak = withWeeks.slice().sort((a, b) => twoWk(b) - twoWk(a));
     if (haveWeek && byStreak.length) {
-        cards.push({ icon: 'flame', title: 'Hot Streak', tag: 'last 2 weeks', name: initialName(byStreak[0]), value: `+${twoWk(byStreak[0])}`, tone: 'good' });
-        cards.push({ icon: 'snowflake', title: 'Cold Streak', tag: 'last 2 weeks', name: initialName(byStreak[byStreak.length - 1]), value: `+${twoWk(byStreak[byStreak.length - 1])}`, tone: 'bad' });
+        cards.push({ icon: 'flame', title: 'Hot Streak', tag: 'last 2 weeks', name: escapeHtml(displayName(byStreak[0])), value: `+${twoWk(byStreak[0])}`, tone: 'good' });
+        cards.push({ icon: 'snowflake', title: 'Cold Streak', tag: 'last 2 weeks', name: escapeHtml(displayName(byStreak[byStreak.length - 1])), value: `+${twoWk(byStreak[byStreak.length - 1])}`, tone: 'bad' });
     }
 
     // Biggest riser (rank climb vs last week)
@@ -416,7 +431,7 @@ export function buildHighlights(users, opts) {
         const rows = rankedRows(users, opts).filter(r => r.delta != null);
         const riser = rows.slice().sort((a, b) => b.delta - a.delta)[0];
         if (riser && riser.delta > 0) {
-            cards.push({ icon: 'riser', title: 'Biggest Riser', tag: thisWeekLabel, name: riser.name, value: `▲ ${riser.delta} spot${riser.delta > 1 ? 's' : ''}`, tone: 'good' });
+            cards.push({ icon: 'riser', title: 'Biggest Riser', tag: thisWeekLabel, name: escapeHtml(riser.franchise || riser.name), value: `▲ ${riser.delta} spot${riser.delta > 1 ? 's' : ''}`, tone: 'good' });
         }
     }
 
@@ -424,13 +439,13 @@ export function buildHighlights(users, opts) {
     const ranked = rankedRows(users, opts);
     if (ranked.length > 1) {
         const g = ranked[1].gap;
-        cards.push({ icon: 'checkered', title: 'Closest Race', tag: 'season', name: `${ranked[0].name} over ${ranked[1].name}`, value: g === 0 ? 'Tied!' : `${g} pt${g === 1 ? '' : 's'}`, tone: 'neutral' });
+        cards.push({ icon: 'checkered', title: 'Closest Race', tag: 'season', name: `${escapeHtml(ranked[0].franchise || ranked[0].name)} over ${escapeHtml(ranked[1].franchise || ranked[1].name)}`, value: g === 0 ? 'Tied!' : `${g} pt${g === 1 ? '' : 's'}`, tone: 'neutral' });
     }
 
     // Season-high single week (anyone)
     let high = null;
     withWeeks.forEach(u => weekly(u).forEach(wk => {
-        if (!high || (wk.score || 0) > high.score) high = { name: initialName(u), score: wk.score || 0, when: weekLabel(wk) };
+        if (!high || (wk.score || 0) > high.score) high = { name: escapeHtml(displayName(u)), score: wk.score || 0, when: weekLabel(wk) };
     }));
     if (high) cards.push({ icon: 'burst', title: 'Season High', tag: high.when, name: high.name, value: `+${high.score}`, tone: 'good' });
 
@@ -445,8 +460,8 @@ export function buildHighlights(users, opts) {
     let topGames = [];
     withWeeks.forEach(u => weekly(u).forEach(wk => (wk.scoreByTeam || []).forEach(st => {
         const sc = st.score || 0;
-        if (sc > topScore) { topScore = sc; topGames = [{ team: st.team, teamId: st.teamId, owner: initialName(u) }]; }
-        else if (sc === topScore && sc > 0) { topGames.push({ team: st.team, teamId: st.teamId, owner: initialName(u) }); }
+        if (sc > topScore) { topScore = sc; topGames = [{ team: st.team, teamId: st.teamId, owner: displayName(u) }]; }
+        else if (sc === topScore && sc > 0) { topGames.push({ team: st.team, teamId: st.teamId, owner: displayName(u) }); }
     })));
     if (topScore > 0 && topGames.length) {
         const teamNames = [...new Set(topGames.map(g => g.team))];
@@ -480,7 +495,7 @@ export function buildHighlights(users, opts) {
         const scores = playedWeeks(steady);
         const sd = stdev(scores);
         const avg = scores.reduce((s, v) => s + v, 0) / scores.length;
-        cards.push({ icon: 'target', title: 'Mr. Reliable', tag: 'season', name: initialName(steady), value: `±${round(sd)} pts/wk`, sub: `avg ${round(avg)}/wk — smallest swing`, tone: 'neutral' });
+        cards.push({ icon: 'target', title: 'Mr. Reliable', tag: 'season', name: escapeHtml(displayName(steady)), value: `±${round(sd)} pts/wk`, sub: `avg ${round(avg)}/wk — smallest swing`, tone: 'neutral' });
     }
 
     return cards;
@@ -520,13 +535,13 @@ export function buildChartData(users) {
     });
 
     const pointsDatasets = sorted.map(u => ({
-        label: initialName(u), data: cumSeries[u._id],
+        label: displayName(u), data: cumSeries[u._id],
         fill: false, backgroundColor: u.color, borderColor: u.color, tension: 0.15
     }));
 
     // Rank per week: at each week index, rank users by cumulative-so-far (1 = best).
     const rankDatasets = sorted.map(u => ({
-        label: initialName(u), data: [], fill: false,
+        label: displayName(u), data: [], fill: false,
         backgroundColor: u.color, borderColor: u.color, tension: 0.15,
         stepped: false
     }));

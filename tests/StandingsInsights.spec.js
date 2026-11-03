@@ -1129,3 +1129,73 @@ describe('buildChartData', () => {
         });
     });
 });
+
+// --- "which one is me?" (#638) -----------------------------------------------
+
+describe('the viewer\'s own row', () => {
+    const league = () => [
+        user('a', 'Alice', 'Adams', [30], { franchiseName: 'Alley Cats' }),
+        user('b', 'Bob', 'Brown', [20], { franchiseName: 'Bob\'s Burgers' })
+    ];
+
+    it('flags only the row whose id is the viewer\'s, across string and id types', () => {
+        const rows = rankedRows(league(), { viewerId: 'b' });
+        expect(rows.map(r => [r.id, r.me])).toEqual([['a', false], ['b', true]]);
+        // A numeric id on one side still matches its string on the other.
+        const num = [user(7, 'Cy', 'Cole', [5])];
+        expect(rankedRows(num, { viewerId: '7' })[0].me).toBe(true);
+    });
+
+    it('flags no one without a viewer', () => {
+        expect(rankedRows(league()).some(r => r.me)).toBe(false);
+        expect(rankedRows(league(), { viewerId: '' }).some(r => r.me)).toBe(false);
+    });
+
+    it('tags and tints the row in both table layouts, and only that row', () => {
+        const rows = rankedRows(league(), { viewerId: 'b' });
+        [false, true].forEach(h2h => {
+            const html = buildStandingsRowsHtml(rows.map(r => Object.assign({ record: '1-0', base: r.score, bonus: 0 }, r)), { h2h });
+            expect((html.match(/std-you/g) || [])).toHaveLength(1);
+            expect((html.match(/standings-row[^"]*std-me/g) || [])).toHaveLength(1);
+            const bobRow = html.split('<tr').find(tr => tr.includes('Bob&#39;s Burgers'));
+            expect(bobRow).toContain('std-me');
+            expect(bobRow).toContain('>You</span>');
+        });
+    });
+});
+
+describe('franchise names outside the table', () => {
+    // Every manager has a franchise name, so no highlight or chart legend
+    // should fall back to the initialled real name the table never shows.
+    const league = () => [
+        user('a', 'Michael', 'Zed', [30, 10], { franchiseName: 'ArkyBearIllini' }),
+        user('b', 'Kevin', 'Zane', [5, 40], { franchiseName: 'Billy Goat <Tavern>' }),
+        user('c', 'Treyce', 'West', [12, 12], {})
+    ];
+
+    it('names managers by franchise in League Highlights, escaped, falling back to the initialled name', () => {
+        const cards = byTitle(buildHighlights(league()));
+        expect(cards['Closest Race'].name).toBe('Billy Goat &lt;Tavern&gt; over ArkyBearIllini');
+        expect(cards['Big Winner'].name).toBe('Billy Goat &lt;Tavern&gt;');
+        expect(cards['Big Loser'].name).toBe('ArkyBearIllini');
+        expect(cards['Hot Streak'].name).toBe('Billy Goat &lt;Tavern&gt;');
+        expect(cards['Season High'].name).toBe('Billy Goat &lt;Tavern&gt;');
+        expect(cards['Biggest Riser'].name).toBe('Billy Goat &lt;Tavern&gt;');
+        expect(cards['Mr. Reliable'].name).toBe('Treyce W.');
+        const all = Object.values(cards).map(c => c.name).join(' ');
+        expect(all).not.toMatch(/Michael Z\.|Kevin Z\./);
+    });
+
+    it('names the top single game\'s owner by franchise', () => {
+        const cards = byTitle(buildHighlights([
+            user('a', 'Michael', 'Zed', [{ score: 9, scoreByTeam: [{ team: 'Kansas', teamId: 1, score: 9 }] }], { franchiseName: 'ArkyBearIllini' })
+        ]));
+        expect(cards['Top Single Game'].name).toContain('(ArkyBearIllini)');
+    });
+
+    it('labels the Path to the Championship legend by franchise', () => {
+        const d = buildChartData(league());
+        expect(d.pointsDatasets.map(x => x.label)).toEqual(['Billy Goat <Tavern>', 'ArkyBearIllini', 'Treyce W.']);
+        expect(d.rankDatasets.map(x => x.label)).toEqual(['Billy Goat <Tavern>', 'ArkyBearIllini', 'Treyce W.']);
+    });
+});
