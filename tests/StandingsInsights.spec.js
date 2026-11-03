@@ -31,7 +31,12 @@ const {
     buildChartData,
     settledWeekIndex,
     settledWeekLabel,
-    managerChipHtml
+    managerChipHtml,
+    highlightsState,
+    highlightsPendingHtml,
+    topSingleGames,
+    topGameKey,
+    gameLineText
 } = require('../public/standings-insights.js');
 
 // Node test env has no `window`, which is the "page hasn't loaded icons" branch.
@@ -255,13 +260,16 @@ describe('standingsHeadHtml', () => {
         const html = standingsHeadHtml(false);
         expect(html).toContain('>Score<');
         expect(html).toContain('>Teams<');
-        expect(html).not.toContain('>Record<');
+        expect(html).not.toContain('>H2H<');
         expect(html.match(/<th/g)).toHaveLength(4);
     });
 
     it('swaps in record + total and a caret column for H2H', () => {
         const html = standingsHeadHtml(true);
-        expect(html).toContain('>Record<');
+        // Says WHICH record (#640): My Team calls it "H2H RECORD", and a bare
+        // "Record" over 0-0-0 read as the teams' real-world record.
+        expect(html).toContain('title="Head-to-head record (W-L-T)">H2H<');
+        expect(html).not.toContain('>Record<');
         expect(html).toContain('>Total<');
         expect(html).toContain('h2h-caret-head');
         expect(html.match(/<th/g)).toHaveLength(6);
@@ -893,7 +901,7 @@ describe('buildHighlights', () => {
             user('b', 'Bob', 'Brown', [{ score: 10, scoreByTeam: [{ teamId: 2, team: 'Purdue', score: 10 }] }])
         ]));
         expect(cards['Top Single Game']).toMatchObject({ tag: 'one game', value: '+30' });
-        expect(cards['Top Single Game'].name).toBe('<a href="/team?team=1" style="color:inherit;text-decoration:none">Indiana</a> <span class="hl-sub">(Alice A.)</span>');
+        expect(cards['Top Single Game'].name).toBe('<span class="hl-game">Alice A. · <a href="/team?team=1" style="color:inherit;text-decoration:none">Indiana</a></span>');
     });
 
     it('still reads as one game when the same team ties its own high', () => {
@@ -944,6 +952,29 @@ describe('buildHighlights', () => {
         expect(titles(buildHighlights([
             user('a', 'Alice', 'Adams', [{ score: 0, scoreByTeam: [{ teamId: 1, team: 'Indiana', score: 0 }] }])
         ]))).not.toContain('Top Single Game');
+    });
+
+    // #640: basketball's scoreByTeam rows carry no school, which left the
+    // card reading "(Michael Z.)" with no team at all.
+    it('names a basketball top game\'s team from the manager\'s roster', () => {
+        const cards = byTitle(buildHighlights([
+            user('a', 'Michael', 'Zed', [{ score: 5, scoreByTeam: [{ teamId: 87, gameId: 900, score: 5 }] }],
+                { franchiseName: 'ArkyBearIllini', teams: [{ id: 87, school: 'Notre Dame', mascot: 'Fighting Irish' }] })
+        ]));
+        expect(cards['Top Single Game'].name).toContain('ArkyBearIllini · <a href="/team?team=87"');
+        expect(cards['Top Single Game'].name).toContain('>Notre Dame</a>');
+    });
+
+    it('names the game once its score line is known', () => {
+        const users = [user('a', 'Michael', 'Zed', [{ score: 5, scoreByTeam: [{ teamId: 87, gameId: 900, score: 5 }] }],
+            { franchiseName: 'ArkyBearIllini', teams: [{ id: 87, school: 'Notre Dame' }] })];
+        const key = topGameKey(topSingleGames(users).games[0]);
+        const named = byTitle(buildHighlights(users, { topGameLine: { key, text: '74\u201370 at Villanova' } }))['Top Single Game'];
+        expect(named.name).toContain('>Notre Dame</a> 74\u201370 at Villanova</span>');
+        expect(named.value).toBe('+5');
+        // A line fetched for some other game is never pinned on this one.
+        const stale = byTitle(buildHighlights(users, { topGameLine: { key: '87:1', text: '1\u20130 vs Nobody' } }))['Top Single Game'];
+        expect(stale.name).not.toContain('Nobody');
     });
 
     it('crowns the steadiest manager as Mr. Reliable', () => {
@@ -1190,12 +1221,131 @@ describe('franchise names outside the table', () => {
         const cards = byTitle(buildHighlights([
             user('a', 'Michael', 'Zed', [{ score: 9, scoreByTeam: [{ team: 'Kansas', teamId: 1, score: 9 }] }], { franchiseName: 'ArkyBearIllini' })
         ]));
-        expect(cards['Top Single Game'].name).toContain('(ArkyBearIllini)');
+        expect(cards['Top Single Game'].name).toContain('ArkyBearIllini · ');
     });
 
     it('labels the Path to the Championship legend by franchise', () => {
         const d = buildChartData(league());
         expect(d.pointsDatasets.map(x => x.label)).toEqual(['Billy Goat <Tavern>', 'ArkyBearIllini', 'Treyce W.']);
         expect(d.rankDatasets.map(x => x.label)).toEqual(['Billy Goat <Tavern>', 'ArkyBearIllini', 'Treyce W.']);
+    });
+});
+
+// --- #640: day-one highlights and the Top Single Game line -------------------
+
+describe('highlightsState', () => {
+    it('stays hidden before anyone has scored (the seeded zero weeks)', () => {
+        expect(highlightsState([user('a', 'Alice', 'Adams', [0])], {})).toBe('hidden');
+    });
+
+    it('shows one line while the first week is still being played', () => {
+        const users = [user('a', 'Alice', 'Adams', [4]), user('b', 'Bob', 'Brown', [0])];
+        expect(highlightsState(users, { liveNow: { week: 1, seasonType: 'regular' } })).toBe('pending');
+        expect(highlightsPendingHtml(users)).toBe('<p class="hl-pending">Highlights start after Week 1 is final.</p>');
+    });
+
+    it('shows the cards once a week is final', () => {
+        const users = [user('a', 'Alice', 'Adams', [4, 2])];
+        expect(highlightsState(users, { liveNow: { week: 2, seasonType: 'regular' } })).toBe('cards');
+        expect(highlightsState([user('a', 'Alice', 'Adams', [4])], {})).toBe('cards');
+    });
+});
+
+describe('topSingleGames', () => {
+    it('carries the week and game id the score line is looked up by', () => {
+        const users = [user('a', 'Alice', 'Adams', [3, { score: 9, scoreByTeam: [{ teamId: 1, team: 'Kansas', gameId: 44, score: 9 }] }])];
+        expect(topSingleGames(users)).toEqual({ score: 9, games: [
+            { team: 'Kansas', teamId: 1, gameId: 44, owner: 'Alice A.', week: 2, seasonType: 'regular' }
+        ] });
+    });
+});
+
+describe('gameLineText', () => {
+    it('reads basketball\'s shaped game from the team\'s side', () => {
+        const g = { id: 900, state: 'final', neutralSite: false, home: { id: 5, team: 'Villanova', points: 70 }, away: { id: 87, team: 'Notre Dame', points: 74 } };
+        expect(gameLineText(g, 87)).toBe('74\u201370 at Villanova');
+        expect(gameLineText(g, 5)).toBe('70\u201374 vs Notre Dame');
+    });
+
+    it('reads football\'s stored game, and says vs on a neutral field', () => {
+        const g = { id: 1, completed: true, homeId: 2, homeTeam: 'Purdue', homePoints: 10, awayId: 3, awayTeam: 'Indiana', awayPoints: 31, neutralSite: true };
+        expect(gameLineText(g, 3)).toBe('31\u201310 vs Purdue');
+    });
+
+    it('says nothing for a missing game, another team, or no score yet', () => {
+        const g = { state: 'final', home: { id: 5, team: 'Villanova', points: null }, away: { id: 87, team: 'Notre Dame', points: null } };
+        expect(gameLineText(null, 87)).toBe('');
+        expect(gameLineText(g, 87)).toBe('');
+        expect(gameLineText(Object.assign({}, g, { home: { id: 5, team: 'Villanova', points: 1 }, away: { id: 87, team: 'ND', points: 2 } }), 999)).toBe('');
+    });
+});
+
+describe('#640 edge cases', () => {
+    it('keys a game without an id by its week, and files postseason entries as postseason', () => {
+        const users = [user('a', 'Alice', 'Adams', [{ season: 'postseason', week: 1, score: 7, scoreByTeam: [{ teamId: 4, score: 7 }] }])];
+        const g = topSingleGames(users).games[0];
+        expect(g).toMatchObject({ gameId: null, seasonType: 'postseason', team: '' });
+        expect(topGameKey(g)).toBe('4:w1');
+        expect(topSingleGames(undefined)).toEqual({ score: 0, games: [] });
+    });
+
+    it('falls back to "Week 1" when there is no entry to name', () => {
+        expect(highlightsPendingHtml([])).toContain('after Week 1 is final.');
+        expect(highlightsPendingHtml(undefined)).toContain('after Week 1 is final.');
+    });
+
+    it('names a game played at home as vs, and needs the opponent\'s name', () => {
+        const g = { completed: true, homeId: 3, homeTeam: 'Indiana', homePoints: 20, awayId: 2, awayTeam: null, awayPoints: 10 };
+        expect(gameLineText(g, 3)).toBe('');
+        expect(gameLineText(Object.assign({}, g, { awayTeam: 'Purdue' }), 3)).toBe('20–10 vs Purdue');
+    });
+
+    it('refuses to guess without the season-scoring rule', () => {
+        const lib = global.ccSeasonScoring;
+        delete global.ccSeasonScoring;
+        try {
+            expect(() => highlightsState([], {})).toThrow(/ccSeasonScoring/);
+        } finally {
+            global.ccSeasonScoring = lib;
+        }
+        expect(highlightsState(undefined, {})).toBe('hidden');
+    });
+});
+
+describe('#640 review follow-ups', () => {
+    it('names no game that is still being played', () => {
+        const live = { state: 'live', home: { id: 5, team: 'Villanova', points: 38 }, away: { id: 87, team: 'Notre Dame', points: 41 } };
+        expect(gameLineText(live, 87)).toBe('');
+        const football = { completed: false, homeId: 2, homeTeam: 'Purdue', homePoints: 3, awayId: 3, awayTeam: 'Indiana', awayPoints: 7 };
+        expect(gameLineText(football, 3)).toBe('');
+    });
+
+    it('pins no line on a team that tied its own high in two games', () => {
+        const users = [user('a', 'Alice', 'Adams', [
+            { score: 9, scoreByTeam: [{ teamId: 1, team: 'Kansas', gameId: 10, score: 9 }] },
+            { score: 9, scoreByTeam: [{ teamId: 1, team: 'Kansas', gameId: 11, score: 9 }] }
+        ])];
+        const key = topGameKey(topSingleGames(users).games[0]);
+        const card = byTitle(buildHighlights(users, { topGameLine: { key, text: '80\u201360 vs Iowa' } }))['Top Single Game'];
+        expect(card.tag).toBe('one game');
+        expect(card.name).not.toContain('Iowa');
+    });
+
+    it('keeps two unnamed teams apart, and draws no empty link', () => {
+        const two = byTitle(buildHighlights([user('a', 'Alice', 'Adams', [{ score: 10, scoreByTeam: [
+            { teamId: 1, score: 5 }, { teamId: 2, score: 5 }] }])]))['Top Single Game'];
+        expect(two.tag).toBe('2-way tie');
+        const one = byTitle(buildHighlights([user('a', 'Alice', 'Adams', [{ score: 5, scoreByTeam: [{ teamId: 1, score: 5 }] }])]))['Top Single Game'];
+        expect(one.name).toBe('<span class="hl-game">Alice A.</span>');
+    });
+
+    it('waits on the week being played, not a seeded week nobody scored', () => {
+        const users = [user('a', 'Alice', 'Adams', [0, 4])];
+        expect(highlightsPendingHtml(users, { liveNow: { week: 2, seasonType: 'regular' } })).toContain('after Week 2 is final.');
+        // No calendar answer: the first week anyone scored in.
+        expect(highlightsPendingHtml(users, {})).toContain('after Week 2 is final.');
+        // The earliest scored week, whatever order the managers come in.
+        expect(highlightsPendingHtml([user('b', 'Bob', 'Brown', [0, 0, 6]), user('a', 'Alice', 'Adams', [0, 4, 5])], {}))
+            .toContain('after Week 2 is final.');
     });
 });

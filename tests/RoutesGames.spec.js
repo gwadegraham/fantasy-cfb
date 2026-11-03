@@ -179,7 +179,7 @@ describe('GET /games/seasonType/:type/week/:week/team/:team', () => {
             startTimeTbd: false, period: 4, clock: '00:00',
             possession: 'Oregon', situation: '1st & 10',
             notes: 'Week 1', outlet: 'ESPN', highlights: 'http://x/clip',
-            lastUpdated: '9/19/2025, 11:00:00 PM',
+            lastUpdated: '9/19/2025, 11:00:00 PM', neutralSite: true,
             conferenceGame: true, homeConference: 'Big Ten', awayConference: 'ACC',
             weather: { temp: 68, wind: 5, condition: 'Clear', emoji: '☀️' }
         }));
@@ -200,6 +200,8 @@ describe('GET /games/seasonType/:type/week/:week/team/:team', () => {
             'awayId', 'awayTeam', 'awayPoints',
             'period', 'clock', 'possession', 'situation',
             'notes', 'outlet', 'weather', 'highlights', 'lastUpdated',
+            // Standings' Top Single Game, "at" vs "vs" (#640)
+            'neutralSite',
             // no UI — modules/scoring.js reads these off the raw game
             'conferenceGame', 'homeConference', 'awayConference'
         ];
