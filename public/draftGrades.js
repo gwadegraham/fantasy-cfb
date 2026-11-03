@@ -62,11 +62,18 @@
     // Expected teams that make the field: the CFP for football, the NCAA
     // bracket for basketball (the server sends ncaaCount instead of
     // cfpCount, so a basketball count can never sit under a CFP label).
+    // It is a sum of probabilities, so a fraction reads as an estimate
+    // ("~4.5"), never a range that sounds like a promise. My Team's tile
+    // reads this too, so both surfaces say the same thing.
     function makeCount(m) {
-        return m.ncaaCount != null
-            ? { value: m.ncaaCount, label: 'exp. NCAA teams' }
-            : { value: m.cfpCount, label: 'exp. CFP teams' };
+        var hoops = m.ncaaCount != null;
+        var v = Number(hoops ? m.ncaaCount : m.cfpCount) || 0;
+        return {
+            value: v === Math.round(v) ? String(v) : '~' + v,
+            label: hoops ? 'expected in the NCAA field' : 'expected in the CFP'
+        };
     }
+    window.draftGradeFieldCount = makeCount;
 
     function card(m, currentUserId) {
         var tier = (m.grade || '').charAt(0).toLowerCase();

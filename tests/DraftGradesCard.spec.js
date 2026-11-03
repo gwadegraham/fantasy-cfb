@@ -29,17 +29,21 @@ const stat = (el) => Array.from(el.querySelectorAll('.gg-stat'))
 
 test('a basketball grade counts NCAA teams', () => {
     const el = render(manager({ ncaaCount: 7.3 }));
-    expect(stat(el)).toContain('7.3 exp. NCAA teams');
+    expect(stat(el)).toContain('~7.3 expected in the NCAA field');
     expect(el.textContent).not.toContain('CFP');
 });
 
 test('a football grade still counts CFP teams', () => {
     const el = render(manager({ cfpCount: 2.4 }));
-    expect(stat(el)).toEqual(['712 proj points', '19.6 avg wins / team', '2.4 exp. CFP teams']);
+    expect(stat(el)).toEqual(['712 proj points', '19.6 avg wins / team', '~2.4 expected in the CFP']);
 });
 
 // #636: "+28 slots" meant nothing to a new player. value = draft slot minus
 // the pick's projected-points rank, so it is said in picks.
+test('a whole-number count reads without the estimate mark', () => {
+    expect(stat(render(manager({ ncaaCount: 3 })))).toContain('3 expected in the NCAA field');
+});
+
 test('best value and biggest reach say how many picks off projection', () => {
     const pick = (value) => ({ teamId: 1, school: 'Duke', round: 3, points: 120, value, logo: null });
     const el = render(manager({ ncaaCount: 4.5, bestPick: pick(28), worstPick: pick(-16) }));
