@@ -179,6 +179,13 @@
             <% if (_role === 'Admin' && !(typeof viewerSport !== 'undefined' && viewerSport === 'basketball')) { %>
             <li><a href="/cfp-bracket">CFP Bracket</a></li>
             <% } %>
+            <%# The basketball counterpart, in the same slot: Admin only until
+                the league is shown it. The page and its data 404 for anyone
+                else (routes/hoopsBracket.js) — this only keeps the link off
+                their navbar. %>
+            <% if (_role === 'Admin' && typeof viewerSport !== 'undefined' && viewerSport === 'basketball') { %>
+            <li><a href="/hoops/bracket">March Madness</a></li>
+            <% } %>
             <% if (typeof isBettingGroupMember !== 'undefined' && isBettingGroupMember) { %>
             <li><a href="/betting">Betting</a></li>
             <% } %>
