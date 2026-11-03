@@ -55,9 +55,14 @@
         var chips = '';
         if (d.net) chips += '<span class="sp-chip" title="NET: NCAA">NET <b>#' + esc(d.net.rank) + '</b></span>';
         if (pre) {
-            chips += '<span class="sp-chip">T-Rank <b>#' + esc(pre.rank) + '</b></span>';
-            if (pre.projectedRecord) chips += '<span class="sp-chip">Torvik proj. <b>' + esc(pre.projectedRecord) + '</b></span>';
+            // Two rankings, both named (#639): T-Rank grades the quadrants,
+            // the AP poll is the number beside every name and in the ESPN
+            // preview. Showing only T-Rank had "#8" here and "No. 15" below.
+            chips += '<span class="sp-chip ht-trank"' + kit.qtipAttrs('T-Rank sets the quadrants. AP is the poll.')
+                + '>T-Rank <b>#' + esc(pre.rank) + '</b> <i class="ht-info" aria-hidden="true">ⓘ</i></span>';
         }
+        if (d.apRank) chips += '<span class="sp-chip ht-ap">AP <b>#' + esc(d.apRank) + '</b></span>';
+        if (pre && pre.projectedRecord) chips += '<span class="sp-chip">Torvik proj. <b>' + esc(pre.projectedRecord) + '</b></span>';
         var sub = [t.mascot, t.conference, t.venue].filter(Boolean).map(esc).join(' · ');
         var tags = styleTags(d.style);
         return '<section class="sp-hero team ht-hero"' + (t.color ? ' style="--team:' + esc(t.color) + '"' : '') + '>' + court()
@@ -355,7 +360,7 @@
             + (o.rank ? '<span class="ht-rk">' + o.rank + '</span> ' : '')
             + (o.logo ? '<img class="sp-ologo" src="' + esc(o.logo) + '" alt="" onerror="this.remove()">' : '')
             + '<b>' + esc(o.school) + '</b></span>'
-            + (g.quadrant ? qChip(g)
+            + (g.quadrant ? qChip(d, g)
                 : '<span class="ht-qt post">' + esc(g.tournament || 'Post') + '</span>')
             + (pay ? '<span class="ht-next-pay">' + pay + '</span>' : '') + '</div>'
             + (g.notes ? '<div class="ht-next-note">' + esc(g.notes) + '</div>' : '')
@@ -421,12 +426,19 @@
     // The Q chip. The number beside the opponent's name is the AP poll; the
     // quadrant is graded on a different rank (T-Rank, then the NET), so the
     // chip carries that one — hover on a desktop, a tap on a phone — or a Q1
-    // against a team outside the AP Top 25 is unexplained.
-    function qChip(g) {
+    // against a team outside the AP Top 25 is unexplained. The tap also says
+    // what the quadrant means and pays (#639): the legend sat at the bottom
+    // of the page, below the chips it explains.
+    function qChip(d, g) {
         var qr = g.opponent && g.opponent.quadrantRank;
-        var tip = qr ? kit.qtipAttrs('Q' + g.quadrant + ' · graded vs #' + qr,
-            'Q' + g.quadrant + ': opponent ranked #' + qr + ' (T-Rank, then NET), adjusted for venue') : '';
-        return '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '"' + tip + '>Q' + g.quadrant + '</span>';
+        // The line states the league's base value; on a Captain game the row
+        // beside it reads the doubled one, so the tip says why they differ.
+        var line = kit.quadrantLine(g.quadrant, d.quadrantValues, qr)
+            + (isCaptain(d, g) && !g.final ? ' ' + d.captainMultiplier + '× as your Captain.' : '');
+        var tip = kit.qtipAttrs(line,
+            qr ? 'Q' + g.quadrant + ': opponent ranked #' + qr + ' (T-Rank, then NET), adjusted for venue' : '');
+        return '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '"' + tip + '>Q' + g.quadrant
+            + '<i class="ht-info" aria-hidden="true">ⓘ</i></span>';
     }
 
     function gameRow(d, g) {
@@ -444,7 +456,7 @@
             + esc(g.opponent.school) + '</span></span>'
             + (g.notes ? '<span class="note">' + esc(g.notes) + '</span>' : '') + (g.opponent.hasPage === false ? '</span>' : '</a>')
             + '<a class="res" href="' + gameHref + '">' + res + '</a>'
-            + (g.quadrant ? qChip(g)
+            + (g.quadrant ? qChip(d, g)
                 : '<span class="ht-qt post" title="Scored on the tournament ladder">' + esc(g.tournament || 'Post') + '</span>')
             + '<span class="p' + (g.points ? '' : ' z') + '">' + pts + '</span></div>';
     }

@@ -174,4 +174,19 @@ describe('the matchup card rows', () => {
         expect(rows.map(r => r.school)).toEqual(['USC', 'Duke', 'Oregon']);
         rows.forEach(r => expect(r).not.toHaveProperty('tip'));
     });
+
+    // #639 marks a BASKETBALL neutral floor "N". Football keeps vs/@ even
+    // at a neutral site, and says it is football.
+    test('a football neutral-site game still reads vs/@', async () => {
+        const ann = await seed({ week: 1, season: 'regular', score: 0, scoreByTeam: [] }, [
+            Object.assign(game(101, OREGON, 99, '2099-09-05T23:30:00.000Z'), { neutralSite: true }),
+            Object.assign(game(102, 98, USC, '2099-09-03T23:00:00.000Z'), { neutralSite: true }),
+            game(103, DUKE, 97, '2099-09-04T23:00:00.000Z'),
+            game(104, MIAMI, 96, '2099-09-05T23:30:00.000Z')
+        ]);
+        const rows = await annRows(ann);
+        expect(rows.map(r => r.school + ' ' + r.ha)).toEqual(['USC @', 'Duke vs', 'Oregon vs']);
+        const res = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}`);
+        expect(res.body.sport).toBe('football');
+    });
 });

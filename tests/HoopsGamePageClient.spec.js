@@ -123,9 +123,9 @@ test("a tap on a side's Q chip shows the opponent's quadrant rank (phones have n
     await render(p);
     const chips = document.querySelectorAll('.hg-q');
     chips[1].click();
-    expect(document.querySelector('.sp-qtip').textContent).toBe('Q1 · graded vs #37');
+    expect(document.querySelector('.sp-qtip').textContent).toBe('Q1 = top-quality opponent for where it’s played. A win pays +5. Graded vs #37.');
     chips[0].click();
-    expect(document.querySelector('.sp-qtip').textContent).toBe('Q2 · graded vs #4');
+    expect(document.querySelector('.sp-qtip').textContent).toBe('Q2 = good opponent for where it’s played. A win pays +3. Graded vs #4.');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(document.querySelector('.sp-qtip').hidden).toBe(true);
 });

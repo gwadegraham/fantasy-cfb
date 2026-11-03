@@ -865,7 +865,7 @@ function renderH2HMatchups(d) {
         matchesEl.innerHTML = (s && s.games.length)
             ? s.games.map(g => window.ccH2H.matchupCard(
                 d.partial ? { ...g, pending: true } : g,
-                { byId, open: openKeys.has(g.aId + '|' + g.bId) })).join('')
+                { byId, open: openKeys.has(g.aId + '|' + g.bId), sport: d.sport })).join('')
             : '<p class="h2h-empty">No matchups this week.</p>';
         window.ccH2H.wire(matchesEl);
     };

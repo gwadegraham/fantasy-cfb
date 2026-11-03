@@ -3,8 +3,9 @@
 // a win-probability bar, and a tap-to-expand side-by-side team breakdown — so
 // the Standings H2H panel and the My Team matchup view stay identical.
 //
-//   window.ccH2H.matchupCard(game, { byId, youId, week, open })  -> html string
-//   window.ccH2H.wire(containerEl)                               -> attach toggles
+//   window.ccH2H.matchupCard(game, { byId, youId, week, open, sport })  -> html string
+//   window.ccH2H.wire(containerEl)                                      -> attach toggles
+//   window.ccH2H.liveNow(game)              -> is one of its games being played right now
 //
 // `game` is one entry from the /standings/h2h payload's schedule[].games:
 //   { aId, bId, aScore, bScore, aTeams, bTeams, winner, winP, final, upcoming }
@@ -13,6 +14,8 @@
 // pass `youLabel` to override that label with a name (viewing another's profile);
 // omit it for the neutral two-manager view (Standings). `week` shows a "Wk N"
 // tag; `open` starts the card expanded (used for the featured matchup).
+// `sport` ('basketball' | 'football', the payload's `sport`) words the footer:
+// basketball tips off, football kicks off.
 (function () {
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -194,6 +197,14 @@
         };
     }
 
+    // A week in progress is not the same as a game in progress (#639). The
+    // card used to say LIVE all week — overnight, between tip-offs, with
+    // neither side playing. LIVE now means one of this matchup's games is on.
+    function liveNow(game) {
+        return ((game && game.aTeams) || []).concat((game && game.bTeams) || [])
+            .some(function (t) { return t && t.status === 'live'; });
+    }
+
     function matchupCard(game, opts) {
         opts = opts || {};
         var g = orient(game, opts.youId);
@@ -215,15 +226,17 @@
         var both = (g.aTeams || []).concat(g.bTeams || []);
         var plan = datingPlan(both.map(function (t) { return t.kickoff; }));
         var remaining = both.filter(function (t) { return t.status && t.status !== 'final'; }).length;
-        var sep = live ? '<span class="h2h-mlive">LIVE</span>' : (g.winner === 'tie' ? 'T' : 'vs');
+        var sep = live ? (liveNow(g) ? '<span class="h2h-mlive">LIVE</span>' : '<span class="h2h-mweek">This week</span>')
+            : (g.winner === 'tie' ? 'T' : 'vs');
+        var starts = opts.sport === 'basketball' ? 'tip-offs' : 'kickoffs';
         var wk = opts.week != null ? '<span class="h2h-mwk">Wk ' + opts.week + '</span>' : '';
         // data-pair identifies the matchup independently of its position, so a
         // re-render (Standings swaps skeleton cards for real ones) can restore
         // exactly the cards the reader had expanded.
         return '<div class="h2h-mcard' + (live ? ' live' : '') + (upcoming ? ' upcoming' : '') + (opts.open ? ' open' : '')
             + '" data-pair="' + esc(g.aId) + '|' + esc(g.bId) + '">'
-            + '<div class="h2h-msum" role="button" tabindex="0" aria-expanded="' + (opts.open ? 'true' : 'false') + '">'
-            + wk
+            + '<div class="h2h-msum' + (wk ? ' wk' : '') + '" role="button" tabindex="0" aria-expanded="' + (opts.open ? 'true' : 'false') + '">'
+            + (wk || '<span class="h2h-mpad" aria-hidden="true"></span>')
             + '<div class="h2h-mside' + (g.winner === 'a' ? ' win' : '') + '">' + manLink(g.aId, avatar(A) + '<span class="h2h-mnm">' + aName + '</span>') + '<span class="h2h-msc">' + score(g.aScore) + '</span></div>'
             + '<span class="h2h-msep">' + sep + '</span>'
             + '<div class="h2h-mside r' + (g.winner === 'b' ? ' win' : '') + '"><span class="h2h-msc">' + score(g.bScore) + '</span>' + manLink(g.bId, '<span class="h2h-mnm">' + bName + '</span>' + avatar(B)) + '</div>'
@@ -234,8 +247,8 @@
             + '<div class="h2h-mdcol"><span class="h2h-mdcap">' + aName + '</span>' + teamList(g.aTeams, unplayed, false, plan) + '</div>'
             + '<div class="h2h-mdcol right"><span class="h2h-mdcap">' + bName + '</span>' + teamList(g.bTeams, unplayed, true, plan) + '</div>'
             + pregameLine(g, aName, bName)
-            + (live ? '<div class="h2h-mfoot">In progress · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' to play · kickoffs Central · scores update every 10 min</div>' : '')
-            + (upcoming ? '<div class="h2h-mfoot">Not started · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' scheduled · kickoffs Central · odds are projected</div>' : '')
+            + (live ? '<div class="h2h-mfoot">In progress · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' to play · ' + starts + ' Central · scores update every 10 min</div>' : '')
+            + (upcoming ? '<div class="h2h-mfoot">Not started · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' scheduled · ' + starts + ' Central · odds are projected</div>' : '')
             + '</div></div>';
     }
 
@@ -260,6 +273,6 @@
     // to date its tiles by the same rule — the two surfaces show the same games,
     // and a copy in userHome.js could drift so that one dates a kickoff the
     // other leaves bare.
-    window.ccH2H = { matchupCard: matchupCard, wire: wire, avatar: avatar, nameOf: nameOf,
+    window.ccH2H = { matchupCard: matchupCard, wire: wire, avatar: avatar, nameOf: nameOf, liveNow: liveNow,
         weekKey: weekKey, datingPlan: datingPlan, needsDate: needsDate };
 })();

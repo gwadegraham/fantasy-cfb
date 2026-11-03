@@ -110,8 +110,8 @@
     function qChip(d, t) {
         var opp = t === d.home ? d.away : d.home;
         var qr = opp && opp.quadrantRank;
-        var tip = qr ? kit.qtipAttrs('Q' + t.quadrant + ' · graded vs #' + qr,
-            'Q' + t.quadrant + ': opponent ranked #' + qr + ' (T-Rank, then NET), adjusted for venue') : '';
+        var tip = kit.qtipAttrs(kit.quadrantLine(t.quadrant, d.quadrantValues, qr),
+            qr ? 'Q' + t.quadrant + ': opponent ranked #' + qr + ' (T-Rank, then NET), adjusted for venue' : '');
         return '<span class="hg-q' + (t.quadrant === 1 ? ' q1' : '') + '"' + tip + '>Q' + t.quadrant + '</span>';
     }
 

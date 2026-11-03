@@ -928,14 +928,14 @@ async function hydrateH2H(user, activeYear) {
     const featured = mine.find(x => x.week === featuredWk);
     const tileWk = heldWk != null ? heldWk : featuredWk;
     const tileMatch = mine.find(x => x.week === tileWk);
-    const cardOf = (x, open) => window.ccH2H.matchupCard(x.g, { byId, youId: uid, youLabel, week: x.week, open });
+    const cardOf = (x, open) => window.ccH2H.matchupCard(x.g, { byId, youId: uid, youLabel, week: x.week, open, sport: data.sport });
     // My-perspective summary of a matchup (for glances).
     const summary = (x) => {
         const g = x.g, iAmA = g.aId === uid;
         const meScore = iAmA ? g.aScore : g.bScore, opScore = iAmA ? g.bScore : g.aScore;
         const opp = byId[iAmA ? g.bId : g.aId];
         const nm = (opp && (opp.franchise || opp.name)) || 'Opponent';
-        const res = x.final ? (meScore > opScore ? 'W' : opScore > meScore ? 'L' : 'T') : x.upcoming ? '' : 'LIVE';
+        const res = x.final ? (meScore > opScore ? 'W' : opScore > meScore ? 'L' : 'T') : x.upcoming || !uhLiveNow(g) ? '' : 'LIVE';
         return { meScore, opScore, nm, res };
     };
 
@@ -951,7 +951,9 @@ async function hydrateH2H(user, activeYear) {
         if (tileMatch.final) youPct = s.res === 'W' ? 100 : s.res === 'L' ? 0 : 50;
         else if (g.winP) youPct = iAmA ? g.winP.a : g.winP.b;
         const wc = s.res === 'W' ? ' win' : '', oc = s.res === 'L' ? ' win' : '';
-        const vsLabel = tileMatch.final ? (s.res === 'T' ? 'T' : 'vs') : tileMatch.upcoming ? 'vs' : 'LIVE';
+        // LIVE only while one of the matchup's games is on (#639); a week
+        // under way with nothing being played reads "vs", like any other.
+        const vsLabel = tileMatch.final ? (s.res === 'T' ? 'T' : 'vs') : s.res === 'LIVE' ? 'LIVE' : 'vs';
         const showScores = !tileMatch.upcoming;
         mg.innerHTML = `<span class="uh-mug">
                 <span class="uh-mug-side">${av(me)}<span class="uh-mug-nm">${escapeHtml(youLabel)}</span>${showScores ? `<span class="uh-mug-sc num${wc}">${s.meScore}</span>` : ''}</span>
@@ -972,7 +974,8 @@ async function hydrateH2H(user, activeYear) {
         if (liveWk != null) {
             const s = summary(featured), fg = featured.g, iAmA = fg.aId === uid;
             const pct = fg.winP ? (iAmA ? fg.winP.a : fg.winP.b) : null;
-            sg.innerHTML = `<span class="uh-sched-lbl">Up next</span><span class="uh-sched-row"><span class="uh-sched-opp">vs ${escapeHtml(s.nm)}</span>${pct != null ? `<span class="uh-sched-pct">${pct}%</span>` : ''}</span>`;
+            // The matchup already under way is "Now", not "Up next" (#639).
+            sg.innerHTML = `<span class="uh-sched-lbl">${featured.upcoming ? 'Up next' : 'Now'}</span><span class="uh-sched-row"><span class="uh-sched-opp">vs ${escapeHtml(s.nm)}</span>${pct != null ? `<span class="uh-sched-pct">${pct}%</span>` : ''}</span>`;
         } else sg.innerHTML = `<span class="uh-mu-opp">Full schedule</span>${me ? ` <span class="uh-glance-sub">${escapeHtml(me.record)}</span>` : ''}`;
     }
     uhDrawer.schedule = (body) => {
@@ -1050,6 +1053,9 @@ function uhUpTo(games) {
 // The picker dates its tiles by the same rule the matchup card uses, from the
 // same code — h2h-card.js ships in the navbar on every page, so ccH2H is always
 // there. Guarded anyway: no helper means no dates, never a thrown picker.
+function uhLiveNow(g) {
+    return !!(window.ccH2H && window.ccH2H.liveNow && window.ccH2H.liveNow(g));
+}
 function uhDatingPlan(kickoffs) {
     return (window.ccH2H && window.ccH2H.datingPlan) ? window.ccH2H.datingPlan(kickoffs) : null;
 }

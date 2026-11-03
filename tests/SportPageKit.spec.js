@@ -300,6 +300,25 @@ describe('vsRow: a stat comparison row, away left and home right (#506)', () => 
 // A title tooltip never shows on a phone; qtipAttrs makes a chip show its
 // text in one bubble on a tap. Fixed to the viewport, so card rows that clip
 // with overflow:hidden cannot hide it.
+// #639: a Q chip explains itself in one line, from the league's values.
+describe('quadrantLine', () => {
+    const vals = { 1: 5, 2: 3, 3: 1, 4: 0, q4Loss: -2 };
+    test('what each quadrant means and pays', () => {
+        expect(kit.quadrantLine(1, vals)).toBe('Q1 = top-quality opponent for where it’s played. A win pays +5.');
+        expect(kit.quadrantLine(2, vals)).toBe('Q2 = good opponent for where it’s played. A win pays +3.');
+        expect(kit.quadrantLine(3, vals)).toBe('Q3 = middling opponent for where it’s played. A win pays +1.');
+        expect(kit.quadrantLine(4, vals)).toBe('Q4 = weak opponent for where it’s played. A win pays nothing; a loss costs −2.');
+    });
+    test('a league\'s own values, not a copy; no penalty, no loss clause', () => {
+        expect(kit.quadrantLine(1, { 1: 8, 4: 0, q4Loss: 0 })).toBe('Q1 = top-quality opponent for where it’s played. A win pays +8.');
+        expect(kit.quadrantLine(4, { 4: 0, q4Loss: 0 })).toBe('Q4 = weak opponent for where it’s played. A win pays nothing.');
+    });
+    test('no values: the meaning alone; a rank is added when known', () => {
+        expect(kit.quadrantLine(2, null)).toBe('Q2 = good opponent for where it’s played.');
+        expect(kit.quadrantLine(2, vals, 40)).toBe('Q2 = good opponent for where it’s played. A win pays +3. Graded vs #40.');
+    });
+});
+
 describe('qtip: tap-to-show tips', () => {
     const bubble = () => document.querySelector('.sp-qtip');
     const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));

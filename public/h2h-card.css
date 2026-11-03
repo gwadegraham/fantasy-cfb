@@ -13,7 +13,7 @@
    live or settled one. The em-dash scoreline is muted rather than bold. */
 .h2h-mcard.upcoming .h2h-msc { font-weight: 600; color: var(--cc-muted-2); }
 .h2h-msum { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.75rem; cursor: pointer; }
-.h2h-mwk { font-size: 0.58rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cc-muted-2); flex-shrink: 0; min-width: 2.2rem; }
+.h2h-mwk { font-size: 0.58rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cc-muted-2); flex-shrink: 0; width: 2.2rem; }
 .h2h-mside { display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0; }
 .h2h-mside.r { justify-content: flex-end; }
 .h2h-mnm { font-size: 0.8rem; color: var(--cc-muted-bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -29,7 +29,15 @@
 }
 .h2h-msep { font-size: 0.56rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cc-muted-2); flex-shrink: 0; min-width: 1.6rem; text-align: center; }
 .h2h-mlive { color: var(--cc-accent); font-weight: 800; }
-.h2h-mcaret { color: var(--cc-muted-2); font-size: 0.72rem; flex-shrink: 0; transition: transform 0.2s ease; }
+.h2h-mweek { white-space: nowrap; }
+.h2h-mcaret { color: var(--cc-muted-2); font-size: 0.72rem; flex-shrink: 0; width: 0.75rem; text-align: center; transition: transform 0.2s ease; }
+/* The separator (LIVE / vs) sits on the card's true centre line, the line the
+   expanded columns divide on. The caret on the right is mirrored on the left:
+   by an empty spacer of its width, or — on a card with a "Wk N" tag — by
+   pushing the caret in to the tag's width. Unbalanced, LIVE sat ~10px left of
+   the divider below it. */
+.h2h-mpad { flex-shrink: 0; width: 0.75rem; }
+.h2h-msum.wk .h2h-mcaret { margin-left: 1.45rem; }
 .h2h-mcard.open .h2h-mcaret { transform: rotate(180deg); }
 /* Expanded detail: a side-by-side face-off (two columns) with mirrored rows so
    both teams' scores hug the center divider — leans into the matchup. */

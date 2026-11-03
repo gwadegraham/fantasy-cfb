@@ -818,7 +818,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             (s.captains || []).forEach(c => { if (c && c.week != null) caps[id][c.week] = c.teamId; });
             seasonById[id] = s;
         });
-        if (!ids.length) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: [], managers: [], schedule: [] });
+        if (!ids.length) return res.json({ league, season: seasonNum, sport: isHoops ? 'basketball' : 'football', enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: [], managers: [], schedule: [] });
 
         // Game status for in-progress weeks: whether each rostered team's game is
         // final / live / upcoming, and which weeks are fully complete. Pairings
@@ -1097,6 +1097,11 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // so a card doesn't reshuffle the moment its week settles. The sort key
         // rides on the row only for the sort; it is not part of the payload.
         const dropTip = ({ tip, ...row }) => row;
+        // Home/away beside the opponent. A basketball neutral floor is "N",
+        // the mark the Captain picker and the team page use (#639) — CBBD
+        // still names a home side there, which read as "@ PUR" on this card.
+        // Football keeps vs/@ as it always has.
+        const haOf = (g, isHome) => (isHoops && g.neutralSite) ? 'N' : (isHome ? 'vs' : '@');
         // Schedule payload: final weeks + the current in-progress week. Final
         // weeks show scored contributing teams; the current week shows each
         // rostered team's live game status (final / live / kickoff time).
@@ -1113,7 +1118,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
                     const oppName = isHome ? g.awayTeam : g.homeTeam;
                     opp = oppAbbrById[isHome ? g.awayId : g.homeId] || oppName || '';
                     oppRank = rankByName[oppName] || null;
-                    ha = isHome ? 'vs' : '@';
+                    ha = haOf(g, isHome);
                     if (g.completed && g.homePoints != null && g.awayPoints != null) {
                         gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
                     }
@@ -1141,7 +1146,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (g.homePoints != null && g.awayPoints != null) {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
-            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(displayScore(id, w, t.id, scored.score)) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: isHome ? 'vs' : '@', oppRank: rankByName[oppName] || null, gameScore, gameId: g.id, captain: isCaptain(id, w, t.id), tip: tipKey(g) };
+            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(displayScore(id, w, t.id, scored.score)) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: haOf(g, isHome), oppRank: rankByName[oppName] || null, gameScore, gameId: g.id, captain: isCaptain(id, w, t.id), tip: tipKey(g) };
         })).sort(byTip).map(dropTip);
 
         // Projected pre-game odds for a matchup: each manager's teams that play
@@ -1320,7 +1325,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // `partial` says the win-probability bars are not in this payload and a
         // fuller one is worth waiting for — the client draws skeleton bars and
         // re-renders when it arrives. Absent/false means these cards are final.
-        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, scheduleComplete, managers, schedule, partial: standingsOnly || undefined });
+        res.json({ league, season: seasonNum, sport: isHoops ? 'basketball' : 'football', enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, scheduleComplete, managers, schedule, partial: standingsOnly || undefined });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

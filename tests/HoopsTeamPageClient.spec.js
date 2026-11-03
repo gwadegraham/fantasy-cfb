@@ -341,6 +341,50 @@ test('the Q chip names the rank its quadrant is graded on; no rank, no tooltip',
 
 // Phones never show a title tooltip, so a tap on the chip shows the same
 // reason in a bubble; a second tap, a tap elsewhere or Escape closes it.
+// #639: two rankings, both named. T-Rank grades the quadrants and says so
+// on a tap; the AP poll — the "No. 15" in the ESPN preview — sits beside it.
+describe('T-Rank and AP in the hero', () => {
+    const bubble = () => document.querySelector('.sp-qtip');
+    afterEach(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+
+    test('the T-Rank chip explains itself on a tap', async () => {
+        await render(payload());
+        const chip = document.querySelector('.ht-trank');
+        expect(chip.textContent).toBe('T-Rank #1 ⓘ');
+        expect(chip.getAttribute('role')).toBe('button');
+        chip.click();
+        expect(bubble().textContent).toBe('T-Rank sets the quadrants. AP is the poll.');
+    });
+
+    test('AP gets its own chip beside T-Rank, and none when unranked', async () => {
+        await render(payload({ apRank: 15 }));
+        const chips = Array.from(document.querySelectorAll('.ht-chips .sp-chip')).map(n => n.textContent);
+        expect(chips.slice(0, 2)).toEqual(['T-Rank #1 ⓘ', 'AP #15']);
+        await render(payload({ apRank: null }));
+        expect(document.querySelector('.ht-ap')).toBeNull();
+    });
+});
+
+// The Q chip's words come from the league's own values, not a copy.
+test('the Q chip says what the league pays, Q4 loss included', async () => {
+    const p = payload({ quadrantValues: { 1: 7, 2: 3, 3: 1, 4: 0, q4Loss: -2 } });
+    await render(p);
+    tab('schedule');
+    const tipOf = (school) => Array.from(document.querySelectorAll('.sp-gr')).find(n => n.textContent.includes(school))
+        .querySelector('.ht-qt').getAttribute('data-qtip');
+    expect(tipOf('Florida')).toBe('Q1 = top-quality opponent for where it’s played. A win pays +7.');
+    expect(tipOf('Army')).toBe('Q4 = weak opponent for where it’s played. A win pays nothing; a loss costs −2.');
+});
+
+// The row says "+10 · 2×" on a Captain game; the tip must not say a bare +5.
+test('on a Captain game the Q tip says the win is doubled', async () => {
+    const p = payload({ captainMultiplier: 2 });
+    p.games[3].captain = true;
+    await render(p);
+    expect(document.querySelector('.ht-next .ht-qt').getAttribute('data-qtip'))
+        .toBe('Q1 = top-quality opponent for where it’s played. A win pays +5. 2× as your Captain.');
+});
+
 describe('the Q chip on a phone', () => {
     const bubble = () => document.querySelector('.sp-qtip');
     async function floridaChip() {
@@ -352,12 +396,12 @@ describe('the Q chip on a phone', () => {
     }
     afterEach(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
 
-    test('a tap shows "Q1 · graded vs #34"; a second tap hides it', async () => {
+    test('a tap says what Q1 means, what it pays, and the rank it was graded on; a second tap hides it', async () => {
         const chip = await floridaChip();
         expect(chip.getAttribute('role')).toBe('button');
         chip.click();
         expect(bubble().hidden).toBe(false);
-        expect(bubble().textContent).toBe('Q1 · graded vs #34');
+        expect(bubble().textContent).toBe('Q1 = top-quality opponent for where it’s played. A win pays +5. Graded vs #34.');
         expect(chip.getAttribute('aria-expanded')).toBe('true');
         chip.click();
         expect(bubble().hidden).toBe(true);
@@ -383,7 +427,7 @@ describe('the Q chip on a phone', () => {
         const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
         chip.dispatchEvent(ev);
         expect(ev.defaultPrevented).toBe(true);
-        expect(bubble().textContent).toBe('Q1 · graded vs #21');
+        expect(bubble().textContent).toBe('Q1 = top-quality opponent for where it’s played. A win pays +5. Graded vs #21.');
     });
 });
 
@@ -486,7 +530,7 @@ describe('Next up (#506)', () => {
         const card = document.querySelector('.ht-next');
         expect(card.getAttribute('href')).toBe('/hoops/game/4');
         expect(card.querySelector('.ht-next-opp').textContent).toBe('vs3 Virginia');
-        expect(card.querySelector('.ht-qt').textContent).toBe('Q1');
+        expect(card.querySelector('.ht-qt').textContent).toBe('Q1ⓘ');
         expect(card.querySelector('.ht-qt').hasAttribute('title')).toBe(false);   // no quadrantRank in the fixture
         expect(card.querySelector('.ht-next-pay').textContent).toBe('+5 if won');
         expect(card.querySelector('.ht-next-when').textContent).toMatch(/^Next up · /);
