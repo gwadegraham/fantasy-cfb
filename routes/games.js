@@ -72,6 +72,8 @@ const GAME_READ_FIELDS = {
     awayId: 1, awayTeam: 1, awayPoints: 1,
     period: 1, clock: 1, possession: 1, situation: 1,
     notes: 1, outlet: 1, weather: 1, highlights: 1, lastUpdated: 1,
+    // Standings' Top Single Game says "at" or "vs" from it (#640)
+    neutralSite: 1,
     // scoring only — no UI reads these; see the note above
     conferenceGame: 1, homeConference: 1, awayConference: 1
 };

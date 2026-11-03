@@ -1,5 +1,5 @@
 import { setChartData } from './weekByWeek.js';
-import { rankedRows, buildStandingsRowsHtml, standingsHeadHtml, buildHighlights, buildHighlightsHtml, settledWeekIndex, settledWeekLabel, managerChipHtml } from './standings-insights.js';
+import { rankedRows, buildStandingsRowsHtml, standingsHeadHtml, buildHighlights, buildHighlightsHtml, settledWeekIndex, settledWeekLabel, managerChipHtml, highlightsState, highlightsPendingHtml, topSingleGames, topGameKey, gameLineText } from './standings-insights.js';
 
 // Which week the "latest week" surfaces report on — see settledWeekIndex. Starts
 // empty, which answers "the newest week anyone has played", and is narrowed once
@@ -197,7 +197,12 @@ async function getUsers() {
             renderStandingsSection(data, leagueCode, activeSeason, cwPromise, weekStatePromise);
             maybePromptProfileSetup(data);
             displayLastUpdated(data);
-            displayHighlights(data);
+            // After the live-week answer, not before it: painted off the payload
+            // alone, week 1's own slate counts as settled, so opening day showed
+            // the full card grid and then collapsed it to the one-line pending
+            // state (#640). settleWeekOpts catches its own failure, so this
+            // always runs.
+            weekStatePromise.then(() => displayHighlights(data));
             // Confetti waits for the live-week answer: mid-slate the top score
             // belongs to whoever kicked off first, and the celebration is
             // once-per-week keyed, so firing it then would spend the week's one
@@ -207,6 +212,7 @@ async function getUsers() {
             // too until there's real scoring, or they'd re-populate the panel
             // displayHighlights just hid.
             if (seasonHasScoring(data)) loadAdvancedHighlights(leagueCode, activeSeason, data);
+            if (seasonHasScoring(data)) loadTopGameLine(activeSeason, data);
             loadProjections(leagueCode, activeSeason);
             seedUserIdFromEmail(userMetadata, usersData);
             // Chart is responsive now, so show it on mobile too — but only once
@@ -573,23 +579,66 @@ async function loadAdvancedHighlights(league, season, users) {
     } catch (e) { /* advanced highlights are best-effort */ }
 }
 
+// The Top Single Game's score line ("74–70 at Villanova"), once fetched:
+// { key, text }. Kept for the same reason advancedCards is — displayHighlights
+// repaints the whole panel.
+let topGameLine = null;
+
+// One request: the week's games for the one team, through the lookup each
+// sport already has (football's batched week route, basketball's team-games
+// route), then the game by id. A tie names no single game, so it asks nothing.
+async function loadTopGameLine(season, users) {
+    const top = topSingleGames(users);
+    if (top.score <= 0 || new Set(top.games.map(g => g.team)).size !== 1) return;
+    const g = top.games[0];
+    if (g.teamId == null || g.week == null) return;
+    try {
+        const url = isBasketballLeague()
+            ? `/hoops/games/teams/${encodeURIComponent(season)}/${encodeURIComponent(g.week)}?ids=${encodeURIComponent(g.teamId)}`
+            : `/games/seasonType/${g.seasonType}/week/${encodeURIComponent(g.week)}/teams?ids=${encodeURIComponent(g.teamId)}&season=${encodeURIComponent(season)}`;
+        const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (!res.ok) return;
+        const body = await res.json();
+        const games = Array.isArray(body) ? body : ((body && body.games) || []);
+        // By id when the row has one (football's rows only gained a gameId in
+        // 2024); otherwise only an unambiguous week, one game.
+        const game = g.gameId != null
+            ? games.find(x => Number(x.id) === Number(g.gameId))
+            : (games.length === 1 ? games[0] : null);
+        const text = gameLineText(game, g.teamId);
+        if (!text) return;
+        topGameLine = { key: topGameKey(g), text };
+        displayHighlights(users);
+    } catch (e) { /* the card still names the team */ }
+}
+
 function displayHighlights(users) {
-    const cards = buildHighlights(users, weekOpts).concat(advancedCards);
     const container = document.querySelector('.highlights-container');
     const header = document.querySelector('.highlights-header');
     // Hide the whole section (header + its leading divider) when there's nothing
     // to show yet — e.g. preseason, before any real points are scored — so we
     // don't leave a bare "League Highlights" heading over empty space (or worse,
     // "winners" and "streaks" computed from all-zero weeks the nightly job seeds).
-    if (!cards.length || !seasonHasScoring(users)) {
-        if (header) header.style.display = 'none';
-        if (container) container.style.display = 'none';
-        const hr = header && header.previousElementSibling;
-        if (hr && hr.classList && hr.classList.contains('hr-subtle')) hr.style.display = 'none';
+    const hrOf = () => { const hr = header && header.previousElementSibling; return hr && hr.classList && hr.classList.contains('hr-subtle') ? hr : null; };
+    const show = (on) => {
+        if (header) header.style.display = on ? '' : 'none';
+        if (container) container.style.display = on ? '' : 'none';
+        const hr = hrOf();
+        if (hr) hr.style.display = on ? '' : 'none';
+    };
+    const state = highlightsState(users, weekOpts);
+    if (state === 'hidden') return show(false);
+    // Points are on the board but no week has finished: one line, not cards
+    // computed from a slate still being played (#640).
+    if (state === 'pending') {
+        show(true);
+        if (container) container.innerHTML = highlightsPendingHtml(users, weekOpts);
         return;
     }
-    if (header) header.style.display = '';
-    if (container) { container.style.display = ''; container.innerHTML = buildHighlightsHtml(cards); }
+    const cards = buildHighlights(users, { ...weekOpts, topGameLine }).concat(advancedCards);
+    if (!cards.length) return show(false);
+    show(true);
+    if (container) container.innerHTML = buildHighlightsHtml(cards);
     applyCelebration();   // the repaint dropped the trophy's bounce; put it back
 }
 

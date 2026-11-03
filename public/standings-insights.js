@@ -242,7 +242,7 @@ export function standingsHeadHtml(h2h, moveLabel) {
             <th class="team-header rank-head">${since}</th>
             <th class="team-header"></th>
             <th class="team-header h2h-teams-head teams-col" style="text-align: center;">Teams</th>
-            <th class="team-header rec-head">Record</th>
+            <th class="team-header rec-head" title="Head-to-head record (W-L-T)">H2H</th>
             <th class="team-header score-head">Total</th>
             <th class="team-header h2h-caret-head"></th>
         </tr>`;
@@ -381,6 +381,87 @@ function stdev(vals) {
     return Math.sqrt(variance);
 }
 
+// The school for a scoreByTeam row. Football's rows carry it; basketball's
+// carry only the id (modules/hoops-scoring-pass.js), which left the Top Single
+// Game card reading "(Michael Z.)" with no team at all — so fall back to the
+// manager's own roster, which every row's team came from.
+function teamNameFor(u, st) {
+    if (st.team) return st.team;
+    const t = (season(u).teams || []).find(x => Number(x.id) === Number(st.teamId));
+    return (t && t.school) || '';
+}
+
+// The highest one-game team score in the league, and every team-game that hit
+// it. Each game carries what it takes to look the game itself up: its id, and
+// the week entry it was banked in.
+export function topSingleGames(users) {
+    let score = 0;
+    let games = [];
+    (users || []).forEach(u => weekly(u).forEach(wk => (wk.scoreByTeam || []).forEach(st => {
+        const sc = st.score || 0;
+        if (sc <= 0 || sc < score) return;
+        const g = {
+            team: teamNameFor(u, st), teamId: st.teamId, gameId: st.gameId != null ? st.gameId : null,
+            owner: displayName(u), week: wk.week, seasonType: wk.season === 'postseason' ? 'postseason' : 'regular'
+        };
+        if (sc > score) { score = sc; games = [g]; } else games.push(g);
+    })));
+    return { score, games };
+}
+
+export function topGameKey(g) {
+    return `${g.teamId}:${g.gameId != null ? g.gameId : `w${g.week}`}`;
+}
+
+// "74–70 at Villanova": the team's score first, then the opponent, from the
+// team's side ("vs" at home or on a neutral floor). Takes either game shape
+// the week lookups return — football's stored Game (homeId, homeTeam,
+// points } }). '' when the game is not found or not FINAL: basketball's week
+// reads live all week, so the season high can be tonight's game, and the page
+// does not poll — a half-time score would sit there as if it were the result.
+export function gameLineText(game, teamId) {
+    if (!game) return '';
+    if (!(game.completed === true || game.state === 'final')) return '';
+    const side = (which) => (game[which] && typeof game[which] === 'object')
+        ? { id: game[which].id, name: game[which].team, points: game[which].points }
+        : { id: game[which + 'Id'], name: game[which + 'Team'], points: game[which + 'Points'] };
+    const home = side('home'), away = side('away');
+    const mineHome = Number(home.id) === Number(teamId);
+    if (!mineHome && Number(away.id) !== Number(teamId)) return '';
+    const me = mineHome ? home : away;
+    const opp = mineHome ? away : home;
+    if (me.points == null || opp.points == null || !opp.name) return '';
+    const where = (!mineHome && !game.neutralSite) ? 'at' : 'vs';
+    return `${me.points}\u2013${opp.points} ${where} ${opp.name}`;
+}
+
+// What the League Highlights section shows: nothing before anyone has scored
+// (the seeded zero weeks), one line until the first week is final, then the
+// cards. A day-one "Closest Race · 4 pts" and "Season High · Week 1" are
+// computed from a slate still being played and read as noise (#640).
+export function highlightsState(users, opts) {
+    const lib = globalThis.ccSeasonScoring;
+    if (!lib) throw new Error('ccSeasonScoring is not loaded (expected from views/partials/navbar.ejs)');
+    if (!lib.seasonHasScoring(users || [])) return 'hidden';
+    return settledWeekIndex(users, opts) < 0 ? 'pending' : 'cards';
+}
+
+// The one line shown in place of the cards while the first week is played.
+// Names the week being played when the calendar says which (a seeded, unplayed
+// week 1 must not be the one the line waits on), else the first week anyone
+// has scored in, else "Week 1".
+export function highlightsPendingHtml(users, opts) {
+    const live = opts && opts.liveNow;
+    const lib = globalThis.ccSeasonScoring;
+    const entries = (users || []).flatMap(u => weekly(u));
+    const scored = lib ? entries.filter(e => lib.entryHasScoring(e)) : [];
+    const first = live
+        ? { week: live.week, season: live.seasonType === 'postseason' ? 'postseason' : 'regular' }
+        : scored.sort((a, b) => (a.season === 'postseason') - (b.season === 'postseason') || a.week - b.week)[0];
+    const label = weekLabel(first) || 'Week 1';
+    return `<p class="hl-pending">Highlights start after ${escapeHtml(label)} is final.</p>`;
+}
+
 // Returns the ordered list of highlight cards to render. Only includes a card
 // when the underlying data exists, so early-season / empty state stays clean.
 export function buildHighlights(users, opts) {
@@ -456,15 +537,13 @@ export function buildHighlights(users, opts) {
     }
     // Top single game: the highest one-game team score. Since the postseason
     // bonuses make the max a frequent multi-way tie, show all tied teams.
-    let topScore = 0;
-    let topGames = [];
-    withWeeks.forEach(u => weekly(u).forEach(wk => (wk.scoreByTeam || []).forEach(st => {
-        const sc = st.score || 0;
-        if (sc > topScore) { topScore = sc; topGames = [{ team: st.team, teamId: st.teamId, owner: displayName(u) }]; }
-        else if (sc === topScore && sc > 0) { topGames.push({ team: st.team, teamId: st.teamId, owner: displayName(u) }); }
-    })));
+    const top = topSingleGames(users);
+    const topScore = top.score;
+    const topGames = top.games;
     if (topScore > 0 && topGames.length) {
-        const teamNames = [...new Set(topGames.map(g => g.team))];
+        // By id, not name: a basketball team that has left the roster has no
+        // name to read, and two of those must not collapse into one game.
+        const teamNames = [...new Map(topGames.map(g => [String(g.teamId), g.team])).values()];
         if (teamNames.length > 1) {
             const shown = teamNames.slice(0, 4).map(escapeHtml).join(', ');
             let name = shown;
@@ -480,7 +559,17 @@ export function buildHighlights(users, opts) {
             }
             cards.push({ icon: 'bolt', title: 'Top Single Game', tag: `${teamNames.length}-way tie`, name, value: `+${topScore}`, tone: 'good' });
         } else {
-            cards.push({ icon: 'bolt', title: 'Top Single Game', tag: 'one game', name: `<a href="/team?team=${topGames[0].teamId}" style="color:inherit;text-decoration:none">${escapeHtml(topGames[0].team)}</a> <span class="hl-sub">(${escapeHtml(topGames[0].owner)})</span>`, value: `+${topScore}`, tone: 'good' });
+            // "ArkyBearIllini · Notre Dame 74–70 at Villanova" (#640): who, and
+            // WHICH game. The score line is fetched by standings.js
+            // (loadTopGameLine) and handed back as opts.topGameLine; until it
+            // lands, or if it never does, the card names the team alone.
+            // A team that tied its own high names no single game, so no line.
+            const g = topGames[0];
+            const line = topGames.length === 1 && opts && opts.topGameLine && opts.topGameLine.key === topGameKey(g) ? opts.topGameLine.text : '';
+            const team = g.team
+                ? ` · <a href="/team?team=${g.teamId}" style="color:inherit;text-decoration:none">${escapeHtml(g.team)}</a>${line ? ' ' + escapeHtml(line) : ''}`
+                : '';
+            cards.push({ icon: 'bolt', title: 'Top Single Game', tag: 'one game', name: `<span class="hl-game">${escapeHtml(g.owner)}${team}</span>`, value: `+${topScore}`, tone: 'good' });
         }
     }
 

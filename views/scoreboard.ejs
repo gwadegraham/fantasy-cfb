@@ -82,7 +82,8 @@
          whole extra line on every phone, and the chips are the one control
          people reach for mid-slate. -->
     <div class="sb-filters" role="group" aria-label="Filter games">
-        <button type="button" class="sb-chip is-active" data-filter="all" aria-pressed="true">All</button>
+        <%# No chip starts lit: which one is on depends on the slate (scoreboard.js defaultFilter). %>
+        <button type="button" class="sb-chip" data-filter="all" aria-pressed="false">All</button>
         <button type="button" class="sb-chip" data-filter="mine" aria-pressed="false">My teams</button>
         <button type="button" class="sb-chip" data-filter="league" aria-pressed="false">My league</button>
         <button type="button" class="sb-chip" data-filter="top25" aria-pressed="false">Top 25</button>

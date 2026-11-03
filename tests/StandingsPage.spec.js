@@ -195,7 +195,7 @@ describe('classic standings table', () => {
     it('paints ranked rows and the points-only header', async () => {
         const page = await loadStandingsPage({ users: league() });
         expect(page.tableHead().innerHTML).toContain('>Score<');
-        expect(page.tableHead().innerHTML).not.toContain('>Record<');
+        expect(page.tableHead().innerHTML).not.toContain('>H2H<');
         expect(page.tableBody().querySelectorAll('tr.standings-row')).toHaveLength(2);
         expect(page.tableBody().innerHTML.indexOf('Bob B.')).toBeLessThan(page.tableBody().innerHTML.indexOf('Alice A.'));
     });
@@ -274,7 +274,7 @@ describe('head-to-head standings', () => {
         const page = await loadStandingsPage({
             users: users(), h2hEnabled: true, h2hStandings: H2H_PAYLOAD
         });
-        expect(page.tableHead().innerHTML).toContain('>Record<');
+        expect(page.tableHead().innerHTML).toContain('>H2H<');
         expect(page.tableHead().innerHTML).toContain('>Total<');
         expect(page.tableBody().innerHTML).toContain('Rockets');
         expect(page.tableBody().innerHTML).toContain('2-0');
@@ -346,7 +346,7 @@ describe('head-to-head standings', () => {
             users: users(), h2hEnabled: false, search: '?h2h=1',
             h2hStandings: Object.assign({}, H2H_PAYLOAD, { enabled: false })
         });
-        expect(page.tableHead().innerHTML).toContain('>Record<');
+        expect(page.tableHead().innerHTML).toContain('>H2H<');
     });
 
     it('passes a simulation key through to the API', async () => {
@@ -994,6 +994,43 @@ describe('highlights panel', () => {
             routes: [[/\/standings\/highlights\//, respond(500, {})]]
         });
         expect(page.highlights().innerHTML).not.toContain('Overachiever');
+    });
+});
+
+// #640: opening-day "Closest Race · 4 pts" read as noise, and Top Single Game
+// named no game.
+describe('highlights before week 1 is final, and the top game\'s score line', () => {
+    const liveWeek = (week) => ({
+        pinned: () => false, pin: () => {}, unpin: () => {},
+        get: async () => week,
+        state: async () => ({ week, liveNow: { week, seasonType: 'regular' } }),
+        sync: async () => 'week-' + week
+    });
+
+    it('shows one line instead of the cards while week 1 is still being played', async () => {
+        window.ccCurrentWeek = liveWeek(1);
+        try {
+            const page = await loadStandingsPage({
+                users: [scored('a', 'Alice', 'Adams', [4]), scored('b', 'Bob', 'Brown', [0])]
+            });
+            await flush();
+            expect(page.highlightsHeader().style.display).toBe('');
+            expect(page.highlights().innerHTML).toContain('Highlights start after Week 1 is final.');
+            expect(page.highlights().innerHTML).not.toContain('Closest Race');
+        } finally {
+            delete window.ccCurrentWeek;
+        }
+    });
+
+    it('names the game in Top Single Game once it is looked up', async () => {
+        const page = await loadStandingsPage({
+            users: [scored('a', 'Alice', 'Adams', [3, { score: 9, scoreByTeam: [{ teamId: 3, team: 'Indiana', gameId: 77, score: 9 }] }])],
+            routes: [[/\/games\/seasonType\/regular\/week\/2\/teams\?ids=3/, () => ([
+                { id: 77, homeId: 2, homeTeam: 'Purdue', homePoints: 10, awayId: 3, awayTeam: 'Indiana', awayPoints: 31, completed: true, neutralSite: false }
+            ])]]
+        });
+        await flush();
+        expect(page.highlights().innerHTML).toContain('>Indiana</a> 31\u201310 at Purdue</span>');
     });
 });
 

@@ -11,7 +11,10 @@ var sbState = {
     weekMeta: [],
     weekRange: null,
     games: [],
-    filter: 'all',
+    // null until the first slate lands or the viewer's remembered chip is read:
+    // the default depends on whether this week has any league games (#640).
+    filter: null,
+    filterChosen: false,
     conf: '',
     liveCount: 0,
     timer: null
@@ -66,9 +69,18 @@ function clockLabel(game) {
     return game.clock ? qtr + ' ' + game.clock : qtr;
 }
 
+// A game past its tip that neither feed has scored yet reads live by the
+// clock alone (gameState in modules/hoops-league-scoreboard.js and
+// modules/league-scoreboard.js) — tip-off running late, or a game the poller
+// has not reached. Bare "Live" over two empty rows looked broken next to cards
+// with a running score (#640), so say what is missing.
+function scorePending(game) {
+    return game.state === 'live' && game.home.points == null && game.away.points == null;
+}
+
 function stateLabel(game) {
     if (game.state === 'final') return 'Final';
-    if (game.state === 'live') return clockLabel(game);
+    if (game.state === 'live') return clockLabel(game) + (scorePending(game) ? ' \u00b7 score pending' : '');
     return kickoff(game.startDate, game.startTimeTbd);
 }
 
@@ -237,6 +249,41 @@ function visibleGames() {
     });
 }
 
+// The chip a viewer last picked, remembered per sport (a basketball and a
+// football league share an origin, and "My league" means a different slate on
+// each). Only the four chips: a conference is a one-off look, and its names
+// do not carry from one sport to the other. Storage can throw (private mode,
+// blocked site data), and the page works without it.
+var SB_FILTERS = ['all', 'mine', 'league', 'top25'];
+function sbFilterKey() { return 'sbFilter:' + (isBasketball() ? 'basketball' : 'football'); }
+function savedFilter() {
+    try {
+        var v = window.localStorage.getItem(sbFilterKey());
+        return SB_FILTERS.indexOf(v) !== -1 ? v : null;
+    } catch (e) { return null; }
+}
+function saveFilter(filter) {
+    try { window.localStorage.setItem(sbFilterKey(), filter); } catch (e) { /* not remembered, still applied */ }
+}
+
+// Opens on "My league" (#640): "All" is ~300 basketball games a week, most of
+// them nobody here owns, including non-D1 opponents. A remembered chip wins —
+// unless it is one that would open on nothing: a week with no league games (a
+// viewer in no league, a bowl week) opens on "All", and so does a remembered
+// "My teams" in a week none of the viewer's teams play. Otherwise one tap on a
+// chip would strand every later visit on "No games match this filter."
+// Re-decided on every week change until the viewer picks a chip.
+function defaultFilter(games) {
+    var list = games || [];
+    var league = list.some(function (g) { return g.leagueGame; });
+    var saved = savedFilter();
+    if (saved === 'mine') {
+        return list.some(function (g) { return isMine(g.home) || isMine(g.away); }) ? 'mine' : 'all';
+    }
+    if (saved && saved !== 'league') return saved;
+    return league ? 'league' : 'all';
+}
+
 // Laces (Dribbles on a hoops league) over an empty or failed slate. Standing
 // still: nothing is loading any more.
 function sbMascot(pose) {
@@ -397,8 +444,8 @@ function renderConfOptions(conferences) {
     // A conference the new week has no games in falls back to "all" rather than
     // leaving the chip row claiming a filter that matches nothing.
     sel.value = list.some(function (c) { return c.name === keep; }) ? keep : '';
+    if (keep && !sel.value) sbState.filter = 'all';
     sbState.conf = sel.value;
-    if (!sbState.conf) sbState.filter = sbState.filter || 'all';
     renderFilterState();
 }
 
@@ -440,6 +487,7 @@ function loadWeek(week, jumpToCurrent, prevGames) {
         sbState.weekRange = data.weekRange || null;
         sbState.games = data.games || [];
         sbState.liveCount = data.liveCount || 0;
+        if (!sbState.filterChosen) sbState.filter = defaultFilter(sbState.games);
         renderWeekNav();
         renderConfOptions(data.conferences);
         renderLiveCount();
@@ -681,6 +729,8 @@ document.addEventListener('DOMContentLoaded', function () {
         chip.addEventListener('click', function () {
             // Picking a chip drops any conference: one filter at a time.
             sbState.filter = chip.getAttribute('data-filter');
+            sbState.filterChosen = true;
+            saveFilter(sbState.filter);
             sbState.conf = '';
             document.getElementById('conf-filter').value = '';
             renderFilterState();
@@ -722,6 +772,9 @@ document.addEventListener('DOMContentLoaded', function () {
         // CHIP is active is not a clear of anything — it must leave that chip
         // alone rather than silently resetting the filter the user did choose.
         if (!sbState.conf && had) sbState.filter = 'all';
+        // Any pick here is the viewer's own choice; the default must stop
+        // second-guessing it on the next week change.
+        sbState.filterChosen = true;
         renderFilterState();
         render();
         scrollToCurrent();
