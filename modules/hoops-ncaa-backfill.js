@@ -44,6 +44,10 @@ async function backfillSeason(season, { force = false, dryRun = false } = {}) {
     if (games.length !== data.length) {
         throw new Error(`${season}: CBBD returned ${data.length - games.length} non-NCAA rows — the tournament filter did not hold; nothing written.`);
     }
+    // The rows are written under their OWN season, so one from another season
+    // would land there while the week stamping below targets this one.
+    const elsewhere = games.filter(g => Number(g.season) !== season).length;
+    if (elsewhere) throw new Error(`${season}: ${elsewhere} rows are from another season — the season filter did not hold; nothing written.`);
     if (!games.length) throw new Error(`${season}: CBBD returned no NCAA tournament games; nothing written.`);
     if (games.length >= cbbd.PAGE_CAP) throw new Error(`${season}: CBBD returned ${games.length} rows, the page cap; nothing written.`);
     const unfinished = games.filter(g => g.status !== 'final').length;

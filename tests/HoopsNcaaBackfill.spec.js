@@ -121,6 +121,7 @@ describe('backfill', () => {
     it.each([
         ['an empty response', [], /no NCAA tournament games/],
         ['rows from another tournament', [game(1, 2026), game(2, 2026, { tournament: 'NIT' })], /non-NCAA rows/],
+        ['rows from another season', [game(1, 2026), game(2, 2025)], /another season/],
         ['a tournament still being played', [game(1, 2026), game(2, 2026, { status: 'scheduled' })], /not final/],
         ['a response at the page cap', null, /page cap/]
     ])('writes nothing for %s', async (_label, data, message) => {
