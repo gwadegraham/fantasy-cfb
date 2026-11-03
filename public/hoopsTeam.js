@@ -77,11 +77,18 @@
         var banked = done.reduce(function (s, g) { return s + (g.points || 0); }, 0);
         var vals = d.quadrantValues || {};
         var table = upcoming.reduce(function (s, g) { return s + (vals[g.quadrant] || 0); }, 0);
+        // Not a game long past its tip with no final (cancelled, or a result
+        // still to arrive), as Next up skips it: it would sit in the risk
+        // all season.
+        var now = Date.now();
+        var risk = upcoming.filter(function (g) { return !(g.startDate && now - new Date(g.startDate).getTime() > STALE_TIP_MS); })
+            .reduce(function (s, g) { return s + q4LossOf(d, g); }, 0);
         var q1Left = upcoming.filter(function (g) { return g.quadrant === 1; }).length;
         var name = d.owner.franchiseName || d.owner.name || d.owner.firstName || 'A manager';
         return '<div class="ht-own"><div class="who">On <b>' + esc(name) + '</b>’s roster'
             + (upcoming.length ? '<br><span class="sub">' + q1Left + ' Q1 game' + (q1Left === 1 ? '' : 's')
-                + ' left · up to <b>+' + table + '</b> still on the table</span>' : '')
+                + ' left · up to <b>+' + table + '</b> still on the table'
+                + (risk ? ' · <span class="ht-loss">' + minus(Math.round(risk * 10) / 10) + '</span> if every Q4 is lost' : '') + '</span>' : '')
             + '</div><div class="pts"><div class="n" data-countup="' + banked + '" data-sign="+">' + (banked > 0 ? '+' : '') + banked + '</div><div class="l">pts banked</div></div></div>';
     }
 
@@ -307,13 +314,25 @@
         return 'Your Captain ' + (d.captainPlayingWeek != null && Number(g.week) === Number(d.captainPlayingWeek)
             ? 'this week' : '· Week ' + esc(g.week));
     }
+    // What a Q4 loss costs here (negative), or 0: the league's opt-in
+    // penalty, only on a Q4 game, never doubled by the Captain (#643).
+    function q4LossOf(d, g) {
+        var vals = d.quadrantValues || {};
+        return g.quadrant === 4 && typeof vals.q4Loss === 'number' && vals.q4Loss < 0 ? vals.q4Loss : 0;
+    }
+    function minus(n) { return String(n).replace('-', '−'); }
+    // A game still to play: what a win pays, and on a penalised Q4 what a
+    // loss costs — "+0" alone read as nothing at stake (#634).
     function ifWon(d, g) {
         var vals = d.quadrantValues || {};
         var v = g.quadrant && vals[g.quadrant];
-        if (!v) return '';
-        if (!isCaptain(d, g)) return '+' + v + ' if won';
-        return '+' + Math.round(v * d.captainMultiplier * 10) / 10 + ' if won · <b class="ht-cap" title="' + captainLabel(d, g) + '">'
-            + esc(d.captainMultiplier) + '×</b>';
+        var loss = q4LossOf(d, g);
+        var lossTxt = loss ? '<span class="ht-loss">' + minus(loss) + ' if lost</span>' : '';
+        if (!v) return lossTxt;
+        var win = !isCaptain(d, g) ? '+' + v + ' if won'
+            : '+' + Math.round(v * d.captainMultiplier * 10) / 10 + ' if won · <b class="ht-cap" title="' + captainLabel(d, g) + '">'
+                + esc(d.captainMultiplier) + '×</b>';
+        return win + (lossTxt ? ' · ' + lossTxt : '');
     }
 
     // The next game, one tap from its preview: when, where, who, and what a
