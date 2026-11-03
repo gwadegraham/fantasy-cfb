@@ -133,11 +133,10 @@ function buildCaptainReminderPayload({ userId, week, lockMs, nowMs, currentPick,
         // exists to say "you have two hours".
         //
         // The whole path matters and every part of it was wrong once. `/` is
-        // STANDINGS, not the profile. The Captain tile is on /userHome. And
-        // /userHome without `?user=` renders an empty page — the server hands
-        // the template the session user either way, but public/userHome.js reads
-        // the query param to decide whose profile to draw, so the id has to be
-        // on the URL even though it is always the recipient's own.
+        // STANDINGS, not the profile. The Captain tile is on /userHome. The id
+        // is on the URL even though it is always the recipient's own: without
+        // it the page falls back to whatever login the device holds (#641),
+        // which on a shared device need not be the recipient.
         url: (userId ? `/userHome?user=${userId}` : '/userHome')
             + (league ? `${userId ? '&' : '?'}league=${encodeURIComponent(league)}` : '')
             + '#captain',

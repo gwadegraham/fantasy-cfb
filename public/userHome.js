@@ -31,13 +31,20 @@ function detectMobile() {
 }
 
 async function getUserProfile() {
-    const response = await fetch(`/profile`, {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-        }
-    });
+    // A failed /profile still loads the team: getUser only needs the viewer
+    // id, which the page already has, and skipping it left a blank page (#641).
+    let response;
+    try {
+        response = await fetch(`/profile`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            }
+        });
+    } catch (e) {
+        return getUser();
+    }
 
     response.json().then(async data => {
 
@@ -62,7 +69,7 @@ async function getUserProfile() {
         // these could point the dropdown at a stale stored league while the
         // page rendered a different one.)
         getUser();
-    });
+    }).catch(() => getUser());
 }
 
 window.onload = function() {
@@ -112,20 +119,40 @@ if (_uhRivalryWeek) {
 }
 
 async function getUser() {
-    const urlParams = new URLSearchParams(window.location.search);
+    // No ?user= (a bookmark, a shared or stripped link) means the
+    // viewer's own team, and the address bar is filled in so a refresh or a
+    // share still names it (#641).
+    const bento = document.getElementById('uh-bento');
+    const viewerId = currentUserId();
+    const target = window.ccUserHomeTarget.resolve(window.location.search, viewerId);
+    const fail = () => {
+        userData = null;
+        if (bento) bento.innerHTML = window.ccUserHomeTarget.errorHtml(target.id, viewerId);
+    };
+    if (!target.id) return fail();
+    if (target.search) {
+        try { history.replaceState(history.state, '', window.location.pathname + target.search + window.location.hash); } catch (e) {}
+    }
 
-    const response = await fetch(`/users/${urlParams.get('user')}`, {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-        }
-    });
-
-    response.json().then(async data => {
-        userData = data[0];
-        renderBento(data[0]);
-    });
+    let data;
+    try {
+        const response = await fetch(`/users/${encodeURIComponent(target.id)}`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            }
+        });
+        if (!response.ok) return fail();
+        data = await response.json();
+    } catch (e) {
+        return fail();
+    }
+    // An empty list is an id with no franchise in the league being viewed:
+    // an old link, or another league's manager.
+    if (!Array.isArray(data) || !data[0]) return fail();
+    userData = data[0];
+    renderBento(data[0]);
 }
 
 // The active season for the whole page: the user's entry matching the server's

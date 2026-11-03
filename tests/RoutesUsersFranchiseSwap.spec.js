@@ -239,4 +239,13 @@ describe('the reads that are not plain lists', () => {
         expect(res.status).toBe(200);
         expect(res.body).toEqual([]);
     });
+
+    test('a malformed id is a 400, not a 500 (#641)', async () => {
+        // /userHome with no ?user= used to ask for /users/null.
+        await seedLeague();
+        for (const bad of ['null', 'undefined', 'not-an-id']) {
+            const res = await request(app).get(`/users/${bad}`);
+            expect(res.status).toBe(400);
+        }
+    });
 });
