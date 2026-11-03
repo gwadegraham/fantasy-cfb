@@ -140,6 +140,12 @@ describe('build', () => {
         expect(p.games[0].quadrant).toBe(1);
     });
 
+    test('a 2026-27 play-in game reads Opening Round in the schedule, whatever the feed calls it', async () => {
+        await HoopsGame.create([game(10, 1, 2, 1, { seasonType: 'postseason', tournament: 'NCAA', gameNotes: "NCAA Men's Basketball Championship - First Four" })]);
+        const p = await teamPage.build(1, { season: SEASON });
+        expect(p.games[0].notes).toBe("NCAA Men's Basketball Championship - Opening Round");
+    });
+
     test('the official NET (#533): the newest snapshot on file, null before it publishes', async () => {
         const HoopsNetRank = require('../models/hoopsNetRank');
         expect((await teamPage.build(1, { season: SEASON })).net).toBeNull();

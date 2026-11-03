@@ -15,6 +15,7 @@ const hoopsAp = require('./hoops-ap');
 const boxScore = require('./hoops-box-score');
 const roster = require('./hoops-roster');
 const { isFinal } = require('./hoops-scoring-pass');
+const { displayNotes } = require('./hoops-detectors');
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
 const { pickLogo } = require('../public/logo.js');
 const { homeWinProb } = require('./hoops-win-prob');
@@ -239,7 +240,7 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
             // any box score exists. Null when either side has none.
             lines: (live || final) ? periodLines(game) : null,
             tournament: postseason ? (String(game.tournament || '').trim() || 'Postseason') : null,
-            notes: game.gameNotes || null, neutralSite: !!game.neutralSite,
+            notes: displayNotes(game.gameNotes, yr), neutralSite: !!game.neutralSite,
             conferenceGame: !!game.conferenceGame && !teamPage.isConfTournament(game),
             venue: game.venue || null, city: game.city || null, state: game.state || null,
             tv: outlets(game.broadcasts)

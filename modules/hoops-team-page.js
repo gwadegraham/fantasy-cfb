@@ -81,7 +81,7 @@ function rankAmong(values, value, higherIsBetter) {
 // A conference TOURNAMENT game. Lives in hoops-detectors now, next to
 // isConfTournamentFinal, because the weekly game modes (Captain, H2H) need
 // the same test and must not import a page module to get it.
-const { isConfTournament } = require('./hoops-detectors');
+const { isConfTournament, displayNotes } = require('./hoops-detectors');
 const isLeagueGame = (g) => !!g.conferenceGame && !isConfTournament(g);
 
 // Conference standings from the season's games: conference record first,
@@ -354,7 +354,7 @@ async function build(teamId, { season, league = null, viewerId = null, now = Dat
             venue,
             conferenceGame: isLeagueGame(g),
             conferenceTournament: isConfTournament(g),
-            notes: g.gameNotes || null,
+            notes: displayNotes(g.gameNotes, g.season != null ? g.season : yr),
             opponent: {
                 id: oppId,
                 school: (opp && opp.school) || (home ? g.awayTeam : g.homeTeam),

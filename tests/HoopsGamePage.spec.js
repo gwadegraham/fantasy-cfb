@@ -395,6 +395,13 @@ describe('build', () => {
         expect(p.away.net).toMatchObject({ rank: 70 });
     });
 
+    test('a 2026-27 play-in game reads Opening Round, whatever the feed calls it', async () => {
+        await HoopsGame.updateOne({ id: 500 }, { $set: { seasonType: 'postseason', tournament: 'NCAA',
+            gameNotes: "NCAA Men's Basketball Championship - First Four" } });
+        const p = await gamePage.build(500);
+        expect(p.game.notes).toBe("NCAA Men's Basketball Championship - Opening Round");
+    });
+
     // The number beside each name is the AP poll in force at tip-off, as
     // football shows it — display only; the quadrant keeps its own rank.
     test('a failed AP read costs the numbers, not the page', async () => {

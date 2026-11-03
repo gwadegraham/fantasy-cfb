@@ -179,9 +179,12 @@ describe('GET /hoops/games/scoreboard/:league/:season/:week', () => {
 
     test('tournament games show in the week they are played: weeks run straight through March', async () => {
         await HoopsGame.create({ id: 30, season: SEASON, week: 3, seasonType: 'postseason', tournament: 'NCAA', status: 'scheduled',
-            startDate: tip(9), homeTeamId: 1, homeTeam: 'Duke', awayTeamId: 2, awayTeam: 'Texas', neutralSite: true });
+            startDate: tip(9), homeTeamId: 1, homeTeam: 'Duke', awayTeamId: 2, awayTeam: 'Texas', neutralSite: true,
+            gameNotes: "NCAA Men's Basketball Championship - First Four" });
         const res = await request(app).get(`/hoops/games/scoreboard/${LEAGUE}/${SEASON}/3`);
         expect(res.body.games.map(g => g.id)).toEqual([30]);
+        // 2026-27: the play-in is the Opening Round, whatever the feed calls it.
+        expect(res.body.games[0].notes).toBe("NCAA Men's Basketball Championship - Opening Round");
         expect(res.body.weeks.map(w => w.week)).toEqual([1, 2, 3]);
     });
 

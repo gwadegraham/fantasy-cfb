@@ -19,6 +19,7 @@ const { isFinal, rosterIds } = require('./hoops-scoring-pass');
 const { entryFor } = require('./roster-teams');
 const { initialsOf } = require('./league-scoreboard');
 const { outlets } = require('./hoops-media');
+const { displayNotes } = require('./hoops-detectors');
 
 // The rank the card shows and the "ranked" filter keys on: the AP top 25, as
 // football shows it (the caller passes AP ranks, modules/hoops-ap.js). The cap
@@ -105,7 +106,7 @@ function shapeGame(game, ctx) {
         situation: null,
         outlet: outlets(game.broadcasts),
         weather: null,
-        notes: STATUS_NOTE[status] || game.gameNotes || null,
+        notes: STATUS_NOTE[status] || displayNotes(game.gameNotes, game.season != null ? game.season : ctx.season),
         venue: game.venue || null,
         home,
         away,

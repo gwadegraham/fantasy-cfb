@@ -17,7 +17,8 @@
 //
 // ---- two bases ----
 //
-// 'march'      the rank is Torvik's T-Rank the day before the First Four.
+// 'march'      the rank is Torvik's T-Rank the day before the play-in (the
+//              First Four in every fitted season; the Opening Round now).
 //              The ladder is fit on 15 tournaments (2011-2019, 2021-2026) of
 //              barttorvik.com time-machine files from the Monday after
 //              Selection Sunday: pre-tournament by construction, so they
@@ -54,6 +55,16 @@ const POINTS_KEY = {
     e8: 'ncaaE8', f4: 'ncaaF4', title: 'ncaaTitleGame', champ: 'ncaaChampion'
 };
 const RANKS = 365;   // D-I teams; the drift integrates over March ranks 1..RANKS
+
+// The play-in rung is fitted on the 68-team era: the First Four, 8 teams a
+// year (the fitted ladder sums to ~7.8 over all ranks). From 2026-27 the
+// field is 76 and the play-in is the Opening Round: 12 games, 24 teams, and
+// still 64 in the round of 64 — so only this rung's mass changes. Until
+// there is a 76-team tournament to fit on, the fitted curve is scaled to
+// carry 24 teams; who exactly fills the extra 16 slots (last at-larges or
+// low auto-bids) is not known yet, so the shape is kept.
+const FITTED_PLAY_IN_TEAMS = 8;
+const PLAY_IN_TEAMS = 24;
 
 const sigmoid = (x) => 1 / (1 + Math.exp(-x));
 
@@ -157,8 +168,8 @@ function reachFromCoef(coef, rank) {
     return out;
 }
 
-// Σ P(reach) × points, through the league's config. The First Four rung is
-// worth 0 by default, and only a First Four team can collect it.
+// Σ P(reach) × points, through the league's config. The play-in rung (the
+// Opening Round) is worth 0 by default, and only a play-in team can collect it.
 function expectedNcaaPoints(reach, cfg) {
     let pts = (reach.ff || 0) * valueOf(cfg, 'ncaaFirstFour');
     const cond = { r64: 'ncaaR64', r32: 'ncaaR32', s16: 'ncaaS16', e8: 'ncaaE8', f4: 'ncaaF4', title: 'ncaaTitleGame', champ: 'ncaaChampion' };
@@ -255,6 +266,10 @@ function buildMarchModel(cal) {
                 out.upsetSeeds += w * interp(cal.upsetSeeds.grid, i + 1);
             });
         }
+        // Capped at 2 × P(r64): half the play-in teams win into the round of
+        // 64, so a rank cannot have more play-in winners than r64 teams. The
+        // 16-seed tail of the fitted curve breaks that once tripled.
+        out.ff = Math.min(1, out.ff * PLAY_IN_TEAMS / FITTED_PLAY_IN_TEAMS, 2 * out.r64);
         // Frozen: the object is shared by every caller through the cache.
         Object.freeze(out);
         c.set(r, out);
@@ -301,7 +316,7 @@ function buildMarchModel(cal) {
     // whose tournament is under way. `next` is the round it is certain to
     // play and has not yet been paid for; every rung before it is banked.
     // Later rungs are conditional on that one: P(reach r | in round next) =
-    // P(r) / P(next). A First Four team wins its way into the round of 64
+    // P(r) / P(next). An Opening Round team wins its way into the round of 64
     // half the time.
     const NEXT = ['ff', 'r64', 'r32', 's16', 'e8', 'f4', 'title'];
     const COND = { ff: 'ncaaFirstFour', r64: 'ncaaR64', r32: 'ncaaR32', s16: 'ncaaS16', e8: 'ncaaE8', f4: 'ncaaF4', title: 'ncaaTitleGame', champ: 'ncaaChampion' };
@@ -310,7 +325,7 @@ function buildMarchModel(cal) {
         const k = ROUNDS.indexOf(from);
         const scale = next === 'ff' ? 0.5 : 1;
         let pts = next === 'ff' ? valueOf(cfg, COND.ff) : 0;
-        let wins = next === 'ff' ? 0.5 : 0;   // the First Four game itself
+        let wins = next === 'ff' ? 0.5 : 0;   // the Opening Round game itself
         ROUNDS.slice(k).forEach((r, i) => {
             const q = p[from] > 0 ? p[r] / p[from] : 0;
             pts += scale * q * valueOf(cfg, COND[r]);
@@ -454,7 +469,7 @@ function attachMarch(ctx, teams, { basis = 'preseason', model = defaultModel(), 
 
 module.exports = {
     attachMarch,
-    ROUNDS, POINTS_KEY, GRID, RANKS,
+    ROUNDS, POINTS_KEY, GRID, RANKS, PLAY_IN_TEAMS, FITTED_PLAY_IN_TEAMS,
     fitLogistic, kernelAt, tabulate, interp, fitDrift,
     reachFromCoef, expectedNcaaPoints, confTitleProbs, valueOf, normCdf,
     buildMarchModel, defaultModel
