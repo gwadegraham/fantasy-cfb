@@ -207,6 +207,14 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // Past NCAA tournaments for the bracket page: every refusal is a
+        // branch, and each one is what stops a bad response being written.
+        "./modules/hoops-ncaa-backfill.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         // The projection wired for the draft board and grades (#310 PR 3):
         // which teams are the pool, which games are whose, and the frozen
         // grade input. Pure; a dropped line here is a grade that drifts.

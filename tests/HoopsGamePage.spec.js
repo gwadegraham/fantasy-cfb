@@ -395,6 +395,40 @@ describe('build', () => {
         expect(p.away.net).toMatchObject({ rank: 70 });
     });
 
+    // A past season backfilled for the bracket page holds only its tournament,
+    // so a record counted from it would read "1–0" as the season.
+    test('a tournament game shows its seeds, and no record when the season holds only postseason games', async () => {
+        await HoopsGame.updateMany({}, { $set: { seasonType: 'postseason', tournament: 'NCAA' } });
+        await HoopsGame.updateOne({ id: 500 }, { $set: { homeSeed: 1, awaySeed: 16 } });
+        let p = await gamePage.build(500);
+        expect(p.home).toMatchObject({ seed: 1, record: null });
+        expect(p.away).toMatchObject({ seed: 16, record: null });
+
+        // With the regular season stored, the record is back beside the seed.
+        await HoopsGame.updateOne({ id: 400 }, { $set: { seasonType: 'regular', tournament: null } });
+        p = await gamePage.build(500);
+        expect(p.home).toMatchObject({ seed: 1, record: { w: 1, l: 1 } });
+    });
+
+    test('another season\'s regular games do not bring the record back', async () => {
+        await HoopsGame.updateMany({}, { $set: { seasonType: 'postseason', tournament: 'NCAA' } });
+        await HoopsGame.create(Object.assign({}, GAME, { id: 900, season: SEASON + 1, seasonType: 'regular' }));
+        const p = await gamePage.build(500);
+        expect(p.home.record).toBeNull();
+    });
+
+    test('a seed of 0 or blank is no seed', async () => {
+        await HoopsGame.updateOne({ id: 500 }, { $set: { seasonType: 'postseason', tournament: 'NCAA', homeSeed: 0 } });
+        const p = await gamePage.build(500);
+        expect(p.home.seed).toBeNull();
+    });
+
+    test('a regular-season game has no seed, even if the feed sends one', async () => {
+        await HoopsGame.updateOne({ id: 500 }, { $set: { homeSeed: 3 } });
+        const p = await gamePage.build(500);
+        expect(p.home).toMatchObject({ seed: null, record: { w: 1, l: 1 } });
+    });
+
     test('a 2026-27 play-in game reads Opening Round, whatever the feed calls it', async () => {
         await HoopsGame.updateOne({ id: 500 }, { $set: { seasonType: 'postseason', tournament: 'NCAA',
             gameNotes: "NCAA Men's Basketball Championship - First Four" } });

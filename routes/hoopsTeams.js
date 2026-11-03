@@ -396,3 +396,6 @@ module.exports.buildUpsertOp = buildUpsertOp;
 module.exports.refreshDraftCopies = refreshDraftCopies;
 module.exports.withHash = withHash;
 module.exports.LOGO_OVERRIDES = LOGO_OVERRIDES;
+module.exports.apiLogos = apiLogos;
+module.exports.probeUrl = probeUrl;
+module.exports.overrideFor = overrideFor;
