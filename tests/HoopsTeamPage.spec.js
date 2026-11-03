@@ -578,6 +578,60 @@ describe('GET /hoops/teams/:id/page', () => {
         expect((await request(app).get('/hoops/teams/1/page')).status).toBe(404);
     });
 
+    // Past seasons (#659's backfill): the schedule and results of a season no
+    // league played, with nothing graded on ranks that were never kept.
+    describe('?season= a past season', () => {
+        const PAST = SEASON - 1;
+        beforeEach(async () => {
+            await HoopsTeam.create(TEAMS.map(t => Object.assign({ season: PAST }, t, { preseason: undefined })));
+            await HoopsGame.create([
+                game(10, 1, 1, 3),
+                game(50, 1, 2, 1, { season: PAST, homePoints: 60, awayPoints: 75 }),   // a road win at Florida
+                game(51, 2, 1, 4, { season: PAST, conferenceGame: true }),
+                game(52, 20, 1, 2, { season: PAST, seasonType: 'postseason', tournament: 'NCAA', homeSeed: 1, awaySeed: 8 })
+            ]);
+            jest.spyOn(leagueSelection, 'selectedLeague').mockResolvedValue(LEAGUE);
+        });
+
+        test('serves that season: its games and record, no quadrant, owner or Captain', async () => {
+            // An owner WITH a roster entry for the past season, so only the
+            // past-season rule can keep it off the page.
+            await owner([1]);
+            await Franchise.updateOne({ league: LEAGUE }, { $push: { seasons: { season: PAST, franchiseName: 'Old Dreams',
+                teamRefs: [{ id: 1, sport: 'basketball' }], weeklyScore: [] } } });
+            const res = await request(app).get(`/hoops/teams/1/page?season=${PAST}`);
+            expect(res.status).toBe(200);
+            expect(res.body).toMatchObject({ season: PAST, past: true, owner: null, captainMultiplier: null, style: null, turnover: null });
+            expect(res.body.games.map(g => [g.id, g.quadrant])).toEqual([[50, null], [51, null], [52, null]]);
+            expect(res.body.games[2]).toMatchObject({ postseason: true, tournament: 'NCAA' });
+        });
+
+        test('lists every season the team has a regular-season schedule for, current first', async () => {
+            await HoopsGame.create(game(60, 1, 4, 1, { season: PAST - 2 }));                       // UNC v Duke, two years back
+            await HoopsGame.create(game(61, 20, 1, 2, { season: PAST - 1, seasonType: 'postseason' })); // a tournament alone is no schedule
+            const res = await request(app).get('/hoops/teams/1/page');
+            expect(res.body).toMatchObject({ season: SEASON, past: false, currentSeason: SEASON, seasons: [SEASON, PAST, PAST - 2] });
+            const army = await request(app).get('/hoops/teams/3/page');
+            expect(army.body.seasons).toEqual([SEASON]);
+        });
+
+        test('naming the current season is the ordinary page', async () => {
+            await owner([1]);
+            const res = await request(app).get(`/hoops/teams/1/page?season=${SEASON}`);
+            expect(res.body).toMatchObject({ season: SEASON, past: false, owner: { franchiseName: 'Hoop Dreams' } });
+        });
+
+        test('404 for a later season, a non-number, or a past season with no team row', async () => {
+            expect((await request(app).get(`/hoops/teams/1/page?season=${SEASON + 1}`)).status).toBe(404);
+            expect((await request(app).get('/hoops/teams/1/page?season=last')).status).toBe(404);
+            expect((await request(app).get(`/hoops/teams/1/page?season=${PAST - 5}`)).status).toBe(404);
+        });
+
+        test('an empty ?season= is the current season', async () => {
+            expect((await request(app).get('/hoops/teams/1/page?season=')).body.season).toBe(SEASON);
+        });
+    });
+
     test('500 with a plain message when the build throws', async () => {
         jest.spyOn(leagueSelection, 'selectedLeague').mockResolvedValue('');
         jest.spyOn(teamPage, 'build').mockRejectedValue(new Error('boom'));

@@ -26,6 +26,7 @@ const shotCharts = require('./hoops-shots');
 // A namespace, so a test can stand in for the ESPN call.
 const gamecast = require('./hoops-gamecast');
 const playLog = require('./hoops-play-log');
+const seasons = require('./active-season');
 
 // The record to show, or null when the season's regular season is not
 // stored: a past season backfilled for the bracket page holds only its
@@ -246,6 +247,9 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
     return {
         game: {
             id, season: yr, week: game.week, startDate: game.startDate, startTimeTbd: !!game.startTimeTbd,
+            // A game from a season before the active one: its team links
+            // open that season's team pages (?season=).
+            past: Number.isFinite(Number(seasons.activeSeason('basketball'))) && yr < Number(seasons.activeSeason('basketball')),
             status: game.status || null, final, live, postseason,
             period: live && Number.isFinite(Number(game.period)) ? Number(game.period) : null,
             clock: live ? game.clock || null : null,

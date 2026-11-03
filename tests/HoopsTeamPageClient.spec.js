@@ -779,3 +779,74 @@ describe('the Q4 loss penalty on game rows, Next up and the owner strip (#634)',
         expect(document.querySelector('.ht-next-pay').textContent).toBe('+2 if won · 2× · −2 if lost');
     });
 });
+
+// Past seasons (#659's backfill): a finished season's schedule and results.
+describe('past seasons', () => {
+    // A payload for the 2025-26 season, as the route serves ?season=2026.
+    const past = (o) => payload(Object.assign({
+        season: 2026, past: true, currentSeason: 2027, seasons: [2027, 2026, 2025],
+        preseason: null, owner: null, net: null, apRank: null,
+        games: [
+            g(1, { quadrant: null, opponent: { id: 2, school: 'Florida', hasPage: true } }),
+            g(2, { quadrant: null, us: 60, them: 70, conferenceGame: true, opponent: { id: 3, school: 'UConn', hasPage: true } }),
+            g(3, { quadrant: null, postseason: true, tournament: 'NCAA', opponent: { id: 4, school: 'Army', hasPage: true } })
+        ]
+    }, o));
+    async function renderAt(body, search) {
+        window.history.replaceState(null, '', window.location.pathname + search);
+        document.body.innerHTML = '<title data-league-title="Team">Team</title><main id="hoops-team" data-team-id="72"></main>';
+        window.ccLeague = { paint: jest.fn() };
+        global.fetch = jest.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) }));
+        (0, eval)(SRC);
+        await new Promise(r => setTimeout(r, 0));
+        await new Promise(r => setTimeout(r, 0));
+    }
+    afterEach(() => window.history.replaceState(null, '', window.location.pathname));
+
+    test('asks for the season in the URL', async () => {
+        await renderAt(past(), '?season=2026');
+        expect(global.fetch.mock.calls[0][0]).toBe('/hoops/teams/72/page?season=2026');
+    });
+
+    test('a season pill per season, current first, the viewed one marked; the current one has no ?season', async () => {
+        await renderAt(past(), '?season=2026');
+        const pills = [...document.querySelectorAll('.ht-season')];
+        expect(pills.map(a => [a.textContent, a.getAttribute('href'), a.classList.contains('on')])).toEqual([
+            ['2026–27', '/hoops/team/72', false], ['2025–26', '/hoops/team/72?season=2026', true], ['2024–25', '/hoops/team/72?season=2025', false]
+        ]);
+    });
+
+    test('one season on file: no pills', async () => {
+        await renderAt(payload({ seasons: [2027], currentSeason: 2027 }), '');
+        expect(document.querySelector('.ht-seasons')).toBeNull();
+    });
+
+    test('the schedule and conference tabs only, opening on the whole schedule, with no vs Q1 record', async () => {
+        await renderAt(past(), '?season=2026');
+        expect(txt('.sp-tab')).toBe('Schedule | ACC');
+        expect(document.querySelectorAll('.ht-panel .sp-gr')).toHaveLength(3);
+        expect(txt('.ht-rec .l')).toBe('Overall | ACC');
+        expect(document.querySelector('.ht-own')).toBeNull();
+    });
+
+    test('a hash naming a tab a past season lacks opens the schedule', async () => {
+        await renderAt(past(), '?season=2026#resume');
+        expect(document.querySelector('.sp-tab.on').textContent).toBe('Schedule');
+    });
+
+    test('a regular game has an empty chip, a tournament game its tournament', async () => {
+        await renderAt(past(), '?season=2026');
+        const chips = [...document.querySelectorAll('.ht-panel .ht-qt')].map(c => [c.className, c.textContent]);
+        expect(chips).toEqual([['ht-qt none', ''], ['ht-qt none', ''], ['ht-qt post', 'NCAA']]);
+    });
+
+    test('opponents link to the same past season', async () => {
+        await renderAt(past(), '?season=2026');
+        expect(document.querySelector('.ht-panel a.opp').getAttribute('href')).toBe('/hoops/team/2?season=2026');
+    });
+
+    test('the current season links opponents without a season', async () => {
+        await renderAt(payload(), '');
+        expect(document.querySelector('a.opp').getAttribute('href')).toBe('/hoops/team/2');
+    });
+});

@@ -14,7 +14,8 @@
 // same shape the season ingest writes and a later full ingest updates it in
 // place rather than duplicating it.
 //
-// Each season's teams come too (one more call): without a hoopsteams row for
+// Each season's full schedule comes too (about 11 calls), so its team pages
+// have games to show. And its teams (one more call): without a hoopsteams row for
 // the season, a past game's page has no logo, colours or team link. Written
 // through routes/hoopsTeams.js's upsert and logo probe, keyed on (id, season),
 // so the active season's rows are never touched.
@@ -32,6 +33,10 @@ const NCAA = 'NCAA';
 const FULL_TOURNAMENT = 67;
 // D-I has had 350+ teams every season since 2011; fewer stored is partial.
 const FULL_TEAMS = 350;
+// A finished D-I regular season has 5,000+ final games (non-D-I opponents
+// included); 2025-26 had 6,213. Fewer stored is partial. On an object so the
+// tests can lower it rather than write 4,000 games per case.
+const LIMITS = { regular: 4000 };
 
 async function storedCount(season) {
     return HoopsGame.countDocuments({ season, tournament: NCAA, status: 'final' });
@@ -112,6 +117,47 @@ async function backfillTeams(season, { force = false, dryRun = false } = {}) {
     return Object.assign(out, { status: 'written', written: (res.upsertedCount || 0) + (res.matchedCount || 0) });
 }
 
+// One season's full schedule and results — regular season and postseason —
+// so a past season's team page has its games (and the game page its real
+// records). Through fetchGamesInRange's windows, as the season ingest pulls
+// them: the regular season over seasonRange (~8 calls), the postseason over
+// March and April only (3), since nothing past-season plays in it earlier.
+// Same return shape as backfillSeason.
+async function backfillSchedule(season, { force = false, dryRun = false } = {}) {
+    const before = await HoopsGame.countDocuments({ season, seasonType: 'regular', status: 'final' });
+    if (!force && before >= LIMITS.regular) {
+        return { season, status: 'stored', fetched: 0, written: 0, calls: 0, stored: before };
+    }
+    const { start, end } = cbbd.seasonRange(season);
+    const post = { start: new Date(Date.UTC(season, 2, 1)), end };
+    const regular = await cbbd.fetchGamesInRange(season, 'regular', start, end);
+    const postseason = await cbbd.fetchGamesInRange(season, 'postseason', post.start, post.end);
+    const calls = regular.windows + postseason.windows;
+    const capHits = regular.capHits.concat(postseason.capHits);
+    if (capHits.length) throw new Error(`${season}: CBBD hit the ${cbbd.PAGE_CAP}-row cap in ${capHits.join(', ')}; nothing written.`);
+    const games = regular.games.concat(postseason.games);
+    const elsewhere = games.filter(g => Number(g.season) !== season).length;
+    if (elsewhere) throw new Error(`${season}: ${elsewhere} rows are from another season; nothing written.`);
+    const finals = regular.games.filter(g => g.status === 'final').length;
+    if (finals < LIMITS.regular) throw new Error(`${season}: only ${finals} final regular-season games, expected ${LIMITS.regular}+ — not a finished season; nothing written.`);
+
+    const out = { season, fetched: games.length, calls, remainingCalls: postseason.remainingCalls ?? regular.remainingCalls, stored: before };
+    if (dryRun) return Object.assign(out, { status: 'dry-run', written: 0 });
+
+    // The regular season starts months before the tournament already stored,
+    // so the week origin moves back and every stored row is renumbered.
+    const { seasonStart, moved } = await hoopsGames.resolveSeasonStart(season, games);
+    const ops = await hoopsGames.keepStoredFinals(games.map(g => hoopsGames.buildUpsertOp(g, seasonStart)).filter(Boolean));
+    let res;
+    try {
+        res = await HoopsGame.bulkWrite(ops, { ordered: false });
+    } catch (err) {
+        throw new Error(`${season}: schedule write failed partway (${err.message}); re-run with --force to refill.`);
+    }
+    if (moved && seasonStart) await hoopsGames.restampSeason(season, seasonStart);
+    return Object.assign(out, { status: 'written', written: (res.upsertedCount || 0) + (res.matchedCount || 0) });
+}
+
 // Seasons in ascending order; refuses the active season and anything later.
 async function backfill(list, opts = {}) {
     const active = activeSeason();
@@ -120,7 +166,8 @@ async function backfill(list, opts = {}) {
     const results = [];
     for (const season of [...new Set(list)].sort((a, b) => a - b)) {
         const games = await backfillSeason(season, opts);
-        results.push(Object.assign(games, { teams: await backfillTeams(season, opts) }));
+        const teams = await backfillTeams(season, opts);
+        results.push(Object.assign(games, { teams, schedule: await backfillSchedule(season, opts) }));
     }
     return results;
 }
@@ -132,4 +179,4 @@ function lastSeasons(n) {
     return Array.from({ length: n }, (_, i) => active - n + i);
 }
 
-module.exports = { backfill, backfillSeason, backfillTeams, lastSeasons, FULL_TOURNAMENT, FULL_TEAMS };
+module.exports = { backfill, backfillSeason, backfillTeams, backfillSchedule, lastSeasons, FULL_TOURNAMENT, FULL_TEAMS, LIMITS };

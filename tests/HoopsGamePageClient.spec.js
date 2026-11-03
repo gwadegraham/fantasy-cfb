@@ -147,6 +147,16 @@ test('a seeded game shows the seed beside the record, or alone when there is no 
     expect([...document.querySelectorAll('.hg-rec')].map(e => e.textContent)).toEqual(['16 seed', '1 seed · 30–4']);
 });
 
+test('a past season\'s game links each team to that season\'s page; a current one does not name a season', async () => {
+    const p = payload();
+    p.home = Object.assign({}, p.home, { hasPage: true });
+    p.game = Object.assign({}, p.game, { season: 2026, past: true });
+    await render(p);
+    expect(document.querySelector('.hg-side a').getAttribute('href')).toMatch(/^\/hoops\/team\/\d+\?season=2026$/);
+    await render(payload());
+    expect(document.querySelector('.hg-side a').getAttribute('href')).toBe('/hoops/team/1');
+});
+
 test('no seed and no record: no line under the name', async () => {
     const p = payload();
     p.away = Object.assign({}, p.away, { record: null });
