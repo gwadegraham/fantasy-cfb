@@ -26,6 +26,7 @@ const hoopsGames = require('../routes/hoopsGames');
 const cbbd = require('../modules/cbbd-client');
 const jobLogger = require('../modules/job-logger');
 const HoopsGame = require('../models/hoopsGame');
+const HoopsTeam = require('../models/hoopsTeam');
 const League = require('../models/league');
 const SportSeason = require('../models/sportSeason');
 const seasons = require('../modules/active-season');
@@ -596,6 +597,14 @@ describe('ESPN laid over the CBBD scoreboard', () => {
         expect((await HoopsGame.findOne({ id: 12 }).lean()).status).toBe('in_progress');
         const fin = await scoreboard.applyScoreboard([row(12, 'final', 74, 68)], { espn: espnMap({ 401900012: espnEvent(74, 68, { clock: '0:00' }) }) });
         expect(fin.newlyFinal.map(g => g.id)).toEqual([12]);
+    });
+
+    test('at a neutral site ESPN\'s home can be our away: scores land by team (FAMU v FSU, 2 Nov 2026)', async () => {
+        await HoopsTeam.create([{ id: 1, season: SEASON, school: 'Duke', sourceId: '150' }, { id: 2, season: SEASON, school: 'Texas', sourceId: '251' }]);
+        await HoopsGame.create(game(17, { sourceId: '401900017', status: 'in_progress', homePoints: 30, awayPoints: 60, period: 2, clock: '8:43' }));
+        const espnFlipped = espnEvent(75, 37, { home: { points: 75, lineScores: [54, 21], espnTeam: '251' }, away: { points: 37, lineScores: [27, 10], espnTeam: '150' } });
+        await scoreboard.applyScoreboard([row(17, 'in_progress', 30, 60)], { espn: espnMap({ 401900017: espnFlipped }) });
+        expect(await HoopsGame.findOne({ id: 17 }).lean()).toMatchObject({ homePoints: 37, awayPoints: 75 });
     });
 
     test('a game with no sourceId, or one ESPN does not list, is CBBD\'s alone', async () => {
