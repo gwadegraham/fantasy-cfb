@@ -98,7 +98,7 @@ function side(c, period) {
         lines[lines.length - 1] = points - before;
         if (lines[lines.length - 1] < 0) lines = null;
     }
-    return { points, lineScores: lines };
+    return { points, lineScores: lines, espnTeam: c.team && c.team.id != null ? String(c.team.id) : null };
 }
 
 // One ESPN event as { started, period, clock, home, away }, or null for a game
@@ -156,10 +156,27 @@ async function fetchLive(days) {
     return { events, error: errors.length ? errors.join('; ') : null };
 }
 
+// `ev` with home and away as OURS, or null when its teams are not this game's.
+// Home and away are CBBD's, NOT ESPN's: at a neutral site the two can
+// disagree. Florida A&M v Florida State at Amalie Arena (2 Nov 2026) was CBBD
+// home FSU, ESPN home FAMU, which put FAMU's 75 on FSU live (the trap #632
+// fixed for the box and shots). `espnIds` is { home, away }: our home and away
+// teams' ESPN ids (HoopsTeam.sourceId). Unknown, sides fall back to ESPN's.
+function orient(ev, espnIds) {
+    const h = espnIds && espnIds.home != null ? String(espnIds.home) : null;
+    const a = espnIds && espnIds.away != null ? String(espnIds.away) : null;
+    if (!h || !a || h === a) return ev;
+    if (ev.home.espnTeam === h && ev.away.espnTeam === a) return ev;
+    if (ev.home.espnTeam === a && ev.away.espnTeam === h) return Object.assign({}, ev, { home: ev.away, away: ev.home });
+    return null;
+}
+
 // CBBD's scoreboard row with ESPN's running numbers laid over it, or the row
 // untouched when ESPN has nothing newer to say (see the header).
-function overlay(row, ev) {
+function overlay(row, ev, espnIds) {
     if (!row || !ev) return row;
+    ev = orient(ev, espnIds);
+    if (!ev) return row;
     const status = String(row.status || '').toLowerCase();
     if (status !== 'scheduled' && status !== 'in_progress') return row;
     if (status === 'in_progress') {
@@ -182,4 +199,4 @@ function overlay(row, ev) {
     });
 }
 
-module.exports = { fetchDay, fetchLive, daysFor, overlay, shapeEvent, elapsed, behind, SCOREBOARD };
+module.exports = { fetchDay, fetchLive, daysFor, overlay, orient, shapeEvent, elapsed, behind, SCOREBOARD };

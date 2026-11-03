@@ -5,7 +5,7 @@
 const espnBoard = require('../modules/hoops-espn-scoreboard');
 
 const competitor = (homeAway, score, lines) => ({
-    homeAway, score: String(score), team: { id: '1' },
+    homeAway, score: String(score), team: { id: homeAway === 'home' ? '11' : '22' },
     linescores: lines && lines.map((v, i) => ({ value: v, period: i + 1 }))
 });
 const event = (id, state, o = {}) => Object.assign({
@@ -28,7 +28,7 @@ afterEach(() => { jest.restoreAllMocks(); });
 describe('shapeEvent', () => {
     test('a game in progress: score, half, clock and half scores', () => {
         expect(espnBoard.shapeEvent(event('1', 'in'))).toEqual({
-            period: 2, clock: '6:10', home: { points: 55, lineScores: [30, 25] }, away: { points: 50, lineScores: [28, 22] }
+            period: 2, clock: '6:10', home: { points: 55, lineScores: [30, 25], espnTeam: '11' }, away: { points: 50, lineScores: [28, 22], espnTeam: '22' }
         });
     });
     test('half scores come back in half order whatever order ESPN lists them', () => {
@@ -49,7 +49,7 @@ describe('shapeEvent', () => {
     test('second half under way but no second-half entry yet: the split is dropped, not misfiled', () => {
         const e = event('1', 'in');
         e.competitions[0].competitors[0].linescores = [{ value: 30, period: 1 }];
-        expect(espnBoard.shapeEvent(e).home).toEqual({ points: 55, lineScores: null });
+        expect(espnBoard.shapeEvent(e).home).toEqual({ points: 55, lineScores: null, espnTeam: '11' });
     });
     test('a completed game counts; a postponed one (also "post") does not', () => {
         expect(espnBoard.shapeEvent(event('1', 'post'))).not.toBeNull();
@@ -176,5 +176,28 @@ describe('overlay', () => {
     test('ESPN without half scores keeps CBBD\'s', () => {
         const out = espnBoard.overlay(cbbdRow('in_progress', 50, 48), ev(55, 50, { home: { points: 55, lineScores: null } }));
         expect(out.homeTeam.lineScores).toEqual([30, 20]);
+    });
+
+    // FAMU v FSU at Amalie Arena, 2 Nov 2026: CBBD home FSU, ESPN home FAMU.
+    describe('sides are matched by team, not by ESPN\'s home/away', () => {
+        const flipped = ev(37, 75, { home: { points: 37, lineScores: [27, 10], espnTeam: '50' }, away: { points: 75, lineScores: [54, 21], espnTeam: '52' } });
+        const ids = { home: '52', away: '50' };                              // ours: FSU home, FAMU away
+        test('ESPN\'s home is our away: each score lands on its own team', () => {
+            const out = espnBoard.overlay(cbbdRow('in_progress', 30, 60), flipped, ids);
+            expect(out.homeTeam).toMatchObject({ id: 1, points: 75, lineScores: [54, 21] });
+            expect(out.awayTeam).toMatchObject({ id: 2, points: 37, lineScores: [27, 10] });
+        });
+        test('agreeing sides pass through unchanged', () => {
+            const out = espnBoard.overlay(cbbdRow('in_progress', 30, 60), flipped, { home: '50', away: '52' });
+            expect(out.homeTeam.points).toBe(37);
+        });
+        test('teams that are not this game\'s leave CBBD\'s row alone', () => {
+            const row = cbbdRow('in_progress', 30, 60);
+            expect(espnBoard.overlay(row, flipped, { home: '52', away: '99' })).toBe(row);
+        });
+        test('unknown ESPN ids fall back to ESPN\'s home/away', () => {
+            expect(espnBoard.overlay(cbbdRow('in_progress', 30, 60), flipped, { home: '52', away: null }).homeTeam.points).toBe(37);
+            expect(espnBoard.overlay(cbbdRow('in_progress', 30, 60), flipped).homeTeam.points).toBe(37);
+        });
     });
 });

@@ -15,6 +15,7 @@
 // up as "0 of 140 matched" on the first night rather than as silence.
 
 const HoopsGame = require('../models/hoopsGame');
+const HoopsTeam = require('../models/hoopsTeam');
 const { detectHoopsEvents } = require('./hoops-score-events');
 const espnBoard = require('./hoops-espn-scoreboard');
 
@@ -92,6 +93,17 @@ function updateFor(row, stored) {
 // game id (modules/hoops-score-events.js).
 //
 // `espn` (Map<espnEventId, event>, from modules/hoops-espn-scoreboard.js) lays
+// Each stored game's teams' ESPN ids, keyed `${season}:${teamId}` — what lets
+// the ESPN overlay match sides by team rather than by ESPN's home/away.
+async function espnTeamIds(games) {
+    if (!games.length) return new Map();
+    const teams = await HoopsTeam.find({
+        season: { $in: [...new Set(games.map(g => g.season))] },
+        id: { $in: [...new Set(games.flatMap(g => [Number(g.homeTeamId), Number(g.awayTeamId)]))] }
+    }, { id: 1, season: 1, sourceId: 1, _id: 0 }).lean();
+    return new Map(teams.filter(t => t.sourceId != null).map(t => [`${t.season}:${t.id}`, String(t.sourceId)]));
+}
+
 // ESPN's fresher running score and clock over each matched row, keyed by the
 // stored game's sourceId; `fromEspn` counts the rows it changed.
 async function applyScoreboard(rows, { espn = null } = {}) {
@@ -103,6 +115,7 @@ async function applyScoreboard(rows, { espn = null } = {}) {
         homePeriodPoints: 1, awayPeriodPoints: 1, period: 1, clock: 1, homeWinner: 1, awayWinner: 1, _id: 0
     }).lean();
     const byId = new Map(stored.map(g => [Number(g.id), g]));
+    const espnIds = espn && espn.size ? await espnTeamIds(stored.filter(g => g.sourceId != null && espn.has(String(g.sourceId)))) : null;
 
     const ops = [];
     const newlyFinal = [];
@@ -120,7 +133,10 @@ async function applyScoreboard(rows, { espn = null } = {}) {
         const home = Number(row.homeTeam && row.homeTeam.id);
         const away = Number(row.awayTeam && row.awayTeam.id);
         if (home !== Number(prev.homeTeamId) || away !== Number(prev.awayTeamId)) { mismatched++; continue; }
-        if (espn && prev.sourceId != null) row = espnBoard.overlay(row, espn.get(String(prev.sourceId)));
+        if (espn && prev.sourceId != null) {
+            const ids = espnIds && { home: espnIds.get(`${prev.season}:${prev.homeTeamId}`), away: espnIds.get(`${prev.season}:${prev.awayTeamId}`) };
+            row = espnBoard.overlay(row, espn.get(String(prev.sourceId)), ids);
+        }
         const set = updateFor(row, prev);
         if (!set) continue;
         if (row !== cbbdRow) fromEspn++;
