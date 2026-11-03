@@ -119,6 +119,7 @@ describe('My Team tiles', () => {
         window.ccLeague = { code: () => 'x', sport: () => 'basketball', title: (s) => s, name: () => 'L' };
         loadCard();
         (0, eval)(read('logo.js'));
+        (0, eval)(read('userhome-target.js'));   // the page loads it ahead of userHome.js (#641)
         (0, eval)(read('userHome.js'));
         document.body.innerHTML = '<div id="uh-tile-matchup"><div id="uh-glance-matchup"></div></div>'
             + '<div id="uh-tile-schedule"><div id="uh-glance-schedule"></div></div>';
