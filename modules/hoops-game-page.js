@@ -230,8 +230,9 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
             net: net[String(teamId)] || null,
             // Through this game when played; going INTO it when not.
             record: rec,
-            // The tournament seed, on a seeded tournament's game (NCAA, NIT).
-            seed: postseason && Number.isInteger(seedOf) ? seedOf : null,
+            // The seed, on a postseason game that has one (NCAA, NIT, some
+            // conference tournaments).
+            seed: postseason && Number.isInteger(seedOf) && seedOf > 0 ? seedOf : null,
             points: (final || live) && Number.isFinite(Number(points)) && points != null ? Number(points) : null,
             // Postseason games are paid on the tournament ladder, not as a
             // quadrant (isRegular in hoops-detectors) — same rule as the team page.

@@ -192,6 +192,12 @@ describe('backfill', () => {
         expect((await HoopsTeam.findOne({ id: 1, season: 2026 }).lean()).logos).toEqual([]);
     });
 
+    it('a failed team write says so and points at --force', async () => {
+        stubCbbd({ 2026: tournament(2026) });
+        jest.spyOn(HoopsTeam, 'bulkWrite').mockRejectedValueOnce(new Error('E11000 duplicate key'));
+        await expect(backfill.backfill([2026])).rejects.toThrow(/team write failed partway.*--force/);
+    });
+
     it('backfillTeams runs on its own with default options', async () => {
         stubCbbd({});
         expect((await backfill.backfillTeams(2026)).status).toBe('written');

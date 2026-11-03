@@ -410,6 +410,19 @@ describe('build', () => {
         expect(p.home).toMatchObject({ seed: 1, record: { w: 1, l: 1 } });
     });
 
+    test('another season\'s regular games do not bring the record back', async () => {
+        await HoopsGame.updateMany({}, { $set: { seasonType: 'postseason', tournament: 'NCAA' } });
+        await HoopsGame.create(Object.assign({}, GAME, { id: 900, season: SEASON + 1, seasonType: 'regular' }));
+        const p = await gamePage.build(500);
+        expect(p.home.record).toBeNull();
+    });
+
+    test('a seed of 0 or blank is no seed', async () => {
+        await HoopsGame.updateOne({ id: 500 }, { $set: { seasonType: 'postseason', tournament: 'NCAA', homeSeed: 0 } });
+        const p = await gamePage.build(500);
+        expect(p.home.seed).toBeNull();
+    });
+
     test('a regular-season game has no seed, even if the feed sends one', async () => {
         await HoopsGame.updateOne({ id: 500 }, { $set: { homeSeed: 3 } });
         const p = await gamePage.build(500);

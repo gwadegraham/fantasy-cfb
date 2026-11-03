@@ -101,7 +101,14 @@ async function backfillTeams(season, { force = false, dryRun = false } = {}) {
         haveLogo = new Set();
     }
     const ops = data.map(t => hoopsTeams.buildUpsertOp(t, season, haveLogo)).filter(Boolean);
-    const res = await HoopsTeam.bulkWrite(ops, { ordered: false });
+    let res;
+    try {
+        res = await HoopsTeam.bulkWrite(ops, { ordered: false });
+    } catch (err) {
+        // Unordered, so some rows may have landed; enough of them would read
+        // as "stored" next time, hence the pointer to --force.
+        throw new Error(`${season}: team write failed partway (${err.message}); re-run with --force to refill.`);
+    }
     return Object.assign(out, { status: 'written', written: (res.upsertedCount || 0) + (res.matchedCount || 0) });
 }
 
