@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const { activeSeason, seasonForLeague, sportForLeague } = require('../modules/active-season');
 const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 // Reads and writes both go through the repo, which owns the account/franchise
@@ -788,6 +789,11 @@ router.get('/league/:leagueCodeReq/previous', async (req, res) => {
 //Getting One By Id
 router.get('/:id', async (req, res) => {
     var userId = req.params.id;
+    // A malformed id (/users/null from a /userHome link with no ?user=, #641)
+    // made Mongoose throw a CastError that surfaced as a 500. It is a bad
+    // request. A well-formed id with no franchise here stays an empty array —
+    // the tests pin that, and the page renders it as "not in this league".
+    if (!mongoose.isValidObjectId(userId)) return res.status(400).json({ message: 'Invalid manager id.' });
 
     try {
         // SCOPED TO THE LEAGUE BEING VIEWED. byAccountId without a league
