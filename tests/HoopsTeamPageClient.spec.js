@@ -489,7 +489,7 @@ describe('Next up (#506)', () => {
 
 describe('the viewer\'s Captain (#635)', () => {
     const captained = () => {
-        const p = payload({ captainMultiplier: 2 });
+        const p = payload({ captainMultiplier: 2, captainPlayingWeek: 1 });
         p.games[3].captain = true;       // Virginia, Q1: +5 doubles to +10
         return p;
     };
@@ -499,6 +499,13 @@ describe('the viewer\'s Captain (#635)', () => {
         expect(card.querySelector('.ht-next-pay').textContent).toBe('+10 if won · 2×');
         expect(card.querySelector('.ht-cap').textContent).toBe('2×');
         expect(card.querySelector('.ht-next-cap').textContent).toBe('Your Captain this week');
+    });
+    test('a Captain week still ahead is named, not called "this week"', async () => {
+        const p = captained();
+        p.captainPlayingWeek = 0;        // week 0 under way; Virginia is in week 1
+        await render(p);
+        expect(document.querySelector('.ht-next-cap').textContent).toBe('Your Captain · Week 1');
+        expect(document.querySelector('.ht-cap').getAttribute('title')).toBe('Your Captain · Week 1');
     });
     test('the schedule doubles only the Captain week\'s games', async () => {
         await render(captained(), 200, 'schedule');

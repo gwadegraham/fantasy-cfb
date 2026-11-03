@@ -296,12 +296,18 @@
     // a loss penalty never is — and the server never marks a conference
     // tournament game as a Captain game.
     function isCaptain(d, g) { return !!(g.captain && d.captainMultiplier); }
+    // "Your Captain this week" only of the week being played; any other
+    // week is named, since a pick can sit a week ahead.
+    function captainLabel(d, g) {
+        return 'Your Captain ' + (d.captainPlayingWeek != null && Number(g.week) === Number(d.captainPlayingWeek)
+            ? 'this week' : '· Week ' + esc(g.week));
+    }
     function ifWon(d, g) {
         var vals = d.quadrantValues || {};
         var v = g.quadrant && vals[g.quadrant];
         if (!v) return '';
         if (!isCaptain(d, g)) return '+' + v + ' if won';
-        return '+' + Math.round(v * d.captainMultiplier * 10) / 10 + ' if won · <b class="ht-cap" title="Your Captain this week">'
+        return '+' + Math.round(v * d.captainMultiplier * 10) / 10 + ' if won · <b class="ht-cap" title="' + captainLabel(d, g) + '">'
             + esc(d.captainMultiplier) + '×</b>';
     }
 
@@ -329,7 +335,7 @@
                 : '<span class="ht-qt post">' + esc(g.tournament || 'Post') + '</span>')
             + (pay ? '<span class="ht-next-pay">' + pay + '</span>' : '') + '</div>'
             + (g.notes ? '<div class="ht-next-note">' + esc(g.notes) + '</div>' : '')
-            + (isCaptain(d, g) ? '<div class="ht-next-cap">Your Captain this week</div>' : '') + '</a>';
+            + (isCaptain(d, g) ? '<div class="ht-next-cap">' + captainLabel(d, g) + '</div>' : '') + '</a>';
         // Its ESPN preview finds it by ESPN's game id (public/team-news.js).
         return window.ccTeamNews ? window.ccTeamNews.nextWrap(card, g.espnId) : card;
     }

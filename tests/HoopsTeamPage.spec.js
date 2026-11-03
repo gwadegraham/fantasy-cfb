@@ -406,9 +406,23 @@ describe('the viewer\'s Captain', () => {
 
     test('a manual pick doubles that week\'s games — never a final, a conference tournament game, or another week', async () => {
         const viewerId = await captainOwner({ captains: [{ week: 2, teamId: 1 }] });
-        const p = await teamPage.build(1, { season: SEASON, league: LEAGUE, viewerId });
+        const findOne = jest.spyOn(ScoringConfig, 'findOne');
+        // Week 1's only game (9 Nov, Eastern) is under way; the pick is for week 2.
+        const p = await teamPage.build(1, { season: SEASON, league: LEAGUE, viewerId, now: Date.UTC(2026, 10, 10, 2) });
         expect(p.captainMultiplier).toBe(2);
+        expect(p.captainPlayingWeek).toBe(1);
         expect(flags(p)).toEqual({ 10: false, 20: true, 21: false, 30: false });
+        // One config read serves the point values and the Captain.
+        expect(findOne).toHaveBeenCalledTimes(1);
+    });
+
+    test('nothing left to play: no Captain reads at all', async () => {
+        const viewerId = await captainOwner({ captains: [{ week: 2, teamId: 1 }] });
+        await HoopsGame.updateMany({}, { $set: { status: 'final', homePoints: 80, awayPoints: 70 } });
+        const aggregate = jest.spyOn(HoopsGame, 'aggregate');
+        const p = await teamPage.build(1, { season: SEASON, league: LEAGUE, viewerId });
+        expect(p.captainMultiplier).toBeNull();
+        expect(aggregate).not.toHaveBeenCalled();
     });
 
     test('someone else\'s page shows nothing doubled, and so does no viewer', async () => {
