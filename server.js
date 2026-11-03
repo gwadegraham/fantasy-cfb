@@ -838,6 +838,13 @@ app.use('/hoops/admin', hoopsAdmin.build({
     })
 }));
 
+// The March Madness bracket. Admin only for now, gated in its router (both
+// routes are GETs, which the path list above lets through): anyone else gets
+// the plain 404.
+app.use('/hoops/bracket', require('./routes/hoopsBracket').build({
+    pageLocals: (req) => ({ user: buildUserContext(req.effUser), userState: safeJson(req.effUser) })
+}));
+
 const rankingsRouter = require('./routes/rankings');
 app.use('/rankings', requireAuthOrToken, rankingsRouter);
 
