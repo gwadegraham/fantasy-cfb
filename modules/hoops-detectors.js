@@ -46,11 +46,29 @@
 //    seasonType alone, every conference tournament game — including the 31
 //    finals — is a regular-season game.
 //
-// FIRST FOUR is a real round and was missing from the model entirely. It is
-// its own rung, worth 0 by default: a First Four winner goes on to play a
-// 1st Round game and would otherwise be paid twice for entering.
+// THE PLAY-IN ROUND is a real round and was missing from the model entirely.
+// It is its own rung ('ff', config key ncaaFirstFour), worth 0 by default: its
+// winner goes on to play a 1st Round game and would otherwise be paid twice
+// for entering. Through 2025-26 it was the First Four (4 games, a 68-team
+// field). From 2026-27 the field is 76 and the play-in is the OPENING ROUND:
+// 12 games, 24 teams, 12 winners into the round of 64. The internal key
+// stays 'ff'/ncaaFirstFour so stored league configs keep working; every
+// label a manager sees says Opening Round.
 
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
+
+// The first season (by CBBD's ending-year label) of the 76-team field and its
+// renamed play-in round.
+const OPENING_ROUND_SEASON = 2027;
+
+// A game's notes as a manager should read them. CBBD may well keep writing
+// "First Four" for the renamed round; from OPENING_ROUND_SEASON on, the app
+// says Opening Round. Earlier seasons keep the name that round really had.
+function displayNotes(notes, season) {
+    if (!notes) return notes || null;
+    if (!(Number(season) >= OPENING_ROUND_SEASON)) return notes;
+    return String(notes).replace(/\bfirst\s*four\b/gi, 'Opening Round');
+}
 
 // NCAA tournament rounds, in order. The VALUES are configured per league;
 // this is only the vocabulary.
@@ -70,7 +88,12 @@ const ROUND_PATTERNS = [
     ['f4', /^(final\s*four|f4)$/i],
     ['e8', /^(elite\s*(8|eight))$/i],
     ['s16', /^(sweet\s*(16|sixteen))$/i],
-    ['ff', /^(first\s*four)$/i],
+    // Both names, so 2025-26 and earlier still parse. No 2026-27 NCAA game
+    // is scheduled yet (Nov 2026), so CBBD's spelling for the renamed round
+    // is unconfirmed: "Opening Round" is the NCAA's name, "Play-In" the
+    // generic one. Only ever tested on tournament === 'NCAA' rows, so a
+    // conference tournament's "Play-In" cannot match.
+    ['ff', /^(first\s*four|opening\s+round|play-?in(\s+round)?)$/i],
     ['r32', /^(2nd\s+round|second\s+round|round\s+of\s+32|r32)$/i],
     ['r64', /^(1st\s+round|first\s+round|round\s+of\s+64|r64)$/i]
 ];
@@ -238,7 +261,8 @@ const HOOPS_CONDITIONS = {
 
     // The NCAA ladder. Each is an APPEARANCE — reaching the round, win or
     // lose — and they stack, so a champion banks every rung beneath them.
-    // The play-in. Worth 0 by default: its winner goes on to play a 1st
+    // The play-in (the Opening Round; the First Four through 2025-26). Worth
+    // 0 by default: its winner goes on to play a 1st
     // Round game and would otherwise be paid twice for entering.
     ncaaFirstFour: (ctx) => ctx.played && ctx.round === 'ff',
     ncaaR64: (ctx) => ctx.played && ctx.round === 'r64',
@@ -265,5 +289,5 @@ const HOOPS_CONDITIONS = {
 module.exports = {
     buildHoopsContext, HOOPS_CONDITIONS,
     ncaaRoundFor, isConfTournamentFinal, isConfTournament, seedUpsetFor, seedOf,
-    NCAA_ROUNDS
+    NCAA_ROUNDS, OPENING_ROUND_SEASON, displayNotes
 };

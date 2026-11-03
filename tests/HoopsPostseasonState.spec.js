@@ -105,8 +105,14 @@ describe('the NCAA tournament', () => {
         expect(r.decided).toEqual({ ncaa: 'done' });
         expect(r.anomalies).toEqual([{ teamId: T, kind: 'ncaa-round-unreadable' }]);
     });
-    test('an unplayed NCAA game we cannot place: done, reported', () => {
+    test('an Opening Round team (the 2026-27 name for the play-in)', () => {
         const rows = [ncaa(T, 2, 'Opening Round', { status: 'scheduled' })];
+        expect(decidedFor(T, rows, fieldWith(rows)).decided).toEqual({ ncaa: { next: 'ff' } });
+        // Won it: the round of 64 is next, before it is even listed.
+        expect(decidedFor(T, [ncaa(T, 2, 'Opening Round')], fieldWith(rows)).decided).toEqual({ ncaa: { next: 'r64' } });
+    });
+    test('an unplayed NCAA game we cannot place: done, reported', () => {
+        const rows = [ncaa(T, 2, 'Regional Opener', { status: 'scheduled' })];
         const r = decidedFor(T, rows, fieldWith(rows));
         expect(r.decided).toEqual({ ncaa: 'done' });
         expect(r.anomalies).toHaveLength(1);
@@ -115,6 +121,23 @@ describe('the NCAA tournament', () => {
         expect(ncaaField([])).toBeNull();
         expect(ncaaField([g(1, 2)])).toBeNull();
         expect(fieldWith([ncaa(1, 2, 'First Four'), ncaa(3, null, 'First Four')]).size).toBe(67);
+    });
+    test('the 76-team field: 12 Opening Round games and a round of 64 with 12 slots still to fill', () => {
+        // 52 teams straight into the round of 64; 24 in the Opening Round.
+        let n = 300;
+        const direct = Array.from({ length: 52 }, () => n++);
+        const r64 = [];
+        for (let i = 0; i < 40; i += 2) r64.push(ncaa(direct[i], direct[i + 1], '1st Round', { status: 'scheduled' }));
+        // The 12 games an Opening Round winner fills: one side not yet known.
+        const opening = Array.from({ length: 12 }, () => ncaa(n++, n++, 'Opening Round', { status: 'scheduled' }));
+        const waiting = Array.from({ length: 12 }, (_, i) => ncaa(direct[40 + i], null, '1st Round', { status: 'scheduled' }));
+        const field = ncaaField(r64.concat(waiting, opening));
+        expect(field.size).toBe(76);
+        // Opening Round night alone (24 teams) is still a partial field.
+        expect(ncaaField(opening)).toBeNull();
+        const t = opening[0].homeTeamId;
+        expect(decidedFor(t, opening, field).decided).toEqual({ ncaa: { next: 'ff' } });
+        expect(decidedFor(9999, [], field).decided).toEqual({ ncaa: 'out' });
     });
     test('a PARTIAL field (First Four night: only those rows stored) is no field', () => {
         // The nightly window stores only recent postseason rows. A team not
@@ -131,7 +154,7 @@ describe('every derived state is one the March model accepts', () => {
     const model = defaultModel();
     const cfg = resolveConfig('x', { model: 'hoops' });
     const ctx = model.contextFor([{ id: T, conference: 'BE', rating: 20 }]);
-    const labels = ['First Four', '1st Round', '2nd Round', 'Sweet 16', 'Elite 8', 'Final Four', 'National Championship', '???'];
+    const labels = ['First Four', 'Opening Round', '1st Round', '2nd Round', 'Sweet 16', 'Elite 8', 'Final Four', 'National Championship', '???'];
     test('across conference and NCAA paths (no throw, ever)', () => {
         const cases = [];
         labels.forEach(l => [true, false].forEach(won => ['final', 'scheduled'].forEach(status => {

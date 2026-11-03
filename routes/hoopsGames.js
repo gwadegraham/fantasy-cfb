@@ -389,7 +389,7 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
         const ctx = {
             owners: board.ownersByTeam(franchises, season),
             points: boardHelpers.pointsByTeamGame(franchises, season, week),
-            teams, ranks: ranks || {}, nowMs
+            teams, ranks: ranks || {}, nowMs, season
         };
         let shaped = board.shapeGames(games, ctx);
         const liveCount = shaped.filter(g => g.state === 'live').length;
@@ -533,7 +533,7 @@ router.get('/teams/:season/:week', async (req, res) => {
         const teams = {};
         teamDocs.forEach(t => { teams[t.id] = { school: t.school, abbr: t.abbreviation || null, logo: pickLogo(t.logos) || null }; });
 
-        const shaped = board.shapeGames(games, { owners: {}, points: {}, teams, ranks: ranks || {}, nowMs });
+        const shaped = board.shapeGames(games, { owners: {}, points: {}, teams, ranks: ranks || {}, nowMs, season });
         const body = { season, week, weeks, games: shaped };
         // My Team's drawer asks for each side's quadrant (?quadrants=1), and
         // what a win in each pays in the viewer's league. Opt-in: Standings

@@ -104,6 +104,12 @@ describe('GET /hoops/games/teams/:season/:week', () => {
         expect(res.body.games[1].neutralSite).toBe(true);
     });
 
+    test('a 2026-27 play-in game reads Opening Round, whatever the feed calls it', async () => {
+        await HoopsGame.create(game(24, 2, at(5), 1, 2, { seasonType: 'postseason', tournament: 'NCAA', gameNotes: "NCAA Men's Basketball Championship - First Four" }));
+        const res = await request(app).get(`/hoops/games/teams/${SEASON}/2?ids=1`);
+        expect(res.body.games.find(g => g.id === 24).notes).toBe("NCAA Men's Basketball Championship - Opening Round");
+    });
+
     test('?quadrants=1: each side\'s quadrant, venue-adjusted, and the league\'s win values', async () => {
         require('../modules/hoops-team-page').clearRankCache();
         await HoopsTeam.updateOne({ id: 3, season: SEASON }, { $set: { preseason: { rank: 40 } } });

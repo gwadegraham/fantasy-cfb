@@ -22,7 +22,7 @@
 //                 distribution the expectation uses. A tournament under way
 //                 ({ next: round }) samples the conditional ladder from that
 //                 round, the way hoops-march remainingNcaa prices it.
-//   First Four    its own coin (worth 0 by default).
+//   Opening Round its own coin (the play-in; worth 0 by default).
 //   upset bonus   expected upset points per expected tournament win, times
 //                 the wins drawn — so a deep run carries its upsets with it.
 //   conference    the title: a coin at P(title). The conference tournament's
@@ -71,7 +71,7 @@ function postseasonDistribution(model, team, ctx, cfg, basis, decided) {
         ROUNDS.slice(ROUNDS.indexOf(from)).forEach((r, i) => rungs.push({
             p: base > 0 ? scale * p[r] / base : 0,
             pts: valueOf(cfg, COND[r]),
-            // the First Four game itself is the win that reaches the r64
+            // the Opening Round game itself is the win that reaches the r64
             win: i > 0 || n.next === 'ff'
         }));
     }

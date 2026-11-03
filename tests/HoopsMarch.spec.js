@@ -436,6 +436,45 @@ describe('the shipped calibration', () => {
         });
     });
 
+    test('the play-in carries the 24 Opening Round teams of the 76-team field, not the First Four\'s 8', () => {
+        expect(M.PLAY_IN_TEAMS).toBe(24);
+        ['march', 'preseason'].forEach(basis => {
+            let ff = 0, fitted = 0;
+            for (let r = 1; r <= M.RANKS; r++) {
+                ff += model.reach(r, basis).ff;
+                fitted += M.reachFromCoef(cal.march, r).ff;
+            }
+            expect(fitted).toBeGreaterThan(7);       // the 68-team era it was fit on
+            expect(fitted).toBeLessThan(9);
+            expect(ff).toBeGreaterThan(21);
+            expect(ff).toBeLessThan(25);
+        });
+    });
+
+    test('no rank has more play-in winners than round-of-64 teams', () => {
+        // Tripling the fitted curve's 16-seed tail made a #300 a likelier
+        // play-in WINNER (0.034 / 2) than a round-of-64 team (0.017).
+        ['march', 'preseason'].forEach(basis => {
+            for (let r = 1; r <= M.RANKS; r++) {
+                const p = model.reach(r, basis);
+                expect(p.ff / 2).toBeLessThanOrEqual(p.r64 + 1e-12);
+            }
+        });
+        // Where the cap does not bind (the bubble), it is exactly ×3.
+        expect(model.reach(45, 'march').ff).toBeCloseTo(3 * M.reachFromCoef(cal.march, 45).ff, 10);
+    });
+
+    test('with the default config the bigger play-in moves no points: it pays 0', () => {
+        const c = cfg();
+        const p = model.reach(45, 'march');
+        const noPlayIn = Object.assign({}, p, { ff: 0 });
+        expect(M.expectedNcaaPoints(p, c)).toBe(M.expectedNcaaPoints(noPlayIn, c));
+        // A league that pays the play-in gets three times the old expectation.
+        const paid = cfg({ values: { ncaaFirstFour: 3 } });
+        const fittedFf = M.reachFromCoef(cal.march, 45).ff;
+        expect(M.expectedNcaaPoints(p, paid) - M.expectedNcaaPoints(noPlayIn, paid)).toBeCloseTo(3 * fittedFf * 3, 10);
+    });
+
     test('the field adds up on both bases: about 64 main-bracket teams and one champion a season', () => {
         ['march', 'preseason'].forEach(basis => {
             let r64 = 0, f4 = 0, champ = 0;

@@ -9,7 +9,7 @@
 const { useMongo } = require('./helpers/mongo');
 const { evaluate, explainGame, explainRegularWin } = require('../modules/scoring');
 const { resolveConfig, MODELS } = require('../modules/scoring-defaults');
-const { buildHoopsContext, ncaaRoundFor, isConfTournamentFinal, seedUpsetFor, seedOf } = require('../modules/hoops-detectors');
+const { buildHoopsContext, ncaaRoundFor, isConfTournamentFinal, seedUpsetFor, seedOf, displayNotes } = require('../modules/hoops-detectors');
 
 const cfg = (overrides) => resolveConfig('any-league', Object.assign({ model: 'hoops' }, overrides));
 
@@ -134,6 +134,57 @@ describe('the NCAA ladder', () => {
         expect(ncaaRoundFor(ncaa('First Four'))).toBe('ff');
         // The whole path: play in, win, then play the 1st Round.
         expect(score(1, ncaa('First Four')) + score(1, ncaa('1st Round'))).toBe(7);
+    });
+
+    // 2026-27: a 76-team field, and the play-in renamed the Opening Round
+    // (12 games). Same rung, same points as the First Four it replaces.
+    describe('the Opening Round (the First Four, renamed, from 2026-27)', () => {
+        test.each(['Opening Round', 'OPENING ROUND', 'Play-In', 'Play-In Round', 'First Four'])('"%s" is the play-in rung', (label) => {
+            expect(ncaaRoundFor(ncaa(label))).toBe('ff');
+        });
+        test('pays exactly what the First Four paid: 0, then 7 for the round of 64 it wins into', () => {
+            expect(score(1, ncaa('Opening Round'))).toBe(score(1, ncaa('First Four')));
+            expect(score(1, ncaa('Opening Round')) + score(1, ncaa('1st Round'))).toBe(7);
+        });
+        test('the per-seed upset rule applies to it, as it did to the First Four', () => {
+            // An 11 over a 10: an Opening Round meeting the old format never had.
+            const upset = { homeSeed: 11, awaySeed: 10 };
+            expect(score(1, ncaa('Opening Round', upset))).toBe(1);
+            expect(score(1, ncaa('Opening Round', upset))).toBe(score(1, ncaa('First Four', upset)));
+            // AQs play AQs and at-larges play at-larges, usually on one seed
+            // line: equal seeds are a 0 gap, and a missing seed is no upset.
+            expect(score(1, ncaa('Opening Round', { homeSeed: 16, awaySeed: 16 }))).toBe(0);
+            expect(score(1, ncaa('Opening Round', { homeSeed: 11, awaySeed: 11 }))).toBe(0);
+            expect(score(1, ncaa('Opening Round', { homeSeed: 12, awaySeed: null }))).toBe(0);
+            expect(score(1, ncaa('Opening Round', { homeSeed: '', awaySeed: 10 }))).toBe(0);
+        });
+        test('a league that raised the old ncaaFirstFour key still gets paid it', () => {
+            // Stored configs keep the key: only the label changed.
+            const raised = cfg({ values: { ncaaFirstFour: 2 } });
+            expect(score(1, ncaa('Opening Round'), {}, raised)).toBe(2);
+            const off = cfg({ values: { ncaaFirstFour: 2 }, disabled: ['ncaaFirstFour'] });
+            expect(score(1, ncaa('Opening Round'), {}, off)).toBe(0);
+        });
+        test('an NIT or conference-tournament "Opening Round" is not the NCAA play-in', () => {
+            expect(ncaaRoundFor(nit('Opening Round'))).toBeNull();
+            expect(ncaaRoundFor(confTourney('Sun Belt Championship', 'Play-In'))).toBeNull();
+        });
+        test('the rules page names it the Opening Round, under the same key and value', () => {
+            const rule = MODELS.hoops.structure.postseason.find(r => r.condition === 'ncaaFirstFour');
+            expect(rule.label).toBe('Reached the Opening Round (play-in)');
+            expect(rule.pointsKey).toBe('ncaaFirstFour');
+            expect(MODELS.hoops.defaults.ncaaFirstFour).toBe(0);
+        });
+        test('notes say Opening Round from 2026-27, and keep the real name before it', () => {
+            const notes = `${NCAA} - First Four`;
+            expect(displayNotes(notes, 2027)).toBe(`${NCAA} - Opening Round`);
+            expect(displayNotes(notes, '2028')).toBe(`${NCAA} - Opening Round`);
+            expect(displayNotes(notes, 2026)).toBe(notes);
+            expect(displayNotes(notes, undefined)).toBe(notes);
+            expect(displayNotes(`${NCAA} - FirstFour`, 2027)).toBe(`${NCAA} - Opening Round`);
+            expect(displayNotes('Champions Classic', 2027)).toBe('Champions Classic');
+            expect(displayNotes(null, 2027)).toBeNull();
+        });
     });
 
     test('a tournament game is NOT also scored as a quadrant win', () => {
