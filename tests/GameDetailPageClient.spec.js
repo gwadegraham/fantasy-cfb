@@ -71,13 +71,13 @@ async function boot(kind, opts = {}) {
     window.ccLeague = Object.assign({ sport: () => 'football', title: (p) => p + ' · The Polar Depressed · Campus Clash' }, opts.league || {});
     window.ccLeagueCode = () => (opts.code || 'graham-league');
     global.fetch = jest.fn((url) => {
-        if (/\/games\/detail\//.test(url)) return ok(gameOf(kind));
+        if (/\/games\/detail\//.test(url)) return ok(opts.game || gameOf(kind));
         if (/\/teams\/teamLogos/.test(url)) return ok([{ id: BSU, abbreviation: 'BOIS', school: 'Boise State', color: '#0033a0', logos: [] },
             { id: WMU, abbreviation: 'WMU', school: 'Western Michigan', color: '#6c4023', logos: [] }]);
         if (/\/games\/plays\//.test(url)) return ok({ plays: [], drives: [], status: kind === 'pre' ? 'none' : 'final', source: 'db' });
         if (/\/games\/fantasy\//.test(url) && opts.fantasyRes) return Promise.resolve(opts.fantasyRes);
         if (/\/games\/fantasy\//.test(url)) return opts.fantasy ? opts.fantasy.then(ok) : ok(fantasyOf(kind));
-        if (/\/games\/live-stats\//.test(url)) return ok(opts.liveStats || { source: null });
+        if (/\/games\/live-stats\//.test(url)) return opts.espn ? opts.espn(url) : ok(opts.liveStats || { source: null });
         return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
     (0, eval)(SCRIPT.replace('<%= gameId %>', '901'));
@@ -434,6 +434,15 @@ describe('live stats from ESPN', () => {
         return above + '|' + (summary ? summary.innerHTML : '');
     };
 
+    const playsCalls = () => global.fetch.mock.calls.filter(c => /\/games\/plays\//.test(c[0])).length;
+    // Boots on fake timers with ESPN answering through `espn()` per call.
+    async function bootLive(kind, espn) {
+        jest.useFakeTimers();
+        await boot(kind, { fake: true, espn: espn });
+    }
+    const nextTick = async () => { await jest.advanceTimersByTimeAsync(10000); for (let i = 0; i < 8; i++) await jest.advanceTimersByTimeAsync(0); };
+    afterEach(() => jest.useRealTimers());
+
     test('a live game gets a Box score tab from ESPN, and nothing else on the page changes', async () => {
         await boot('live-nobox');
         expect(document.querySelector('.sp-tabs')).toBeNull();          // today: no box, no tabs
@@ -451,6 +460,17 @@ describe('live stats from ESPN', () => {
         expect(Array.from(box.querySelectorAll('th')).some(th => th.textContent === 'QBR')).toBe(false);
     });
 
+    test('CFBD team stats already in: Summary is untouched, and the tab does not repeat ESPN\'s', async () => {
+        const game = Object.assign(gameOf('live'), { playerStats: {} });
+        await boot('live', { game: game });
+        const without = today();
+        expect(without).toContain('Team stats');
+        await boot('live', { game: Object.assign(gameOf('live'), { playerStats: {} }), liveStats: ESPN });
+        expect(today()).toBe(without);
+        expect(document.querySelector('[data-panel="box"] .gd-src')).not.toBeNull();
+        expect(document.querySelector('[data-panel="box"] .sp-h')).toBeNull();
+    });
+
     test('CFBD\'s box wins whenever there is one: no ESPN note, QBR back', async () => {
         await boot('final', { liveStats: ESPN });
         const box = document.querySelector('[data-panel="box"]');
@@ -460,45 +480,65 @@ describe('live stats from ESPN', () => {
         expect(Array.from(box.querySelectorAll('th')).some(th => th.textContent === 'QBR')).toBe(true);
     });
 
-    test('a final before CFBD\'s box lands: ESPN stands in, says so, and is asked once', async () => {
+    test('ESPN\'s names are escaped', async () => {
+        const bad = JSON.parse(JSON.stringify(ESPN));
+        bad.playerStats.away.passing[0].name = '<img src=x onerror=alert(1)>';
+        await boot('live-nobox', { liveStats: bad });
+        expect(document.querySelector('[data-panel="box"] img[src="x"]')).toBeNull();
+        expect(txt('[data-panel="box"] .gd-player-name')).toContain('<img src=x');
+    });
+
+    test('a final before CFBD\'s box lands: ESPN stands in and says so; nothing pre-game asks', async () => {
         await boot('final-nobox', { liveStats: Object.assign({}, ESPN, { final: true }) });
         expect(document.querySelector('[data-panel="box"] .gd-src').textContent).toMatch(/^Early stats from ESPN\./);
         expect(liveCalls()).toBe(1);
+        await boot('pre', { liveStats: ESPN });
+        expect(liveCalls()).toBe(0);
     });
 
-    test('each live tick asks again, with the score, and paints once', async () => {
-        jest.useFakeTimers();
-        try {
-            await boot('live-nobox', { liveStats: ESPN, fake: true });
-            expect(liveCalls()).toBe(1);
-            ESPN.playerStats.away.passing[0].yds = 155;
-            await jest.advanceTimersByTimeAsync(10000);
-            for (let i = 0; i < 8; i++) await jest.advanceTimersByTimeAsync(0);
-            expect(liveCalls()).toBe(2);
-            expect(txt('[data-panel="box"] td')).toContain('155');
-        } finally {
-            ESPN.playerStats.away.passing[0].yds = 140;
-            jest.useRealTimers();
-        }
+    test('ESPN never answering: the page paints, and every tick still lands on time', async () => {
+        await bootLive('live-nobox', () => new Promise(() => {}));
+        expect(document.querySelector('.gd-livestrip')).not.toBeNull();
+        expect(document.querySelector('.sp-tabs')).toBeNull();
+        const calls = () => global.fetch.mock.calls.filter(c => /\/games\/detail\//.test(c[0])).length;
+        const before = calls();
+        await nextTick();
+        await nextTick();
+        expect(calls()).toBe(before + 2);
     });
 
-    test('ESPN slow to answer: the page paints without it, then gains the tab', async () => {
-        jest.useFakeTimers();
-        try {
-            let land;
-            const slow = new Promise(r => { land = r; });
-            await boot('live-nobox', { fake: true });
-            // A fresh page whose first live-stats call is the slow one.
-            const fetchImpl = global.fetch.getMockImplementation();
-            global.fetch = jest.fn((url) => (/live-stats/.test(url) ? slow.then(ok) : fetchImpl(url)));
-            (0, eval)(SCRIPT.replace('<%= gameId %>', '901'));
-            await jest.advanceTimersByTimeAsync(1600);
-            expect(document.querySelector('.sp-tabs')).toBeNull();
-            land(ESPN);
-            for (let i = 0; i < 8; i++) await jest.advanceTimersByTimeAsync(0);
-            expect(txt('.sp-tabs .sp-tab')).toBe('Summary | Box score');
-        } finally {
-            jest.useRealTimers();
-        }
+    test('a box landing after a live paint waits for the next tick: no extra paint, no extra plays fetch', async () => {
+        let land;
+        let first = true;
+        await bootLive('live-nobox', () => (first ? (first = false, new Promise(r => { land = r; })) : ok(ESPN)));
+        const plays = playsCalls();
+        const strip = document.querySelector('.gd-livestrip');
+        land({ ok: true, status: 200, json: () => Promise.resolve(ESPN) });
+        for (let i = 0; i < 8; i++) await jest.advanceTimersByTimeAsync(0);
+        expect(document.querySelector('.gd-livestrip')).toBe(strip);    // not re-rendered
+        expect(playsCalls()).toBe(plays);
+        await nextTick();
+        expect(txt('.sp-tabs .sp-tab')).toBe('Summary | Box score');
+    });
+
+    test('each tick asks again, and its answer shows on the next paint', async () => {
+        const live = JSON.parse(JSON.stringify(ESPN));
+        await bootLive('live-nobox', () => ok(JSON.parse(JSON.stringify(live))));
+        expect(liveCalls()).toBe(1);
+        live.playerStats.away.passing[0].yds = 155;
+        await nextTick();
+        expect(liveCalls()).toBe(2);
+        await nextTick();
+        expect(txt('[data-panel="box"] td')).toContain('155');
+    });
+
+    test('ESPN gone past the server\'s stale window ({ source: null }): the box goes too', async () => {
+        let answer = ESPN;
+        await bootLive('live-nobox', () => ok(answer));
+        expect(document.querySelector('[data-tab="box"]')).not.toBeNull();
+        answer = { source: null };
+        await nextTick();
+        await nextTick();
+        expect(document.querySelector('[data-tab="box"]')).toBeNull();
     });
 });

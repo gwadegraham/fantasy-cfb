@@ -66,23 +66,13 @@
 
         async function load() {
             try {
-                // ESPN's live box is asked for alongside, so a live game's first
-                // paint already has its Box score — but never waited on for
-                // long: past LIVE_WAIT_MS the page paints without it, and it
-                // arrives on its own (gdFetchLiveStats).
-                var liveP = gdFetchLiveStats(null);
                 var res = await fetch('/games/detail/' + GAME_ID);
                 if (!res.ok) throw new Error('Game not found');
                 var game = await res.json();
-                var landed = await Promise.race([liveP, new Promise(function (r) { setTimeout(function () { r('late'); }, LIVE_WAIT_MS); })]);
-                if (landed === 'late') {
-                    liveP.then(function (got) {
-                        if (!got || !gdArt) return;
-                        var y = window.scrollY;
-                        render(gdGame, gdArt.logoMap, gdArt.colorMap, gdArt.abbrMap, gdArt.mascotMap);
-                        window.scrollTo(0, y);
-                    });
-                }
+                // ESPN's live box, asked for alongside the logos and never
+                // waited on: if it is back by the first paint, that paint has
+                // the Box score; if not, see gdLiveLanded below.
+                var liveP = gdFetchLiveStats(game);
 
                 // Fetch logos + colors for both teams (non-fatal if it fails)
                 var logoMap = {};
@@ -116,6 +106,7 @@
                 gdArt = { logoMap: logoMap, colorMap: colorMap, abbrMap: abbrMap, mascotMap: mascotMap };
                 gdSchedule(game);
                 gdFetchFantasy(game);
+                liveP.then(function (got) { gdLiveLanded(got, game); });
             } catch (err) {
                 container.innerHTML = '<div class="gd-error">Could not load game. <a href="/standings">Back to Standings</a></div>';
             }
@@ -159,15 +150,18 @@
         //
         // Nothing else on the live page changes: it only fills the Box score
         // tab, which a live game otherwise does not have.
+        //
+        // It is never waited on. The first paint and every 10s tick paint with
+        // whatever box the last answer brought, so the gamecast, the score
+        // and the tick's timing are exactly what they were; the box trails
+        // by at most one tick, inside ESPN's own 20s cache anyway.
         var gdLive = null;            // the last ESPN box, kept through a blip
         var gdLiveDone = false;       // a final is asked once
-        var LIVE_WAIT_MS = 1500;
+        var gdLiveDrawn = false;      // the last paint drew gdLive
         var LIVE_LOOKBACK_MS = 3 * 24 * 3600 * 1000;
 
         function gdWantsLive(game) {
-            // The first load asks regardless; the server knows the game.
-            if (!game) return true;
-            if (!game.startDate || Date.parse(game.startDate) > Date.now()) return false;
+            if (!game || !game.startDate || Date.parse(game.startDate) > Date.now()) return false;
             if (!game.completed) return true;
             var ps = game.playerStats;
             var cfbd = !!ps && (Object.keys(ps.home || {}).length > 0 || Object.keys(ps.away || {}).length > 0);
@@ -181,14 +175,27 @@
                 var res = await fetch('/games/live-stats/' + GAME_ID);
                 if (!res.ok) return false;
                 var data = await res.json();
-                if (game && game.completed) gdLiveDone = true;
+                if (game.completed) gdLiveDone = true;
                 if (data && data.source === 'espn') { gdLive = data; return true; }
-                // ESPN down past the server's own stale window: a live game
-                // keeps the last box it had rather than losing the tab.
+                // No box: pre-game, CFBD's has landed, or ESPN has been down
+                // past the server's own stale window — where an old box is
+                // worse than none. A failed request (above) keeps the last one.
+                gdLive = null;
                 return false;
             } catch (e) {
                 return false;
             }
+        }
+
+        // A box that arrived after the paint. A live game leaves it to the next
+        // tick: repainting now would cost a second /games/plays request and a
+        // scroll jump. A final has no next tick, so it repaints once — its
+        // plays are latched by then, so the repaint asks CFBD for nothing.
+        function gdLiveLanded(got, game, fresh) {
+            if (!got || (gdLiveDrawn && !fresh) || !game.completed || !gdArt) return;
+            var y = window.scrollY;
+            render(gdGame, gdArt.logoMap, gdArt.colorMap, gdArt.abbrMap, gdArt.mascotMap);
+            window.scrollTo(0, y);
         }
 
         function gdSchedule(game) {
@@ -200,9 +207,10 @@
 
         async function gdRefresh() {
             try {
-                // ESPN's live box rides the same tick, so the page paints once.
-                var both = await Promise.all([fetch('/games/detail/' + GAME_ID), gdFetchLiveStats(gdGame)]);
-                var res = both[0];
+                // Not awaited: this tick paints with the box the last one
+                // brought, and never waits on ESPN.
+                var liveP = gdFetchLiveStats(gdGame);
+                var res = await fetch('/games/detail/' + GAME_ID);
                 if (!res.ok) throw new Error('refresh failed');
                 var game = await res.json();
 
@@ -220,6 +228,9 @@
                 // Only when the score or the result moved — the points can't
                 // have changed otherwise, and this is a roster read.
                 gdFetchFantasy(game);
+                // The tick the game went final: no tick follows, so its box is
+                // asked for once more, as final, and repainted when it lands.
+                if (game.completed) gdFetchLiveStats(game).then(function (got) { gdLiveLanded(got, game, true); });
             } catch (err) {
                 // A missed tick is a stale clock, not a broken page — keep the
                 // loop alive so the next one can recover.
@@ -880,6 +891,7 @@
             // stats at the top of the tab, since Summary's come from CFBD too.
             var hasBox = function (ps) { return !!ps && (Object.keys(ps.home || {}).length > 0 || Object.keys(ps.away || {}).length > 0); };
             var espnBox = !hasBox(game.playerStats) && gdLive && hasBox(gdLive.playerStats) ? gdLive : null;
+            gdLiveDrawn = !!espnBox;
             var boxSrc = espnBox ? espnBox.playerStats : game.playerStats;
             var boxHtml = '';
             var hp = (boxSrc && boxSrc.home) || {};
@@ -918,7 +930,10 @@
             if (espnBox && boxHtml) {
                 boxHtml = '<p class="gd-src">' + (isFinal ? 'Early stats from ESPN. The official box score replaces them once it posts.'
                         : 'Live stats from ESPN. The official box score replaces them once the game is final.') + '</p>'
-                    + gdGameLeaders(espnBox.leaders, teamCtx) + teamStatsFor(espnBox.teamStats) + boxHtml;
+                    + gdGameLeaders(espnBox.leaders, teamCtx)
+                    // CFBD's team stats can land before its player box; then
+                    // Summary has them, and the tab does not repeat ESPN's.
+                    + (teamStatsHtml ? '' : teamStatsFor(espnBox.teamStats)) + boxHtml;
             }
 
             // ---- Additional info ----
@@ -1995,14 +2010,14 @@
         function playerTable(players, cols, extractFn, team) {
             if (!players || !players.length) return '<div class="gd-player-table gd-player-empty">No stats</div>';
             var html = '<div class="gd-player-table" style="border-top: 3px solid ' + team.color + '">';
-            html += '<div class="gd-pt-header"><img class="gd-pt-logo" src="' + team.logo + '" alt="" /> ' + team.name + '</div>';
+            html += '<div class="gd-pt-header"><img class="gd-pt-logo" src="' + esc(team.logo) + '" alt="" /> ' + esc(team.name) + '</div>';
             html += '<div class="gd-table-scroll"><table>';
             html += '<thead><tr><th class="gd-player-name">Player</th>';
             for (var c = 0; c < cols.length; c++) html += '<th>' + cols[c] + '</th>';
             html += '</tr></thead><tbody>';
             for (var i = 0; i < players.length; i++) {
                 var vals = extractFn(players[i]);
-                html += '<tr><td class="gd-player-name">' + players[i].name + '</td>';
+                html += '<tr><td class="gd-player-name">' + esc(players[i].name) + '</td>';
                 for (var c = 0; c < vals.length; c++) html += '<td>' + fmt(vals[c]) + '</td>';
                 html += '</tr>';
             }

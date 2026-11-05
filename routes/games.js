@@ -1162,24 +1162,6 @@ router.post('/:season/player-stats', async (req, res) => {
     }
 });
 
-// Drive chart + advanced box score for one game, from CFBD /live/plays.
-//
-// Split out from /detail/:gameId rather than folded into it on purpose: the
-// detail payload is served on every 30s live tick and reads only local data,
-// while this one can cost a billable CFBD call. Keeping them separate means the
-// client asks for plays on its own terms — and stops asking the moment a game
-// is final and persisted — instead of every detail refresh dragging a
-// potentially billable fetch along with it.
-//
-// Three ways this answers, in increasing cost:
-//   - `source: 'db'`     the game is final and was stored on a previous view. Free.
-//   - `source: 'cache'`  another viewer fetched it within the TTL. Free.
-//   - `source: 'cfbd'`   a real call. Persisted immediately if the game is final,
-//                        so it is the last one this game will ever need.
-//
-// A fourth answer costs nothing and is not a success: `status: 'budget'` means
-// the module is at its remaining-calls floor and declined to fetch. 200, not an
-// error — the game page is fine and only the play log is paused.
 // ESPN's live box score for one game (modules/cfb-espn-live.js): while it is
 // on, and for a final whose CFBD box has not landed. Apart from /detail on
 // purpose, like /plays: /detail reads only local data on every 10s tick, and
@@ -1201,6 +1183,24 @@ router.get('/live-stats/:gameId', async (req, res) => {
     }
 });
 
+// Drive chart + advanced box score for one game, from CFBD /live/plays.
+//
+// Split out from /detail/:gameId rather than folded into it on purpose: the
+// detail payload is served on every 30s live tick and reads only local data,
+// while this one can cost a billable CFBD call. Keeping them separate means the
+// client asks for plays on its own terms — and stops asking the moment a game
+// is final and persisted — instead of every detail refresh dragging a
+// potentially billable fetch along with it.
+//
+// Three ways this answers, in increasing cost:
+//   - `source: 'db'`     the game is final and was stored on a previous view. Free.
+//   - `source: 'cache'`  another viewer fetched it within the TTL. Free.
+//   - `source: 'cfbd'`   a real call. Persisted immediately if the game is final,
+//                        so it is the last one this game will ever need.
+//
+// A fourth answer costs nothing and is not a success: `status: 'budget'` means
+// the module is at its remaining-calls floor and declined to fetch. 200, not an
+// error — the game page is fine and only the play log is paused.
 router.get('/plays/:gameId', async (req, res) => {
     try {
         const gameId = Number(req.params.gameId);
