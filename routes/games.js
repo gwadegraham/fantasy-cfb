@@ -18,6 +18,7 @@ const { massCreateInputError, gamesResponseError, stripAbsentScores } = require(
 const { pickLogo } = require('../public/logo.js');
 const { getLivePlays, summarizeForStorage, isFinalPayload } = require('../modules/live-plays');
 const { buildPlayByPlay, buildDriveChart } = require('../modules/play-by-play');
+const cfbEspnLive = require('../modules/cfb-espn-live');
 const {
     ownersByTeam, pointsByTeamGame, weekWindows, defaultWeek, weekState,
     conferenceList, fbsConferenceNames, weekRangeOf, weekList, recordsByTeam,
@@ -1158,6 +1159,27 @@ router.post('/:season/player-stats', async (req, res) => {
     } catch (err) {
         console.log('Error ingesting player stats:', err.message);
         res.status(400).json({ message: err.message });
+    }
+});
+
+// ESPN's live box score for one game (modules/cfb-espn-live.js): while it is
+// on, and for a final whose CFBD box has not landed. Apart from /detail on
+// purpose, like /plays: /detail reads only local data on every 10s tick, and
+// this one reaches out to ESPN. The ESPN call is cached per game for 20s
+// (modules/espn-summary.js), so every viewer of a game shares one.
+//
+// An answer of { source: null } is the normal one (pre-game, or a final with
+// CFBD's box): the page simply has no live box.
+router.get('/live-stats/:gameId', async (req, res) => {
+    try {
+        const gameId = Number(req.params.gameId);
+        if (!Number.isInteger(gameId)) return res.status(400).json({ message: 'A numeric game id is required' });
+        const game = await Game.findOne({ id: gameId }, { id: 1, homeId: 1, awayId: 1, completed: 1, startDate: 1, playerStats: 1 }).lean();
+        if (!game) return res.status(404).json({ message: 'Game not found' });
+        res.json((await cfbEspnLive.forGame(game)) || { source: null });
+    } catch (err) {
+        console.error(`live-stats: ${req.params.gameId} failed: ${err.message}`);
+        res.status(500).json({ message: 'Live stats are unavailable' });
     }
 });
 

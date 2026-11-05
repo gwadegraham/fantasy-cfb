@@ -646,6 +646,27 @@
     flex-shrink: 0;
 }
 
+/* ---- Box score from ESPN (live, or a final before CFBD's lands) ---- */
+.gd-src { font-size: 0.75rem; color: var(--cc-muted-2); margin: 0 2px 12px; }
+/* Game leaders: stacked, because ESPN's lines ("14/19, 175 YDS, 1 TD") do
+   not fit the season leaders' one-line row at phone width. */
+.gd-gl-row { padding: 10px 0; border-bottom: 1px solid var(--cc-border); }
+.gd-gl-row:last-child { border-bottom: none; }
+.gd-gl-cat {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--cc-muted-2);
+    text-align: center;
+    margin-bottom: 4px;
+}
+.gd-gl-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.gd-gl-p b { display: block; font-size: 0.85rem; font-weight: 600; line-height: 1.25; }
+.gd-gl-p i { font-style: normal; font-weight: 500; font-size: 0.65rem; color: var(--cc-muted-2); }
+.gd-gl-p span { display: block; margin-top: 2px; font-size: 0.8rem; font-weight: 700; color: var(--cc-accent); font-variant-numeric: tabular-nums; }
+.gd-gl-home { text-align: right; }
+
 /* ---- Mobile ---- */
 @media (max-width: 600px) {
     .gd-matchup-grid { column-gap: 8px; }

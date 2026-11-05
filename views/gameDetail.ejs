@@ -69,6 +69,10 @@
                 var res = await fetch('/games/detail/' + GAME_ID);
                 if (!res.ok) throw new Error('Game not found');
                 var game = await res.json();
+                // ESPN's live box, asked for alongside the logos and never
+                // waited on: if it is back by the first paint, that paint has
+                // the Box score; if not, see gdLiveLanded below.
+                var liveP = gdFetchLiveStats(game);
 
                 // Fetch logos + colors for both teams (non-fatal if it fails)
                 var logoMap = {};
@@ -102,6 +106,7 @@
                 gdArt = { logoMap: logoMap, colorMap: colorMap, abbrMap: abbrMap, mascotMap: mascotMap };
                 gdSchedule(game);
                 gdFetchFantasy(game);
+                liveP.then(function (got) { gdLiveLanded(got, game); });
             } catch (err) {
                 container.innerHTML = '<div class="gd-error">Could not load game. <a href="/standings">Back to Standings</a></div>';
             }
@@ -135,6 +140,64 @@
             return Date.parse(game.startDate) <= Date.now();
         }
 
+        // ---- ESPN live box score ------------------------------------------
+        //
+        // GET /games/live-stats/:id (modules/cfb-espn-live.js): ESPN's player
+        // box, team stats and game leaders while CFBD has no box — the whole
+        // of a live game, and a final's first hours. Free (no CFBD call), and
+        // cached per game for 20s on the server, so a 10s tick costs ESPN at
+        // most one call per game per 20s however many people are watching.
+        //
+        // Nothing else on the live page changes: it only fills the Box score
+        // tab, which a live game otherwise does not have.
+        //
+        // It is never waited on. The first paint and every 10s tick paint with
+        // whatever box the last answer brought, so the gamecast, the score
+        // and the tick's timing are exactly what they were; the box trails
+        // by at most one tick, inside ESPN's own 20s cache anyway.
+        var gdLive = null;            // the last ESPN box, kept through a blip
+        var gdLiveDone = false;       // a final is asked once
+        var gdLiveDrawn = false;      // the last paint drew gdLive
+        var LIVE_LOOKBACK_MS = 3 * 24 * 3600 * 1000;
+
+        function gdWantsLive(game) {
+            if (!game || !game.startDate || Date.parse(game.startDate) > Date.now()) return false;
+            if (!game.completed) return true;
+            var ps = game.playerStats;
+            var cfbd = !!ps && (Object.keys(ps.home || {}).length > 0 || Object.keys(ps.away || {}).length > 0);
+            return !cfbd && !gdLiveDone && Date.now() - Date.parse(game.startDate) <= LIVE_LOOKBACK_MS;
+        }
+
+        // Resolves true when a box arrived, false otherwise. Never rejects.
+        async function gdFetchLiveStats(game) {
+            if (document.hidden || !gdWantsLive(game)) return false;
+            try {
+                var res = await fetch('/games/live-stats/' + GAME_ID);
+                if (!res.ok) return false;
+                var data = await res.json();
+                if (game.completed) gdLiveDone = true;
+                if (data && data.source === 'espn') { gdLive = data; return true; }
+                // No box: pre-game, CFBD's has landed, or ESPN has been down
+                // past the server's own stale window — where an old box is
+                // worse than none. A failed request (above) keeps the last one.
+                gdLive = null;
+                return false;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // A box that arrived after the paint. A live game leaves it to the next
+        // tick: repainting now would cost a second /games/plays request and a
+        // scroll jump. A final has no next tick, so it repaints once — its
+        // plays are latched by then, so the repaint asks CFBD for nothing.
+        function gdLiveLanded(got, game, fresh) {
+            if (!got || (gdLiveDrawn && !fresh) || !game.completed || !gdArt) return;
+            var y = window.scrollY;
+            render(gdGame, gdArt.logoMap, gdArt.colorMap, gdArt.abbrMap, gdArt.mascotMap);
+            window.scrollTo(0, y);
+        }
+
         function gdSchedule(game) {
             gdGame = game;
             clearTimeout(gdTimer);
@@ -144,6 +207,9 @@
 
         async function gdRefresh() {
             try {
+                // Not awaited: this tick paints with the box the last one
+                // brought, and never waits on ESPN.
+                var liveP = gdFetchLiveStats(gdGame);
                 var res = await fetch('/games/detail/' + GAME_ID);
                 if (!res.ok) throw new Error('refresh failed');
                 var game = await res.json();
@@ -162,6 +228,9 @@
                 // Only when the score or the result moved — the points can't
                 // have changed otherwise, and this is a roster read.
                 gdFetchFantasy(game);
+                // The tick the game went final: no tick follows, so its box is
+                // asked for once more, as final, and repainted when it lands.
+                if (game.completed) gdFetchLiveStats(game).then(function (got) { gdLiveLanded(got, game, true); });
             } catch (err) {
                 // A missed tick is a stale clock, not a broken page — keep the
                 // loop alive so the next one can recover.
@@ -780,43 +849,59 @@
                 + renderDrivesSection(teamCtx);
 
             // ---- Team stats comparison ----
-            var teamStatsHtml = '';
-            var hs = (game.teamStats && game.teamStats.home) || {};
-            var as = (game.teamStats && game.teamStats.away) || {};
-            if (Object.keys(hs).length || Object.keys(as).length) {
-                var num = function (v) { return typeof v === 'number' ? v : (v != null && v !== '' && isFinite(v) ? Number(v) : null); };
-                // [label, away text, home text, away number, home number, better]
-                // Turnovers and penalties: lower is better.
-                var statRows = [
-                    ['Total Yards', fmt(as.totalYards), fmt(hs.totalYards), num(as.totalYards), num(hs.totalYards), 'high'],
-                    ['Passing Yards', fmt(as.netPassingYards), fmt(hs.netPassingYards), num(as.netPassingYards), num(hs.netPassingYards), 'high'],
-                    ['Rushing Yards', fmt(as.rushingYards), fmt(hs.rushingYards), num(as.rushingYards), num(hs.rushingYards), 'high'],
-                    ['Passing TDs', fmt(as.passingTDs), fmt(hs.passingTDs), num(as.passingTDs), num(hs.passingTDs), 'high'],
-                    ['Rushing TDs', fmt(as.rushingTDs), fmt(hs.rushingTDs), num(as.rushingTDs), num(hs.rushingTDs), 'high'],
-                    ['Turnovers', fmt(as.turnovers), fmt(hs.turnovers), num(as.turnovers), num(hs.turnovers), 'low'],
-                    ['Sacks', fmt(as.sacks), fmt(hs.sacks), num(as.sacks), num(hs.sacks), 'high'],
-                    ['TFL', fmt(as.tacklesForLoss), fmt(hs.tacklesForLoss), num(as.tacklesForLoss), num(hs.tacklesForLoss), 'high'],
-                    ['Penalties', fmt(as.penalties), fmt(hs.penalties), num(as.penalties), num(hs.penalties), 'low'],
-                    ['3rd Down %', pct(as.thirdDownPct), pct(hs.thirdDownPct), num(as.thirdDownPct), num(hs.thirdDownPct), 'high'],
-                    ['4th Down %', pct(as.fourthDownPct), pct(hs.fourthDownPct), num(as.fourthDownPct), num(hs.fourthDownPct), 'high'],
-                    ['Possession', timeFmt(as.possessionSeconds), timeFmt(hs.possessionSeconds), num(as.possessionSeconds), num(hs.possessionSeconds), 'high']
-                ];
-                teamStatsHtml += '<h2 class="sp-h">Team stats</h2><div class="sp-card fg-vs">' + kit.vsHead(awayAbbr, homeAbbr);
-                for (var i = 0; i < statRows.length; i++) {
-                    var row = statRows[i];
-                    teamStatsHtml += kit.vsRow(row[0], '', esc(row[1]), esc(row[2]), row[3], row[4], row[5], heroColors);
+            // A function because two sources draw it: CFBD's stored stats on
+            // Summary, and ESPN's live ones in a live game's Box score.
+            function teamStatsFor(ts) {
+                var teamStatsHtml = '';
+                var hs = (ts && ts.home) || {};
+                var as = (ts && ts.away) || {};
+                if (Object.keys(hs).length || Object.keys(as).length) {
+                    var num = function (v) { return typeof v === 'number' ? v : (v != null && v !== '' && isFinite(v) ? Number(v) : null); };
+                    // [label, away text, home text, away number, home number, better]
+                    // Turnovers and penalties: lower is better.
+                    var statRows = [
+                        ['Total Yards', fmt(as.totalYards), fmt(hs.totalYards), num(as.totalYards), num(hs.totalYards), 'high'],
+                        ['Passing Yards', fmt(as.netPassingYards), fmt(hs.netPassingYards), num(as.netPassingYards), num(hs.netPassingYards), 'high'],
+                        ['Rushing Yards', fmt(as.rushingYards), fmt(hs.rushingYards), num(as.rushingYards), num(hs.rushingYards), 'high'],
+                        ['Passing TDs', fmt(as.passingTDs), fmt(hs.passingTDs), num(as.passingTDs), num(hs.passingTDs), 'high'],
+                        ['Rushing TDs', fmt(as.rushingTDs), fmt(hs.rushingTDs), num(as.rushingTDs), num(hs.rushingTDs), 'high'],
+                        ['Turnovers', fmt(as.turnovers), fmt(hs.turnovers), num(as.turnovers), num(hs.turnovers), 'low'],
+                        ['Sacks', fmt(as.sacks), fmt(hs.sacks), num(as.sacks), num(hs.sacks), 'high'],
+                        ['TFL', fmt(as.tacklesForLoss), fmt(hs.tacklesForLoss), num(as.tacklesForLoss), num(hs.tacklesForLoss), 'high'],
+                        ['Penalties', fmt(as.penalties), fmt(hs.penalties), num(as.penalties), num(hs.penalties), 'low'],
+                        ['3rd Down %', pct(as.thirdDownPct), pct(hs.thirdDownPct), num(as.thirdDownPct), num(hs.thirdDownPct), 'high'],
+                        ['4th Down %', pct(as.fourthDownPct), pct(hs.fourthDownPct), num(as.fourthDownPct), num(hs.fourthDownPct), 'high'],
+                        ['Possession', timeFmt(as.possessionSeconds), timeFmt(hs.possessionSeconds), num(as.possessionSeconds), num(hs.possessionSeconds), 'high']
+                    ];
+                    teamStatsHtml += '<h2 class="sp-h">Team stats</h2><div class="sp-card fg-vs">' + kit.vsHead(awayAbbr, homeAbbr);
+                    for (var i = 0; i < statRows.length; i++) {
+                        var row = statRows[i];
+                        teamStatsHtml += kit.vsRow(row[0], '', esc(row[1]), esc(row[2]), row[3], row[4], row[5], heroColors);
+                    }
+                    teamStatsHtml += '</div>';
                 }
-                teamStatsHtml += '</div>';
+                return teamStatsHtml;
             }
+            var teamStatsHtml = teamStatsFor(game.teamStats);
 
             // ---- Player stats ----
+            // CFBD's stored box whenever there is one. Until it lands — the
+            // whole of a live game, and the hours after a final — ESPN's live
+            // one stands in (gdFetchLiveStats), with its game leaders and team
+            // stats at the top of the tab, since Summary's come from CFBD too.
+            var hasBox = function (ps) { return !!ps && (Object.keys(ps.home || {}).length > 0 || Object.keys(ps.away || {}).length > 0); };
+            var espnBox = !hasBox(game.playerStats) && gdLive && hasBox(gdLive.playerStats) ? gdLive : null;
+            gdLiveDrawn = !!espnBox;
+            var boxSrc = espnBox ? espnBox.playerStats : game.playerStats;
             var boxHtml = '';
-            var hp = (game.playerStats && game.playerStats.home) || {};
-            var ap = (game.playerStats && game.playerStats.away) || {};
+            var hp = (boxSrc && boxSrc.home) || {};
+            var ap = (boxSrc && boxSrc.away) || {};
             if (Object.keys(hp).length || Object.keys(ap).length) {
+                // ESPN sends no QBR, so its box has no column of dashes.
                 boxHtml += renderPlayerSection('Passing', ap.passing, hp.passing,
-                    ['C/ATT', 'YDS', 'TD', 'INT', 'QBR'],
-                    function (p) { return [p.c + '/' + p.att, p.yds, p.td, p.int, p.qbr != null ? p.qbr.toFixed(1) : '-']; }, teamCtx);
+                    espnBox ? ['C/ATT', 'YDS', 'TD', 'INT'] : ['C/ATT', 'YDS', 'TD', 'INT', 'QBR'],
+                    espnBox ? function (p) { return [p.c + '/' + p.att, p.yds, p.td, p.int]; }
+                        : function (p) { return [p.c + '/' + p.att, p.yds, p.td, p.int, p.qbr != null ? p.qbr.toFixed(1) : '-']; }, teamCtx);
 
                 boxHtml += renderPlayerSection('Rushing', ap.rushing, hp.rushing,
                     ['CAR', 'YDS', 'TD', 'LNG'],
@@ -841,6 +926,14 @@
                         ['NO', 'YDS', 'AVG', 'LNG', 'IN20'],
                         function (p) { return [p.no, p.yds, p.avg != null ? p.avg.toFixed(1) : '-', p.lng, p.in20]; }, teamCtx);
                 }
+            }
+            if (espnBox && boxHtml) {
+                boxHtml = '<p class="gd-src">' + (isFinal ? 'Early stats from ESPN. The official box score replaces them once it posts.'
+                        : 'Live stats from ESPN. The official box score replaces them once the game is final.') + '</p>'
+                    + gdGameLeaders(espnBox.leaders, teamCtx)
+                    // CFBD's team stats can land before its player box; then
+                    // Summary has them, and the tab does not repeat ESPN's.
+                    + (teamStatsHtml ? '' : teamStatsFor(espnBox.teamStats)) + boxHtml;
             }
 
             // ---- Additional info ----
@@ -1872,6 +1965,32 @@
             return String(n);
         }
 
+        // ESPN's game leaders, one row per category: each side's leader with
+        // ESPN's own line ("14/19, 175 YDS, 1 TD"), stacked so a long line
+        // fits a phone.
+        var GL_CATS = [['passingYards', 'Passing'], ['rushingYards', 'Rushing'], ['receivingYards', 'Receiving'], ['totalTackles', 'Tackles']];
+        function gdGameLeaders(leaders, teamCtx) {
+            if (!leaders) return '';
+            var line = function (key, p) { return key === 'totalTackles' ? p.line + ' tackles' : p.line.replace(/ YDS\b/, ' yds'); };
+            var cell = function (key, p, side) {
+                return '<div class="gd-gl-p gd-gl-' + side + '">' + (p
+                    ? '<b>' + esc(p.name) + (p.pos ? ' <i>' + esc(p.pos) + '</i>' : '') + '</b><span>' + esc(line(key, p)) + '</span>'
+                    : '<b>—</b>') + '</div>';
+            };
+            var rows = GL_CATS.map(function (c) {
+                var a = leaders.away && leaders.away[c[0]], h = leaders.home && leaders.home[c[0]];
+                if (!a && !h) return '';
+                return '<div class="gd-gl-row"><div class="gd-gl-cat">' + c[1] + '</div><div class="gd-gl-pair">'
+                    + cell(c[0], a, 'away') + cell(c[0], h, 'home') + '</div></div>';
+            }).join('');
+            if (!rows) return '';
+            return '<div class="gd-section"><div class="gd-ss-header">'
+                + '<div class="gd-ss-team-label">' + (teamCtx.away.logo ? '<img src="' + esc(teamCtx.away.logo) + '" alt="" />' : '') + '<span>' + esc(teamCtx.away.abbr) + '</span></div>'
+                + '<h3 class="gd-section-title">Game Leaders</h3>'
+                + '<div class="gd-ss-team-label" style="flex-direction:row-reverse">' + (teamCtx.home.logo ? '<img src="' + esc(teamCtx.home.logo) + '" alt="" />' : '') + '<span>' + esc(teamCtx.home.abbr) + '</span></div>'
+                + '</div>' + rows + '</div>';
+        }
+
         function renderPlayerSection(title, awayPlayers, homePlayers, cols, extractFn, teamCtx) {
             awayPlayers = awayPlayers || [];
             homePlayers = homePlayers || [];
@@ -1891,14 +2010,14 @@
         function playerTable(players, cols, extractFn, team) {
             if (!players || !players.length) return '<div class="gd-player-table gd-player-empty">No stats</div>';
             var html = '<div class="gd-player-table" style="border-top: 3px solid ' + team.color + '">';
-            html += '<div class="gd-pt-header"><img class="gd-pt-logo" src="' + team.logo + '" alt="" /> ' + team.name + '</div>';
+            html += '<div class="gd-pt-header"><img class="gd-pt-logo" src="' + esc(team.logo) + '" alt="" /> ' + esc(team.name) + '</div>';
             html += '<div class="gd-table-scroll"><table>';
             html += '<thead><tr><th class="gd-player-name">Player</th>';
             for (var c = 0; c < cols.length; c++) html += '<th>' + cols[c] + '</th>';
             html += '</tr></thead><tbody>';
             for (var i = 0; i < players.length; i++) {
                 var vals = extractFn(players[i]);
-                html += '<tr><td class="gd-player-name">' + players[i].name + '</td>';
+                html += '<tr><td class="gd-player-name">' + esc(players[i].name) + '</td>';
                 for (var c = 0; c < vals.length; c++) html += '<td>' + fmt(vals[c]) + '</td>';
                 html += '</tr>';
             }
