@@ -41,6 +41,9 @@ function gameOf(kind) {
         }
     });
     if (kind === 'live') return Object.assign(played, { completed: false, period: 3, clock: '7:41', situation: '2nd & 7 at WMU 34' });
+    // As every live game really is: CFBD's box lands only after the final.
+    if (kind === 'live-nobox') return Object.assign(played, { completed: false, period: 3, clock: '7:41', situation: '2nd & 7 at WMU 34', playerStats: {}, teamStats: {} });
+    if (kind === 'final-nobox') return Object.assign(played, { completed: true, playerStats: {}, teamStats: {} });
     return Object.assign(played, { completed: true });
 }
 
@@ -51,7 +54,7 @@ function fantasyOf(kind) {
             away: { teamId: BSU, owner: owner('Always Next Year'), banked: null, ifWin: 2, ifLoss: 0 },
             home: { teamId: WMU, owner: owner('Hogs Gone Wild'), banked: null, ifWin: 3, ifLoss: 1 } };
     }
-    return { league: 'graham-league', final: kind === 'final',
+    return { league: 'graham-league', final: /^final/.test(kind),
         away: { teamId: BSU, owner: owner('Always Next Year'), banked: 1 },
         home: { teamId: WMU, owner: null, banked: null } };
 }
@@ -74,10 +77,11 @@ async function boot(kind, opts = {}) {
         if (/\/games\/plays\//.test(url)) return ok({ plays: [], drives: [], status: kind === 'pre' ? 'none' : 'final', source: 'db' });
         if (/\/games\/fantasy\//.test(url) && opts.fantasyRes) return Promise.resolve(opts.fantasyRes);
         if (/\/games\/fantasy\//.test(url)) return opts.fantasy ? opts.fantasy.then(ok) : ok(fantasyOf(kind));
+        if (/\/games\/live-stats\//.test(url)) return ok(opts.liveStats || { source: null });
         return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
     (0, eval)(SCRIPT.replace('<%= gameId %>', '901'));
-    for (let i = 0; i < 8; i++) await tick();
+    for (let i = 0; i < 8; i++) await (opts.fake ? jest.advanceTimersByTimeAsync(0) : tick());
     return document.getElementById('game-detail');
 }
 const txt = (sel) => Array.from(document.querySelectorAll(sel)).map(n => n.textContent.replace(/\s+/g, ' ').trim()).join(' | ');
@@ -401,6 +405,100 @@ describe('a final opened in a background tab (#506 click-through)', () => {
             expect(playsCalls()).toBe(1);
         } finally {
             delete document.hidden;
+        }
+    });
+});
+
+// ESPN's live box (modules/cfb-espn-live.js). The rule: nothing on the live
+// page moves; ESPN only fills the Box score tab CFBD cannot yet.
+describe('live stats from ESPN', () => {
+    const ESPN = {
+        source: 'espn', final: false,
+        playerStats: {
+            away: { passing: [{ name: 'Maddux Madsen', c: 12, att: 18, yds: 140, td: 2, int: 0, qbr: null }],
+                rushing: [{ name: 'Sire Gaines', car: 9, yds: 61, td: 1, lng: 22 }] },
+            home: { passing: [{ name: 'Broc Lowry', c: 7, att: 15, yds: 66, td: 0, int: 1, qbr: null }] }
+        },
+        teamStats: { away: { totalYards: 241, turnovers: 0 }, home: { totalYards: 118, turnovers: 1 } },
+        leaders: {
+            away: { passingYards: { name: 'Maddux Madsen', pos: 'QB', line: '12/18, 140 YDS, 2 TD' } },
+            home: { passingYards: { name: 'Broc Lowry', pos: 'QB', line: '7/15, 66 YDS, 1 INT' } }
+        }
+    };
+    const liveCalls = () => global.fetch.mock.calls.filter(c => /\/games\/live-stats\//.test(c[0])).length;
+    // Everything above the tabs, and Summary: what a live page shows today.
+    const today = () => {
+        const root = document.getElementById('game-detail');
+        const above = Array.from(root.children).filter(e => !e.matches('.sp-tabs, .fg-panel')).map(e => e.outerHTML).join('');
+        const summary = root.querySelector('[data-panel="summary"]');
+        return above + '|' + (summary ? summary.innerHTML : '');
+    };
+
+    test('a live game gets a Box score tab from ESPN, and nothing else on the page changes', async () => {
+        await boot('live-nobox');
+        expect(document.querySelector('.sp-tabs')).toBeNull();          // today: no box, no tabs
+        const before = today();
+        await boot('live-nobox', { liveStats: ESPN });
+        expect(txt('.sp-tabs .sp-tab')).toBe('Summary | Box score');
+        expect(visiblePanels()).toEqual(['summary']);
+        expect(today()).toBe(before);
+        const box = document.querySelector('[data-panel="box"]');
+        expect(box.querySelector('.gd-src').textContent).toMatch(/^Live stats from ESPN\./);
+        expect(txt('[data-panel="box"] .gd-gl-row')).toBe('PassingMaddux Madsen QB12/18, 140 yds, 2 TDBroc Lowry QB7/15, 66 yds, 1 INT');
+        expect(txt('[data-panel="box"] .sp-h')).toBe('Team stats');
+        expect(box.querySelectorAll('.gd-player-table')).toHaveLength(4);
+        // ESPN has no QBR: no column of dashes.
+        expect(Array.from(box.querySelectorAll('th')).some(th => th.textContent === 'QBR')).toBe(false);
+    });
+
+    test('CFBD\'s box wins whenever there is one: no ESPN note, QBR back', async () => {
+        await boot('final', { liveStats: ESPN });
+        const box = document.querySelector('[data-panel="box"]');
+        expect(box.querySelector('.gd-src')).toBeNull();
+        expect(box.querySelector('.gd-gl-row')).toBeNull();
+        expect(txt('[data-panel="box"] .gd-player-name')).toContain('Maddux Madsen');
+        expect(Array.from(box.querySelectorAll('th')).some(th => th.textContent === 'QBR')).toBe(true);
+    });
+
+    test('a final before CFBD\'s box lands: ESPN stands in, says so, and is asked once', async () => {
+        await boot('final-nobox', { liveStats: Object.assign({}, ESPN, { final: true }) });
+        expect(document.querySelector('[data-panel="box"] .gd-src').textContent).toMatch(/^Early stats from ESPN\./);
+        expect(liveCalls()).toBe(1);
+    });
+
+    test('each live tick asks again, with the score, and paints once', async () => {
+        jest.useFakeTimers();
+        try {
+            await boot('live-nobox', { liveStats: ESPN, fake: true });
+            expect(liveCalls()).toBe(1);
+            ESPN.playerStats.away.passing[0].yds = 155;
+            await jest.advanceTimersByTimeAsync(10000);
+            for (let i = 0; i < 8; i++) await jest.advanceTimersByTimeAsync(0);
+            expect(liveCalls()).toBe(2);
+            expect(txt('[data-panel="box"] td')).toContain('155');
+        } finally {
+            ESPN.playerStats.away.passing[0].yds = 140;
+            jest.useRealTimers();
+        }
+    });
+
+    test('ESPN slow to answer: the page paints without it, then gains the tab', async () => {
+        jest.useFakeTimers();
+        try {
+            let land;
+            const slow = new Promise(r => { land = r; });
+            await boot('live-nobox', { fake: true });
+            // A fresh page whose first live-stats call is the slow one.
+            const fetchImpl = global.fetch.getMockImplementation();
+            global.fetch = jest.fn((url) => (/live-stats/.test(url) ? slow.then(ok) : fetchImpl(url)));
+            (0, eval)(SCRIPT.replace('<%= gameId %>', '901'));
+            await jest.advanceTimersByTimeAsync(1600);
+            expect(document.querySelector('.sp-tabs')).toBeNull();
+            land(ESPN);
+            for (let i = 0; i < 8; i++) await jest.advanceTimersByTimeAsync(0);
+            expect(txt('.sp-tabs .sp-tab')).toBe('Summary | Box score');
+        } finally {
+            jest.useRealTimers();
         }
     });
 });

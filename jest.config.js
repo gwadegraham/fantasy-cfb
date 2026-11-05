@@ -419,6 +419,14 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // ESPN's live football box in CFBD's shapes, pinned to a real game.
+        // The branch floor is the feed's missing-field guards.
+        "./modules/cfb-espn-live.js": {
+            statements: 96,
+            branches: 75,
+            functions: 100,
+            lines: 100
+        },
         // ESPN's basketball lines in CBBD's shapes, pinned to a real game.
         "./modules/hoops-espn-live.js": {
             statements: 98,
