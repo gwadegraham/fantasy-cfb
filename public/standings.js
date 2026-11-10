@@ -860,6 +860,26 @@ function revealRivalryGames() {
     displaySchedule(usersData);
 }
 
+// Every-game lists for settled weeks ("Show all games"), loaded on demand one
+// week at a time and kept across re-renders (the full payload replaces the
+// fast one's cards), keyed league|season|week -> { 'aId|bId': { aAll, bAll } }.
+// h2hAllOn holds the cards the reader switched to all games, week|pair.
+const h2hAllCache = {};
+const h2hAllOn = new Set();
+async function loadH2HAllGames(league, season, week) {
+    const key = league + '|' + season + '|' + week;
+    if (h2hAllCache[key]) return h2hAllCache[key];
+    const res = await fetch(`/standings/h2h/${encodeURIComponent(league)}/${encodeURIComponent(season)}?allGames=${Number(week)}`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const wk = (data.schedule || []).find(s => s.week === Number(week));
+    const byPair = {};
+    ((wk && wk.games) || []).forEach(g => {
+        if (g.aAll && g.bAll) byPair[g.aId + '|' + g.bId] = { aAll: g.aAll, bAll: g.bAll };
+    });
+    return (h2hAllCache[key] = byPair);
+}
+
 function renderH2HMatchups(d) {
     const el = document.getElementById('h2h-panel');
     if (!el) return;
@@ -903,6 +923,14 @@ function renderH2HMatchups(d) {
     // position, so re-rendering when the full payload lands doesn't snap them
     // shut under someone mid-read. Captured before the innerHTML above replaced
     // the old panel (see openKeys, read at the top of this function).
+    const allKey = (w) => d.league + '|' + d.season + '|' + Number(w);
+    const cardFor = (g, w, open) => {
+        const pair = g.aId + '|' + g.bId;
+        const lists = (h2hAllCache[allKey(w)] || {})[pair];
+        return window.ccH2H.matchupCard(
+            d.partial ? { ...g, pending: true, ...lists } : { ...g, ...lists },
+            { byId, open, sport: d.sport, allGames: true, showAll: h2hAllOn.has(Number(w) + '|' + pair) });
+    };
     const paintWeek = (w) => {
         const s = (d.schedule || []).find(x => x.week === Number(w));
         // A week the fast payload didn't carry: say it's coming rather than
@@ -912,14 +940,43 @@ function renderH2HMatchups(d) {
             return;
         }
         matchesEl.innerHTML = (s && s.games.length)
-            ? s.games.map(g => window.ccH2H.matchupCard(
-                d.partial ? { ...g, pending: true } : g,
-                { byId, open: openKeys.has(g.aId + '|' + g.bId), sport: d.sport })).join('')
+            ? s.games.map(g => cardFor(g, w, openKeys.has(g.aId + '|' + g.bId))).join('')
             : '<p class="h2h-empty">No matchups this week.</p>';
         window.ccH2H.wire(matchesEl);
     };
     const sel = el.querySelector('[h2h-week]');
     sel.addEventListener('change', () => paintWeek(sel.value));
+    // "Show all games" / "Show scored only" on a final card. The first press
+    // in a week fetches that week's lists (one request covers every card);
+    // after that it is a redraw of the one card, left open.
+    matchesEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest && e.target.closest('[data-all-toggle]');
+        if (!btn) return;
+        const card = btn.closest('.h2h-mcard');
+        const w = Number(sel.value);
+        const s = (d.schedule || []).find(x => x.week === w);
+        const g = s && s.games.find(x => x.aId + '|' + x.bId === card.dataset.pair);
+        if (!g) return;
+        const onKey = w + '|' + card.dataset.pair;
+        if (h2hAllOn.has(onKey)) {
+            h2hAllOn.delete(onKey);
+        } else {
+            btn.disabled = true;
+            btn.textContent = 'Loading…';
+            try {
+                await loadH2HAllGames(d.league, d.season, w);
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Couldn’t load — tap to retry';
+                return;
+            }
+            h2hAllOn.add(onKey);
+        }
+        // The week may have changed while the request was out.
+        if (!card.isConnected || Number(sel.value) !== w) return;
+        card.outerHTML = cardFor(g, w, true);
+        window.ccH2H.wire(matchesEl);
+    });
     paintWeek(selectedWeek);
 }
 
