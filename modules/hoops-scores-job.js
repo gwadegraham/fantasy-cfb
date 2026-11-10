@@ -27,6 +27,7 @@ const { resolveCurrentWeek, seasonStartFrom } = require('./hoops-calendar');
 const HoopsGame = require('./../models/hoopsGame');
 const League = require('./../models/league');
 const seasons = require('./active-season');
+const prune = require('./hoops-prune-dropped');
 // A namespace, so a test can stand in for the CBBD-backed refresh.
 const hoopsGames = require('../routes/hoopsGames');
 
@@ -140,6 +141,7 @@ async function runOnce(now, state) {
     // score stays a silent skip, as it was before the refresh existed.
     const refreshed = [];
     let failed = null;
+    const pruneNotes = [];
 
     // THE SAFETY NET under the live poller (#505). Pull the last LOOKBACK_MS
     // of results from CBBD before scoring, so a final the poller missed — it
@@ -157,7 +159,15 @@ async function runOnce(now, state) {
             try {
                 const out = await hoopsGames.refreshResults({ season, seasonType, start, end });
                 if (out.code === 200) {
-                    refreshed.push(`${season} ${seasonType} results: ${out.body.finals} final of ${out.body.games}`);
+                    const note = prune.pruneNote(out.body.prune);
+                    refreshed.push(`${season} ${seasonType} results: ${out.body.finals} final of ${out.body.games}${note ? `, ${note}` : ''}`);
+                    // A deletion is never silent: it forces a JobRun even on
+                    // a night with nothing to score, and a refusal mails.
+                    if (note) pruneNotes.push(note);
+                    if (out.body.prune && out.body.prune.refused) {
+                        failed = `${season} ${seasonType} ${out.body.prune.refused}`;
+                        skipped.push(failed);
+                    }
                 } else {
                     failed = `${season} ${seasonType} refresh ${out.code}: ${out.body.message}`;
                     skipped.push(failed);
@@ -188,7 +198,7 @@ async function runOnce(now, state) {
         }
     }
 
-    if (!done.length && !failed) {
+    if (!done.length && !failed && !pruneNotes.length) {
         // No `|| 'nothing to score'`: there is at least one league by here,
         // and every iteration pushes to done or skipped, so the list is
         // never empty. A fallback would be an unreachable branch dressed up

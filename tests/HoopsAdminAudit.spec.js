@@ -131,6 +131,19 @@ describe('POST /hoops/games/refresh', () => {
     });
 });
 
+describe('a hand-run import that prunes (10 Nov 2026)', () => {
+    test('the audit row names the game it deleted', async () => {
+        const HoopsGame = require('../models/hoopsGame');
+        await HoopsGame.create({ id: 9, season: SEASON, seasonType: 'regular', startDate: new Date(), status: 'scheduled',
+            homeTeam: 'Tulsa', awayTeam: 'Rice' });
+        stubGames();
+        await request(app).post('/hoops/games/refresh').send({ season: SEASON });
+        const [row] = await rows();
+        expect(row.summary).toMatch(/\(2 created, 0 updated\) · pruned 1 dropped by CBBD: 9 Rice @ Tulsa \d{4}-\d\d-\d\d · 1 CBBD call$/);
+        expect(await HoopsGame.exists({ id: 9 })).toBeNull();
+    });
+});
+
 describe('audit.onReply', () => {
     test('a row that cannot be built still lets the reply out', async () => {
         const bare = express();

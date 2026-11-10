@@ -123,6 +123,24 @@ test('refresh and schedule send the season type chosen; refresh sends the season
     expect(task('refresh').textContent).toContain('4 games, 4 final');
 });
 
+test('a run names each game it removed or kept, and a refused prune', async () => {
+    const refresh = jest.fn(() => json({ season: 2027, seasonType: 'regular', games: 4, finals: 4, created: 0, updated: 4,
+        prune: { pruned: [{ id: 2, matchup: 'Bethesda @ Southern Utah', date: '2026-11-07' }],
+            kept: [{ id: 3, matchup: 'Rice @ Tulsa', date: '2026-11-08', refs: ['box score'] }], refused: null } }));
+    const schedule = jest.fn(() => json({ season: 2027, created: 0, updated: 5, games: 5, windows: 8,
+        prune: { pruned: [], kept: [], refused: '40 stored game(s) missing' } }));
+    await render(status(), { 'POST /hoops/games/refresh': refresh, 'POST /hoops/games/2027/schedule': schedule });
+    task('refresh').querySelector('[data-arm]').click();
+    task('refresh').querySelector('[data-confirm]').click();
+    await flush();
+    expect(task('refresh').textContent).toContain('4 updated · removed 1 game CBBD dropped: 2 Bethesda @ Southern Utah 2026-11-07'
+        + ' · kept 1 dropped but referenced: 3 Rice @ Tulsa 2026-11-08');
+    task('schedule').querySelector('[data-arm]').click();
+    task('schedule').querySelector('[data-confirm]').click();
+    await flush();
+    expect(task('schedule').textContent).toContain('removed nothing: 40 stored game(s) missing');
+});
+
 test('a refused run says why, with the status', async () => {
     await render(status(), {
         'POST /hoops/teams/2027/roster': () => json({ message: 'Season 2026 is not the stored basketball season (2027).' }, 422)

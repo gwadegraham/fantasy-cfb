@@ -38,6 +38,7 @@ const { pickLogo } = require('../public/logo.js');
 const roster = require('../modules/hoops-roster');
 const espnTipTimes = require('../modules/hoops-espn-tip-times');
 const audit = require('../modules/audit-log');
+const prune = require('../modules/hoops-prune-dropped');
 // PAGE_CAP only; seasonRange is reached through `cbbd` so it stays stubbable —
 // destructuring it here would re-arm the very trap the note above describes.
 const { PAGE_CAP } = cbbd;
@@ -105,6 +106,29 @@ async function writeGames(ops, label) {
         if (failure) console.log(`${label}: bulk write error: ${failure}`);
         return { created, updated, failure };
     }
+}
+
+// After a CLEAN pull and write: delete the stored, never-played rows in the
+// window that CBBD no longer lists (modules/hoops-prune-dropped.js). Only
+// reached past every refusal above — a throw, a cap hit, an empty answer
+// with games due, a failed write — so a bad pull never deletes. A prune that
+// throws is reported, not fatal: the games landed.
+async function pruneAfterPull(args, label) {
+    try {
+        const out = await prune.pruneDroppedGames(args);
+        const note = prune.pruneNote(out);
+        if (note) console.log(`${label}: ${note}`);
+        return out;
+    } catch (err) {
+        console.log(`${label}: prune failed: ${err.message}`);
+        return { pruned: [], kept: [], refused: `prune failed: ${err.message}` };
+    }
+}
+
+// The audit row names what a hand-run import deleted or refused to.
+function pruneSuffix(body) {
+    const note = prune.pruneNote(body && body.prune);
+    return note ? ` · ${note}` : '';
 }
 
 // One upsert op per game, keyed on CBBD's id so re-running is safe.
@@ -647,7 +671,7 @@ router.post('/:season/schedule', async (req, res) => {
         const rosterCall = body.rosterError || (body.roster && body.roster.skippedReason !== 'already imported') ? 1 : 0;
         return audit.cbbdTaskEntry('hoops.schedule', `${seasonType} schedule ingest`, season,
             cbbd.windowsFor(start, end) + rosterCall, status, body,
-            `${body.games} games (${body.created} created, ${body.updated} updated)`);
+            `${body.games} games (${body.created} created, ${body.updated} updated)` + pruneSuffix(body));
     });
 
     let result;
@@ -749,10 +773,12 @@ router.post('/:season/schedule', async (req, res) => {
         rosterResult = (await roster.hasSeason(season)) ? { skippedReason: 'already imported' } : await roster.importSeason(season);
     } catch (err) { rosterError = err.message; console.log(`Hoops schedule · ${season}: roster import failed: ${err.message}`); }
 
+    const pruned = await pruneAfterPull({ season, seasonType, start, end, returned: result.games }, `Hoops schedule · ${season} ${seasonType}`);
+
     console.log(`Hoops schedule · ${season} ${seasonType}: ${created} created, ${updated} updated `
         + `(${result.games.length} games, ${result.windows} window(s))`);
     return res.status(200).json({
-        season, seasonType, created, updated, restamped,
+        season, seasonType, created, updated, restamped, prune: pruned,
         ...(restampError ? { restampError } : {}),
         roster: rosterResult, ...(rosterError ? { rosterError } : {}),
         games: result.games.length, windows: result.windows,
@@ -833,13 +859,15 @@ async function refreshResults({ season, seasonType, start, end }) {
     } catch (err) { restampError = err.message; console.log(`Hoops refresh · ${season}: re-stamp failed: ${err.message}`); }
     if (restamped) console.log(`Hoops refresh · ${season}: anchor moved — re-stamped ${restamped} game(s)`);
 
+    const pruned = await pruneAfterPull({ season, seasonType, start, end, returned: result.games }, `Hoops refresh · ${season} ${seasonType}`);
+
     const finals = result.games.filter(g => g.status === 'final' && g.id != null).length;
     console.log(`Hoops refresh · ${season} ${seasonType} `
         + `${start.toISOString().slice(0, 10)}..${end.toISOString().slice(0, 10)}: `
         + `${ops.length} writable of ${result.games.length} fetched, ${finals} final, `
         + `${created} created, ${updated} updated`);
     return reply(200, {
-        season, seasonType, created, updated, restamped,
+        season, seasonType, created, updated, restamped, prune: pruned,
         ...(restampError ? { restampError } : {}),
         games: ops.length, fetched: result.games.length, finals,
         remainingCalls: result.remainingCalls
@@ -867,7 +895,7 @@ router.post('/refresh', async (req, res) => {
     }
     audit.onReply(req, res, (status, body) => audit.cbbdTaskEntry('hoops.refresh', `${seasonType} results refresh`, season,
         cbbd.windowsFor(start, end), status, body,
-        `${body.games} games, ${body.finals} final (${body.created} created, ${body.updated} updated)`));
+        `${body.games} games, ${body.finals} final (${body.created} created, ${body.updated} updated)` + pruneSuffix(body)));
     const out = await refreshResults({ season, seasonType, start, end });
     return res.status(out.code).json(out.body);
 });
