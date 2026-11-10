@@ -10,8 +10,11 @@
 // had as TBD.
 //
 // Same upsert as the nightly refresh (routes/hoopsGames refreshResults), so
-// a stored final keeps its result and a re-run is harmless. It only adds
-// and updates: a game CBBD drops stays stored (#512 hides those).
+// a stored final keeps its result and a re-run is harmless. Since 10 Nov 2026
+// it also deletes an unplayed, unreferenced game CBBD no longer lists in the
+// window it just pulled cleanly (modules/hoops-prune-dropped.js) — every row
+// deleted is named in this job's summary, and a refused prune fails the run
+// so it mails. A game CBBD still lists twice stays (#512 hides those).
 //
 // 1 CBBD call a day per season type in the window — a LOOKAHEAD_DAYS window
 // is one /games window — so ~30 a month, ~60 from February to April while
@@ -36,6 +39,7 @@ const HoopsGame = require('../models/hoopsGame');
 const hoopsGames = require('../routes/hoopsGames');
 const espnTipTimes = require('./hoops-espn-tip-times');
 const calendar = require('./hoops-calendar');
+const prune = require('./hoops-prune-dropped');
 
 const JOB_NAME = 'hoops-schedule';
 const LABEL = 'Hoops Schedule';
@@ -92,7 +96,9 @@ async function runOnce(now, state) {
             try {
                 const out = await hoopsGames.refreshResults({ season, seasonType, start, end });
                 if (out.code === 200) {
-                    done.push(`${season} ${seasonType}: ${out.body.created} new, ${out.body.updated} updated`);
+                    const note = prune.pruneNote(out.body.prune);
+                    done.push(`${season} ${seasonType}: ${out.body.created} new, ${out.body.updated} updated${note ? `, ${note}` : ''}`);
+                    if (out.body.prune && out.body.prune.refused) failed = `${season} ${seasonType} ${out.body.prune.refused}`;
                 } else {
                     failed = `${season} ${seasonType} ${out.code}: ${out.body.message}`;
                     done.push(`${season} ${seasonType}: FAILED ${out.code} ${out.body.message}`);

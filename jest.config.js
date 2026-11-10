@@ -249,6 +249,13 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // Deletes games CBBD dropped: every refusal is a test, so full lines.
+        "./modules/hoops-prune-dropped.js": {
+            statements: 95,
+            branches: 85,
+            functions: 100,
+            lines: 100
+        },
         // ESPN tip times for games CBBD still has TBD: the branches are the
         // same-Eastern-day guard, CBBD-wins, and ESPN failing safe.
         "./modules/hoops-espn-tip-times.js": {

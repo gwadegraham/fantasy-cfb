@@ -347,7 +347,11 @@ describe('the week stamped at ingest (#315)', () => {
         // A game the week before turns up — an exhibition, or a late CBBD addition.
         // A THURSDAY: a Fri-Sun one would be absorbed by week 1's lead-in.
         stubFetch({ games: [on('2026-10-29T23:00:00Z', { id: 9 })] });
-        const res = await request(app).post('/hoops/games/refresh').send({ season: 2027 });
+        // The window the stub answers for. Unpinned it is the real clock's
+        // last 24h, which on 10 Nov 2026 held id 2 — and a refresh now prunes
+        // a stored game its window covers that CBBD did not return.
+        const res = await request(app).post('/hoops/games/refresh')
+            .send({ season: 2027, start: '2026-10-29', end: '2026-10-30' });
 
         expect(res.body.restamped).toBeGreaterThan(0);
         const byId = Object.fromEntries((await HoopsGame.find({}).lean()).map(g => [g.id, g.week]));
@@ -358,7 +362,8 @@ describe('the week stamped at ingest (#315)', () => {
     test('ingesting the POSTSEASON first does not leave two week 1s', async () => {
         // The workflow this feature explicitly plans for: the bracket is
         // published later, and someone ingests it before re-running the season.
-        stubFetch({ games: [on('2027-03-16T23:00:00Z', { id: 50 }), on('2027-04-05T23:00:00Z', { id: 51 })] });
+        stubFetch({ games: [on('2027-03-16T23:00:00Z', { id: 50, seasonType: 'postseason' }),
+            on('2027-04-05T23:00:00Z', { id: 51, seasonType: 'postseason' })] });
         await request(app).post('/hoops/games/2027/schedule').send({ seasonType: 'postseason' });
         expect((await HoopsGame.findOne({ id: 50 }).lean()).week).toBe(1);   // wrong, but expected here
 
@@ -402,7 +407,8 @@ describe('the week stamped at ingest (#315)', () => {
         expect(await HoopsGame.countDocuments({ week: { $in: [null, undefined] } })).toBe(2);
 
         stubFetch({ games: [on('2026-11-17T05:00:00Z', { id: 92 })] });
-        const res = await request(app).post('/hoops/games/refresh').send({ season: 2027 });
+        const res = await request(app).post('/hoops/games/refresh')
+            .send({ season: 2027, start: '2026-11-17', end: '2026-11-18' });
 
         expect(res.body.restamped).toBeGreaterThan(0);
         const byId = Object.fromEntries((await HoopsGame.find({}).lean()).map(g => [g.id, g.week]));
@@ -437,7 +443,8 @@ describe('the week stamped at ingest (#315)', () => {
         await request(app).post('/hoops/games/2027/schedule').send({});
 
         stubFetch({ games: [on('2025-11-03T05:00:00Z', { id: 99 })] });   // year typo
-        const res = await request(app).post('/hoops/games/refresh').send({ season: 2027 });
+        const res = await request(app).post('/hoops/games/refresh')
+            .send({ season: 2027, start: '2025-11-03', end: '2025-11-04' });
 
         expect(res.status).toBe(200);
         const byId = Object.fromEntries((await HoopsGame.find({}).lean()).map(g => [g.id, g.week]));
@@ -454,7 +461,8 @@ describe('the week stamped at ingest (#315)', () => {
         await request(app).post('/hoops/games/2027/schedule').send({});
 
         stubFetch({ games: [on('2026-11-30T05:00:00Z', { id: 1 })] });   // opener postponed
-        const res = await request(app).post('/hoops/games/refresh').send({ season: 2027 });
+        const res = await request(app).post('/hoops/games/refresh')
+            .send({ season: 2027, start: '2026-11-30', end: '2026-12-01' });
 
         expect(res.status).toBe(200);
         const byId = Object.fromEntries((await HoopsGame.find({}).lean()).map(g => [g.id, g.week]));

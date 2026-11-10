@@ -237,3 +237,80 @@ describe('the ESPN tip-time fill', () => {
         expect(fill).not.toHaveBeenCalled();
     });
 });
+
+describe('pruning games CBBD dropped (10 Nov 2026)', () => {
+    test('a dropped game is deleted and NAMED in the JobRun summary', async () => {
+        await HoopsGame.create([stored(1, '2026-11-03T00:30:00Z'),
+            stored(2, '2026-11-05T00:30:00Z', { homeTeam: 'Villanova', awayTeam: 'Fairleigh Dickinson' }), SEASON_END()]);
+        stubFetch({ regular: [cbbdGame(1, '2026-11-03T00:30:00Z')] });
+
+        const out = await job.run({ now: NOW });
+
+        expect(out.failed).toBeNull();
+        expect(out.summary).toBe(`${SEASON} regular: 0 new, 1 updated, pruned 1 dropped by CBBD: 2 Fairleigh Dickinson @ Villanova 2026-11-05`);
+        expect(await HoopsGame.exists({ id: 2 })).toBeNull();
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'success', out.summary);
+    });
+
+    test('a refused prune fails the run, so it mails', async () => {
+        const prune = require('../modules/hoops-prune-dropped');
+        const many = Array.from({ length: prune.MAX_PRUNE + 1 }, (_, i) => stored(100 + i, '2026-11-05T00:30:00Z'));
+        await HoopsGame.create([stored(1, '2026-11-03T00:30:00Z'), ...many, SEASON_END()]);
+        stubFetch({ regular: [cbbdGame(1, '2026-11-03T00:30:00Z')] });
+
+        const out = await job.run({ now: NOW });
+
+        expect(out.failed).toMatch(/over the 25-row cap/);
+        expect(await HoopsGame.countDocuments({ id: { $gte: 100 } })).toBe(many.length);
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'error', out.summary);
+        expect(jobMailer.sendJobEmail).toHaveBeenCalled();
+    });
+});
+
+describe('the nightly scores job reports a prune', () => {
+    const scoresJob = require('../modules/hoops-scores-job');
+
+    test('a night with nothing to score still logs a JobRun when a game was pruned', async () => {
+        // The refresh prunes the season's only stored game, so there is
+        // nothing to score (no schedule) — the prune alone must log.
+        await HoopsGame.create([stored(2, '2026-11-07T23:00:00Z')]);
+        jest.spyOn(hoopsGames, 'refreshResults').mockImplementation(async () => {
+            await HoopsGame.deleteMany({ id: 2 });
+            return { code: 200, body: { finals: 0, games: 0,
+                prune: { pruned: [{ id: 2, matchup: 'Women @ Tulsa', date: '2026-11-07' }], kept: [], refused: null } } };
+        });
+
+        const out = await scoresJob.run({ now: new Date('2026-11-08T12:00:00Z') });
+
+        expect(out.summary).toMatch(/pruned 1 dropped by CBBD: 2 Women @ Tulsa 2026-11-07/);
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'success', out.summary);
+    });
+
+    test('a refused prune fails the night, so it mails', async () => {
+        await HoopsGame.create([stored(2, '2026-11-07T23:00:00Z')]);
+        jest.spyOn(hoopsGames, 'refreshResults').mockImplementation(async () => {
+            await HoopsGame.deleteMany({ id: 2 });
+            return { code: 200, body: { finals: 0, games: 0,
+                prune: { pruned: [], kept: [], refused: '40 stored game(s) missing from CBBD\'s answer, over the 25-row cap' } } };
+        });
+
+        const out = await scoresJob.run({ now: new Date('2026-11-08T12:00:00Z') });
+
+        expect(out.failed).toMatch(/^2027 (regular|postseason) 40 stored game/);
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'error', out.summary);
+        expect(jobMailer.sendJobEmail).toHaveBeenCalled();
+    });
+
+    test('a quiet night with no prune stays silent', async () => {
+        await HoopsGame.create([stored(2, '2026-11-07T23:00:00Z')]);
+        jest.spyOn(hoopsGames, 'refreshResults').mockImplementation(async () => {
+            await HoopsGame.deleteMany({ id: 2 });
+            return { code: 200, body: { finals: 0, games: 0, prune: { pruned: [], kept: [], refused: null } } };
+        });
+
+        const out = await scoresJob.run({ now: new Date('2026-11-08T12:00:00Z') });
+
+        expect(out.skippedReason).toBeTruthy();
+        expect(jobLogger.finishRun).not.toHaveBeenCalled();
+    });
+});
