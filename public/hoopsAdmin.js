@@ -24,6 +24,19 @@
     function seasonLabel(s) { return (s - 1) + '–' + String(s).slice(-2); }
     function n(x) { return x == null ? '—' : Number(x).toLocaleString(); }
     function plural(k, word) { return n(k) + ' ' + word + (k === 1 ? '' : 's'); }
+    // What the import deleted because CBBD no longer lists it, kept because
+    // something references it, or refused to delete. Each game by id, so a
+    // deletion is never only a count.
+    function pruneLine(r) {
+        var p = r && r.prune;
+        if (!p) return '';
+        var fmt = function (g) { return g.id + ' ' + g.matchup + ' ' + g.date; };
+        var line = '';
+        if (p.pruned && p.pruned.length) line += ' · removed ' + plural(p.pruned.length, 'game') + ' CBBD dropped: ' + p.pruned.map(fmt).join('; ');
+        if (p.kept && p.kept.length) line += ' · kept ' + p.kept.length + ' dropped but referenced: ' + p.kept.map(fmt).join('; ');
+        if (p.refused) line += ' · removed nothing: ' + p.refused;
+        return line;
+    }
     function day(iso) {
         if (!iso) return '—';
         var d = new Date(iso);
@@ -63,7 +76,7 @@
                 if (r.rosterError) line += ' · roster import failed: ' + r.rosterError;
                 else if (r.roster && r.roster.players) line += ' · roster import: numbers for ' + plural(r.roster.players, 'player');
                 if (r.restampError) line += ' · week re-stamp failed: ' + r.restampError;
-                return line;
+                return line + pruneLine(r);
             }
         },
         {
@@ -75,7 +88,7 @@
                 return plural(f.games.finals, 'final') + (f.games.lastFinal ? ', latest ' + day(f.games.lastFinal) : '');
             },
             summary: function (r) {
-                return plural(r.games, 'game') + ', ' + n(r.finals) + ' final · ' + n(r.created) + ' created, ' + n(r.updated) + ' updated';
+                return plural(r.games, 'game') + ', ' + n(r.finals) + ' final · ' + n(r.created) + ' created, ' + n(r.updated) + ' updated' + pruneLine(r);
             }
         },
         {

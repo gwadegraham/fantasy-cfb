@@ -37,6 +37,7 @@ const HoopsBoxScore = require('../models/hoopsBoxScore');
 const HoopsShots = require('../models/hoopsShots');
 const Franchise = require('../models/franchise');
 const User = require('../models/user');
+const calendar = require('./hoops-calendar');
 
 // The most rows one pass may delete. The largest real event so far was 8 (the
 // Tulsa women's games), and a whole-season comparison found 5 more — 13 in a
@@ -75,6 +76,19 @@ async function referencesTo(ids) {
     return refs;
 }
 
+// A tip time ESPN filled in (startTimeSource) is OURS: CBBD still lists the
+// game at its midnight-Eastern placeholder on the same Eastern day. A late
+// tip stored at, say, 01:00Z on D+1 has CBBD's copy at 05:00Z on D — and a
+// pull starting on D+1 asks CBBD from D+1 00:00Z, so the copy is not in the
+// answer while our row is in the window. Such a row is only judged by a pull
+// that reaches back to its placeholder.
+function placeholderBeforeWindow(g, start) {
+    if (!g.startTimeSource) return false;
+    const placeholder = calendar.easternMidnight(calendar.easternDay(g.startDate));
+    const asked = new Date(`${day(start)}T00:00:00Z`);   // fetchGamesInRange's startDateRange
+    return placeholder < asked;
+}
+
 // Returns { pruned: [{id, matchup, date}], kept: [{..., refs}], refused: string|null }.
 async function pruneDroppedGames({ season, seasonType, start, end, returned }) {
     const none = { pruned: [], kept: [], refused: null };
@@ -83,13 +97,14 @@ async function pruneDroppedGames({ season, seasonType, start, end, returned }) {
     }
     const seen = returned.map(g => g.id);
 
-    const candidates = await HoopsGame.find({
+    const candidates = (await HoopsGame.find({
         season, seasonType,
         startDate: { $gte: start, $lte: end },
         id: { $nin: seen },
         status: { $nin: ['final', 'in_progress'] },
         homePoints: null, awayPoints: null
-    }, { id: 1, startDate: 1, homeTeam: 1, awayTeam: 1, homeTeamId: 1, awayTeamId: 1, _id: 0 }).sort({ startDate: 1, id: 1 }).lean();
+    }, { id: 1, startDate: 1, startTimeSource: 1, homeTeam: 1, awayTeam: 1, homeTeamId: 1, awayTeamId: 1, _id: 0 })
+        .sort({ startDate: 1, id: 1 }).lean()).filter(g => !placeholderBeforeWindow(g, start));
     if (!candidates.length) return none;
     if (candidates.length > MAX_PRUNE) {
         return Object.assign(none, {

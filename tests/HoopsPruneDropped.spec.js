@@ -124,6 +124,59 @@ describe('the nightly / look-ahead refresh', () => {
         expect(out.body.prune.pruned).toEqual([]);
     });
 
+    test('a final with no points stored is still never deleted', async () => {
+        await HoopsGame.create([stored(1), stored(2, IN, { status: 'final' })]);
+        stubFetch({ games: [cbbdGame(1)] });
+
+        await refresh();
+
+        expect(await ids()).toEqual([1, 2]);
+    });
+
+    test('a game that goes live between the read and the delete survives', async () => {
+        await HoopsGame.create([stored(1), stored(2)]);
+        stubFetch({ games: [cbbdGame(1)] });
+        // The reference lookups run between the two; tip the game off there.
+        const real = HoopsBoxScore.distinct.bind(HoopsBoxScore);
+        jest.spyOn(HoopsBoxScore, 'distinct').mockImplementation(async (...a) => {
+            await HoopsGame.updateOne({ id: 2 }, { $set: { status: 'in_progress' } });
+            return real(...a);
+        });
+
+        await refresh();
+
+        expect(await ids()).toEqual([1, 2]);
+    });
+
+    // CBBD keeps a TBD game at midnight Eastern; ESPN gave us the real (late)
+    // tip, which lands on the NEXT UTC day. A pull starting that UTC day does
+    // not ask CBBD for the placeholder, so the game is "missing" — wrongly.
+    test('an ESPN-timed row whose CBBD placeholder sits before the pulled window is not judged', async () => {
+        await HoopsGame.create([
+            stored(1),
+            // Eastern day 10 Nov: placeholder 05:00Z on the 10th, ESPN tip 22:00 ET = 03:00Z on the 11th.
+            stored(2, '2026-11-11T03:00:00Z', { startTimeSource: 'espn' }),
+            // Same time, CBBD's own (not ESPN's): judged as usual.
+            stored(3, '2026-11-11T03:00:00Z')
+        ]);
+        stubFetch({ games: [cbbdGame(1)] });
+
+        const out = await hoopsGames.refreshResults({ season: SEASON, seasonType: 'regular',
+            start: new Date('2026-11-11T01:00:00Z'), end: END });
+
+        expect(await ids()).toEqual([1, 2]);
+        expect(out.body.prune.pruned.map(g => g.id)).toEqual([3]);
+    });
+
+    test('an ESPN-timed row IS judged once the pull reaches back to its placeholder', async () => {
+        await HoopsGame.create([stored(1), stored(2, '2026-11-11T03:00:00Z', { startTimeSource: 'espn' })]);
+        stubFetch({ games: [cbbdGame(1)] });
+
+        await refresh();   // from 10 Nov 00:00Z: CBBD was asked for the 10th
+
+        expect(await ids()).toEqual([1]);
+    });
+
     test('only the window, season and season type just pulled are touched', async () => {
         await HoopsGame.create([
             stored(1),

@@ -125,6 +125,12 @@ async function pruneAfterPull(args, label) {
     }
 }
 
+// The audit row names what a hand-run import deleted or refused to.
+function pruneSuffix(body) {
+    const note = prune.pruneNote(body && body.prune);
+    return note ? ` · ${note}` : '';
+}
+
 // One upsert op per game, keyed on CBBD's id so re-running is safe.
 //
 // $set of the mapped fields rather than the raw row: CBBD sends 40 fields and
@@ -665,7 +671,7 @@ router.post('/:season/schedule', async (req, res) => {
         const rosterCall = body.rosterError || (body.roster && body.roster.skippedReason !== 'already imported') ? 1 : 0;
         return audit.cbbdTaskEntry('hoops.schedule', `${seasonType} schedule ingest`, season,
             cbbd.windowsFor(start, end) + rosterCall, status, body,
-            `${body.games} games (${body.created} created, ${body.updated} updated)`);
+            `${body.games} games (${body.created} created, ${body.updated} updated)` + pruneSuffix(body));
     });
 
     let result;
@@ -889,7 +895,7 @@ router.post('/refresh', async (req, res) => {
     }
     audit.onReply(req, res, (status, body) => audit.cbbdTaskEntry('hoops.refresh', `${seasonType} results refresh`, season,
         cbbd.windowsFor(start, end), status, body,
-        `${body.games} games, ${body.finals} final (${body.created} created, ${body.updated} updated)`));
+        `${body.games} games, ${body.finals} final (${body.created} created, ${body.updated} updated)` + pruneSuffix(body)));
     const out = await refreshResults({ season, seasonType, start, end });
     return res.status(out.code).json(out.body);
 });
