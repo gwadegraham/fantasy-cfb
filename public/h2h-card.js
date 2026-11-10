@@ -145,12 +145,16 @@
         return right ? '<div class="h2h-trow">' + teamVal(t, plan) + idcol + img + '</div>'
             : '<div class="h2h-trow">' + img + idcol + teamVal(t, plan) + '</div>';
     }
-    // Final weeks show only teams that scored; an unplayed week (live or still
-    // to come) shows every team with a game, so in-progress and upcoming ones
-    // are visible with their kickoff times instead of being mistaken for 0.
-    // `all` (a final week's full game list) skips the scored-only filter.
+    // Final weeks show every game that moved the total — positive OR negative,
+    // so the rows add up to the week's score. They used to keep only score > 0,
+    // which hid a basketball bad-loss penalty: a -1 week read as one +1 row
+    // (full-court-depressed, 2027 week 1). 0-point games wait behind "Show all
+    // games". An unplayed week (live or still to come) shows every team with a
+    // game, so in-progress and upcoming ones are visible with their kickoff
+    // times instead of being mistaken for 0.
+    // `all` (a final week's full game list) skips the filter.
     function teamList(teams, unplayed, right, plan, all) {
-        var list = (unplayed || all) ? (teams || []) : (teams || []).filter(function (t) { return t.score > 0; });
+        var list = (unplayed || all) ? (teams || []) : (teams || []).filter(function (t) { return t.score != null && t.score !== 0; });
         return list.length ? list.map(function (t) { return teamRow(t, right, plan); }).join('')
             : '<div class="h2h-trow empty">' + (all ? 'no games' : 'no points') + '</div>';
     }

@@ -32,6 +32,13 @@ const Game = require('../models/game');
 const Team = require('../models/team');
 const ScoringConfig = require('../models/scoringConfig');
 
+// The card is browser code; run it against a minimal window.
+const loadCard = () => {
+    const window = {};
+    new Function('window', fs.readFileSync(path.join(__dirname, '..', 'public', 'h2h-card.js'), 'utf8'))(window);
+    return window.ccH2H;
+};
+
 const app = express();
 app.use('/standings', require('../routes/standings'));
 
@@ -191,11 +198,12 @@ describe('GET /standings/h2h ?allGames on a basketball league', () => {
         await HoopsTeam.create([
             { id: 1, season: SEASON, school: 'Team 1', abbreviation: 'T1', preseason: { rank: 101, barthag: 0.5 } },
             { id: 2, season: SEASON, school: 'Team 2', abbreviation: 'T2', preseason: { rank: 102, barthag: 0.5 } },
+            { id: 3, season: SEASON, school: 'Team 3', abbreviation: 'T3', preseason: { rank: 103, barthag: 0.5 } },
             { id: ELITE, season: SEASON, school: 'Elite', abbreviation: 'ELT', preseason: { rank: 5, barthag: 0.9 } },
             { id: NOBODY, season: SEASON, school: 'Nobody', abbreviation: 'NOB', preseason: { rank: 340, barthag: 0.5 } }
         ]);
         await ScoringConfig.updateOne({ league: LEAGUE }, { $set: {
-            league: LEAGUE, [`engagementBySeason.${SEASON}`]: { h2hEnabled: true, h2hWinBonus: 5, h2hTieBonus: 0 }
+            league: LEAGUE, enabled: ['badLoss'], [`engagementBySeason.${SEASON}`]: { h2hEnabled: true, h2hWinBonus: 5, h2hTieBonus: 0 }
         } }, { upsert: true });
         jest.spyOn(console, 'log').mockImplementation(() => {});
     });
@@ -226,15 +234,41 @@ describe('GET /standings/h2h ?allGames on a basketball league', () => {
         const boAll = mine ? c.bAll : c.aAll;
         expect(boAll.map(t => [t.ha, t.opp, t.score])).toEqual([['vs', 'NOB', 0]]);
     });
+
+    // full-court-depressed, 2027 week 1: a -1 week whose expanded card showed
+    // one +1 row, because the card kept only score > 0. A penalised loss is
+    // part of the total, so it is on the card by default; the rows the card
+    // DRAWS add up to the score in its header.
+    test('a negative game shows by default, and the drawn rows sum to the week score', async () => {
+        const ann = await manager('Ann', [1, 3]);
+        await manager('Bo', [2]);
+        await HoopsGame.create([
+            game(1, 1, ELITE, 1),                         // Q1 win: scores
+            game(1, 3, NOBODY, 2, { homeWon: false }),    // home loss to a nobody: penalised
+            game(1, 1, NOBODY, 3),                        // Q4 win: 0
+            game(1, 2, NOBODY, 2)
+        ]);
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
+
+        const res = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}`);
+        const c = res.body.schedule.find(s => s.week === 1).games[0];
+        const mine = String(c.aId) === String(ann._id);
+        const annScore = mine ? c.aScore : c.bScore;
+        const annTeams = mine ? c.aTeams : c.bTeams;
+        expect(annTeams.some(t => t.score < 0)).toBe(true);
+
+        // Ann on the left, as My Team draws it; read her column's values.
+        const byId = { [c.aId]: { franchise: 'A' }, [c.bId]: { franchise: 'B' } };
+        const html = loadCard().matchupCard(c, { byId, youId: String(ann._id) });
+        const leftCol = html.split('<div class="h2h-mdcol right">')[0].split('<div class="h2h-mdcol">')[1];
+        const drawn = [...leftCol.matchAll(/<span class="h2h-tv">(-?[\d.]+)<\/span>/g)].map(m => Number(m[1]));
+        expect(drawn.some(v => v < 0)).toBe(true);
+        expect(drawn).not.toContain(0);
+        expect(drawn.reduce((a, b) => a + b, 0)).toBeCloseTo(annScore, 5);
+    });
 });
 
 describe('the card\'s "Show all games" button (public/h2h-card.js)', () => {
-    // The card is browser code; run it against a minimal window.
-    const loadCard = () => {
-        const window = {};
-        new Function('window', fs.readFileSync(path.join(__dirname, '..', 'public', 'h2h-card.js'), 'utf8'))(window);
-        return window.ccH2H;
-    };
     const BY_ID = { u1: { franchise: 'Big Mac', initials: 'AT' }, u2: { franchise: 'Next Year', initials: 'BR' } };
     const row = (school, score, o) => Object.assign({ teamId: school.length, school, abbr: school.slice(0, 3).toUpperCase(), logo: '',
         score, status: 'final', opp: 'OPP', ha: 'vs', gameScore: '3–40', captain: false }, o);
@@ -261,6 +295,13 @@ describe('the card\'s "Show all games" button (public/h2h-card.js)', () => {
         expect(html).toContain('h2h-capx');
         expect(html).toContain('@ OPP');
         expect(html).not.toContain('no points');
+    });
+
+    test('a negative game is on the card by default; only 0-point games wait for the button', () => {
+        const html = loadCard().matchupCard(finalCard({ aScore: -1,
+            aTeams: [row('UNCW', 1), row('Duke', -2), row('Iowa', 0)] }), { byId: BY_ID, allGames: true });
+        expect(schools(html)).toEqual(['UNCW', 'Duke']);
+        expect(html).toContain('<span class="h2h-tv">-2</span>');
     });
 
     test('switched on before the lists arrive, it keeps the scored view', () => {
