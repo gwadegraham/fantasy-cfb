@@ -682,7 +682,17 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // schedule build). The client fetches the full payload separately for
         // the matchup cards, so the standings table paints without waiting on it.
         // The default (no param) response is unchanged — My Team also consumes it.
-        const standingsOnly = req.query.standingsOnly === '1' || req.query.standingsOnly === 'true';
+        //
+        // ?allGames=<week> asks for EVERY game each manager's teams played in
+        // one settled week — the card's "Show all games" button. A final card
+        // otherwise lists only the games that scored. It loads on demand, not
+        // in the payload: a basketball manager's ten teams play two or three
+        // games a week, so carrying every 0-point row for every week would add
+        // well over a thousand rows a season that almost nobody opens. It rides
+        // the fast path (no projections) and builds only the week asked for.
+        const allGamesWeek = /^\d+$/.test(String(req.query.allGames || '')) ? Number(req.query.allGames) : null;
+        const fastOnly = req.query.standingsOnly === '1' || req.query.standingsOnly === 'true';
+        const standingsOnly = fastOnly || allGamesWeek != null;
 
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
         // Engagement is per-season: resolve H2H on/off + win bonus for THIS season
@@ -1105,7 +1115,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // Schedule payload: final weeks + the current in-progress week. Final
         // weeks show scored contributing teams; the current week shows each
         // rostered team's live game status (final / live / kickoff time).
-        const teamsFinal = (id, w) => Object.values((teamDetail[id] && teamDetail[id][w]) || {})
+        const finalRows = (id, w) => Object.values((teamDetail[id] && teamDetail[id][w]) || {})
             .map(t => {
                 // Opponent + final CFB score for the retrospective sub-line (same
                 // source the live week uses), so past matchup rows aren't bare.
@@ -1124,8 +1134,8 @@ router.get('/h2h/:league/:season', async (req, res) => {
                     }
                 }
                 return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(displayScore(id, w, t.teamId, t.score)), status: 'final', captain: isCaptain(id, w, t.teamId), opp, ha, oppRank, gameScore, gameId: g ? g.id : null, tip: tipKey(g) };
-            })
-            .sort(byTip).map(dropTip);
+            });
+        const teamsFinal = (id, w) => finalRows(id, w).sort(byTip).map(dropTip);
         // The kickoff INSTANT, not a rendered string. This used to format here
         // with no timeZone, so it came out in the dyno's zone (UTC) — every
         // kickoff five hours late, and night games landing on the wrong weekday
@@ -1135,7 +1145,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // flatMap, not map: a team with two games that week gets a row for each,
         // so neither is hidden and the footer's game count is honest. A team with
         // no game contributes nothing (a bye).
-        const teamsLive = (id, w) => (meta[id].teams || []).flatMap(t => gamesOf(t.id, w).map(g => {
+        const liveRows = (id, w) => (meta[id].teams || []).flatMap(t => gamesOf(t.id, w).map(g => {
             const st = gameStatus(g, now);
             const scored = scoredFor(id, w, t.id, g.id);
             const isHome = g.homeId === t.id;
@@ -1147,7 +1157,21 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
             return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(displayScore(id, w, t.id, scored.score)) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: haOf(g, isHome), oppRank: rankByName[oppName] || null, gameScore, gameId: g.id, captain: isCaptain(id, w, t.id), tip: tipKey(g) };
-        })).sort(byTip).map(dropTip);
+        }));
+        const teamsLive = (id, w) => liveRows(id, w).sort(byTip).map(dropTip);
+        // EVERY game a manager's teams played in a settled week (?allGames):
+        // the rostered-team view the live week uses, so a game that scored
+        // nothing is a row too, with its score read as 0 once final. Any scored
+        // row that view cannot place (a legacy entry with no gameId on a
+        // two-game week) is kept from the scored list, so "all" never shows
+        // fewer games than the default.
+        const teamsAll = (id, w) => {
+            const rows = liveRows(id, w);
+            const seen = new Set(rows.map(r => r.teamId + ':' + r.gameId));
+            finalRows(id, w).forEach(r => { if (!seen.has(r.teamId + ':' + r.gameId)) rows.push(r); });
+            return rows.map(r => (r.status === 'final' && r.score == null) ? { ...r, score: 0 } : r)
+                .sort(byTip).map(dropTip);
+        };
 
         // Projected pre-game odds for a matchup: each manager's teams that play
         // that week, run through the win-probability model. Integer percents that
@@ -1207,7 +1231,10 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // that shows kickoff times rather than the scored-teams-only one.
         const gameFor = (a, b, w, unplayed, upcoming) => {
             const sa = round((totals[a] || {})[w] || 0), sb = round((totals[b] || {})[w] || 0);
+            const all = !unplayed && w === allGamesWeek
+                ? { aAll: teamsAll(a, w), bAll: teamsAll(b, w) } : null;
             return {
+                ...all,
                 aId: a, aScore: sa, aTeams: unplayed ? teamsLive(a, w) : teamsFinal(a, w),
                 bId: b, bScore: sb, bTeams: unplayed ? teamsLive(b, w) : teamsFinal(b, w),
                 winner: unplayed ? null : (sa > sb ? 'a' : (sb > sa ? 'b' : 'tie')),
@@ -1277,7 +1304,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
         //
         // winP is forced null on this path (see gameFor) — that null is the
         // client's cue to draw a skeleton bar.
-        const weeksToBuild = standingsOnly
+        const weeksToBuild = allGamesWeek != null
+            ? schedWeeks.filter(w => w === allGamesWeek)
+            : standingsOnly
             ? schedWeeks.filter(w => w === featuredWeek)
             : schedWeeks;
         const schedule = weeksToBuild.map(w => {
@@ -1325,7 +1354,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // `partial` says the win-probability bars are not in this payload and a
         // fuller one is worth waiting for — the client draws skeleton bars and
         // re-renders when it arrives. Absent/false means these cards are final.
-        res.json({ league, season: seasonNum, sport: isHoops ? 'basketball' : 'football', enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, scheduleComplete, managers, schedule, partial: standingsOnly || undefined });
+        res.json({ league, season: seasonNum, sport: isHoops ? 'basketball' : 'football', enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, scheduleComplete, managers, schedule, partial: fastOnly || undefined });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

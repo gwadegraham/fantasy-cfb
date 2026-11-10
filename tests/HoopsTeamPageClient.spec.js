@@ -378,14 +378,23 @@ test('the Q chip says what the league pays, Q4 loss included', async () => {
 
 // The row says "+10 · 2×" on a Captain game; the tip must not say a bare +5.
 test('on a Captain game the Q tip says the win is doubled', async () => {
-    const p = payload({ captainMultiplier: 2 });
-    p.games[3].captain = true;
-    await render(p);
-    expect(document.querySelector('.ht-next .ht-qt').getAttribute('data-qtip'))
-        .toBe('Q1 = top-quality opponent for where it’s played. A win pays +5. 2× as your Captain.');
+    // Reads the Next up card, which drops the 10 Nov 2026 fixture once that
+    // date passes: pin the clock before it.
+    jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-09T12:00:00.000Z'));
+    try {
+        const p = payload({ captainMultiplier: 2 });
+        p.games[3].captain = true;
+        await render(p);
+        expect(document.querySelector('.ht-next .ht-qt').getAttribute('data-qtip'))
+            .toBe('Q1 = top-quality opponent for where it’s played. A win pays +5. 2× as your Captain.');
+    } finally { jest.restoreAllMocks(); }
 });
 
 describe('the Q chip on a phone', () => {
+    // Next up drops the fixture's 10 Nov 2026 games once that date passes; pin
+    // the clock before it (as 'Next up (#506)' does).
+    beforeEach(() => { jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-09T12:00:00.000Z')); });
+    afterEach(() => { jest.restoreAllMocks(); });
     const bubble = () => document.querySelector('.sp-qtip');
     async function floridaChip() {
         const p = payload();
@@ -548,6 +557,10 @@ describe('Next up (#506)', () => {
 });
 
 describe('the viewer\'s Captain (#635)', () => {
+    // Next up drops the fixture's 10 Nov 2026 games once that date passes; pin
+    // the clock before it (as 'Next up (#506)' does).
+    beforeEach(() => { jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-09T12:00:00.000Z')); });
+    afterEach(() => { jest.restoreAllMocks(); });
     const captained = () => {
         const p = payload({ captainMultiplier: 2, captainPlayingWeek: 1 });
         p.games[3].captain = true;       // Virginia, Q1: +5 doubles to +10
@@ -689,6 +702,10 @@ test('Next up keeps a game with no date yet rather than treating it as 1970', as
 
 
 describe('ESPN news (public/team-news.js)', () => {
+    // Next up drops the fixture's 10 Nov 2026 games once that date passes; pin
+    // the clock before it (as 'Next up (#506)' does).
+    beforeEach(() => { jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-09T12:00:00.000Z')); });
+    afterEach(() => { jest.restoreAllMocks(); });
     const NEWS = fs.readFileSync(path.join(__dirname, '..', 'public', 'team-news.js'), 'utf8');
     const flush = () => new Promise(r => setTimeout(r, 0));
     const PV = {
