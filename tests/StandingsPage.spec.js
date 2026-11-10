@@ -562,6 +562,107 @@ describe('head-to-head matchups panel', () => {
 // Once every H2H week is final the page swaps roles: the matchup panel closes
 // out as a summary, and the Rivalry Games section it displaced all season comes
 // back to carry the rest of the schedule.
+// "Show all games" on a settled matchup card. The card itself is tested in
+// H2HAllGames.spec.js; this pins the page's side: the button's lists load on
+// demand, once per week, and the choice survives a repaint.
+describe('head-to-head "Show all games"', () => {
+    const game = (aId, bId) => ({ aId, bId, aTeams: [], bTeams: [], final: true });
+    const matchups = {
+        enabled: true, league: 'graham-league', season: 2026, winBonus: 5, tieBonus: 0, featuredWeek: 2, weeks: [1, 2],
+        managers: H2H_PAYLOAD.managers,
+        schedule: [{ week: 1, games: [game('a', 'b')] }, { week: 2, final: true, games: [game('a', 'b')] }]
+    };
+    const allGames = { schedule: [{ week: 2, games: [Object.assign(game('a', 'b'), {
+        aAll: [{ school: 'Indiana' }, { school: 'Purdue' }], bAll: [{ school: 'Iowa' }] })] }] };
+    // A card that says which list it was handed, and which options.
+    const stubCard = () => {
+        window.ccH2H = {
+            matchupCard: (g, o) => `<div class="h2h-mcard" data-pair="${g.aId}|${g.bId}" data-allgames="${!!o.allGames}">`
+                + `<button data-all-toggle>${o.showAll && g.aAll ? 'all:' + g.aAll.length : 'scored'}</button></div>`,
+            wire: jest.fn()
+        };
+    };
+    async function load(handler) {
+        const page = await loadStandingsPage({
+            users: [scored('a', 'Alice', 'Adams', [10, 40]), scored('b', 'Bob', 'Brown', [40, 5])],
+            h2hEnabled: true, h2hStandings: H2H_PAYLOAD, h2hMatchups: matchups, autoLoad: false,
+            routes: [[/\/standings\/h2h\/[^/?]+\/[^/?]+\?allGames=/, handler]]
+        });
+        stubCard();
+        await page.onload();
+        await flush();
+        return page;
+    }
+    const button = (page) => page.h2hPanel().querySelector('[data-all-toggle]');
+    const press = async (page) => { button(page).click(); await flush(); };
+    const allCalls = (page) => page.urls().filter(u => u.includes('allGames='));
+
+    it('asks the card for the button', async () => {
+        const page = await load(allGames);
+        expect(page.h2hPanel().querySelector('.h2h-mcard').dataset.allgames).toBe('true');
+        expect(button(page).textContent).toBe('scored');
+        expect(allCalls(page)).toEqual([]);
+    });
+
+    it('loads the week once, then toggles without asking again', async () => {
+        const page = await load(allGames);
+        await press(page);
+        expect(allCalls(page)).toEqual(['/standings/h2h/graham-league/2026?allGames=2']);
+        expect(button(page).textContent).toBe('all:2');
+        await press(page);
+        expect(button(page).textContent).toBe('scored');
+        await press(page);
+        expect(button(page).textContent).toBe('all:2');
+        expect(allCalls(page)).toHaveLength(1);
+    });
+
+    it('keeps the choice when the week is repainted', async () => {
+        const page = await load(allGames);
+        await press(page);
+        const sel = page.h2hPanel().querySelector('[h2h-week]');
+        sel.value = '1';
+        sel.dispatchEvent(new window.Event('change'));
+        expect(button(page).textContent).toBe('scored');
+        sel.value = '2';
+        sel.dispatchEvent(new window.Event('change'));
+        expect(button(page).textContent).toBe('all:2');
+    });
+
+    it('a failed load says so and can be retried', async () => {
+        let fail = true;
+        const page = await load(() => (fail ? respond(500, { message: 'boom' }) : allGames));
+        await press(page);
+        expect(button(page).textContent).toBe('Couldn’t load — tap to retry');
+        expect(button(page).disabled).toBe(false);
+        fail = false;
+        await press(page);
+        expect(button(page).textContent).toBe('all:2');
+    });
+
+    it('does not redraw a card the reader has moved away from', async () => {
+        let release;
+        const page = await load(() => new Promise(r => { release = () => r(allGames); }));
+        button(page).click();
+        expect(button(page).textContent).toBe('Loading…');
+        expect(button(page).disabled).toBe(true);
+        const sel = page.h2hPanel().querySelector('[h2h-week]');
+        sel.value = '1';
+        sel.dispatchEvent(new window.Event('change'));
+        release();
+        await flush();
+        expect(sel.value).toBe('1');
+        expect(button(page).textContent).toBe('scored');
+    });
+
+    it('ignores clicks that are not the button, and cards it cannot find', async () => {
+        const page = await load(allGames);
+        page.h2hPanel().querySelector('.h2h-mcard').click();
+        page.h2hPanel().querySelector('.h2h-mcard').dataset.pair = 'x|y';
+        await press(page);
+        expect(allCalls(page)).toEqual([]);
+    });
+});
+
 describe('postseason handoff', () => {
     const schedule = [{ week: 1, games: [{ id: 'g1' }] }, { week: 2, games: [{ id: 'g2' }] }];
     const matchups = (over = {}) => Object.assign({

@@ -16,6 +16,11 @@
 // tag; `open` starts the card expanded (used for the featured matchup).
 // `sport` ('basketball' | 'football', the payload's `sport`) words the footer:
 // basketball tips off, football kicks off.
+// `allGames` puts a "Show all games" button on a FINAL card (Standings). The
+// game carries `aAll`/`bAll` (every game each side played, 0-point ones
+// included) once the caller has loaded them; `showAll` draws those lists in
+// place of the scored-only default. The caller owns the click — the button
+// carries `data-all-toggle` — because the lists load on demand.
 (function () {
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -143,10 +148,11 @@
     // Final weeks show only teams that scored; an unplayed week (live or still
     // to come) shows every team with a game, so in-progress and upcoming ones
     // are visible with their kickoff times instead of being mistaken for 0.
-    function teamList(teams, unplayed, right, plan) {
-        var list = unplayed ? (teams || []) : (teams || []).filter(function (t) { return t.score > 0; });
+    // `all` (a final week's full game list) skips the scored-only filter.
+    function teamList(teams, unplayed, right, plan, all) {
+        var list = (unplayed || all) ? (teams || []) : (teams || []).filter(function (t) { return t.score > 0; });
         return list.length ? list.map(function (t) { return teamRow(t, right, plan); }).join('')
-            : '<div class="h2h-trow empty">no points</div>';
+            : '<div class="h2h-trow empty">' + (all ? 'no games' : 'no points') + '</div>';
     }
     // Bar values: a finished matchup is settled (100/0 to the winner, tie 50/50);
     // an in-progress one shows the live/projected odds. null when nothing to show.
@@ -190,6 +196,7 @@
         return {
             aId: g.bId, bId: g.aId, aScore: g.bScore, bScore: g.aScore,
             aTeams: g.bTeams, bTeams: g.aTeams,
+            aAll: g.bAll, bAll: g.aAll,
             winner: g.winner === 'a' ? 'b' : g.winner === 'b' ? 'a' : g.winner,
             winP: g.winP ? { a: g.winP.b, b: g.winP.a } : g.winP,
             pending: g.pending,
@@ -223,6 +230,11 @@
         var live = g.final === false && !upcoming;
         var unplayed = live || upcoming;
         var score = function (v) { return upcoming ? '&ndash;' : v; };
+        // Every game, not just the scoring ones: only on a final card, and
+        // only once the caller has the lists to draw.
+        var allBtn = !!(opts.allGames && g.final);
+        var showAll = !!(allBtn && opts.showAll && g.aAll && g.bAll);
+        var aList = showAll ? g.aAll : g.aTeams, bList = showAll ? g.bAll : g.bTeams;
         var both = (g.aTeams || []).concat(g.bTeams || []);
         var plan = datingPlan(both.map(function (t) { return t.kickoff; }));
         var remaining = both.filter(function (t) { return t.status && t.status !== 'final'; }).length;
@@ -244,8 +256,10 @@
             + '</div>'
             + winBar(g)
             + '<div class="h2h-mdetail">'
-            + '<div class="h2h-mdcol"><span class="h2h-mdcap">' + aName + '</span>' + teamList(g.aTeams, unplayed, false, plan) + '</div>'
-            + '<div class="h2h-mdcol right"><span class="h2h-mdcap">' + bName + '</span>' + teamList(g.bTeams, unplayed, true, plan) + '</div>'
+            + '<div class="h2h-mdcol"><span class="h2h-mdcap">' + aName + '</span>' + teamList(aList, unplayed, false, plan, showAll) + '</div>'
+            + '<div class="h2h-mdcol right"><span class="h2h-mdcap">' + bName + '</span>' + teamList(bList, unplayed, true, plan, showAll) + '</div>'
+            + (allBtn ? '<div class="h2h-mall"><button type="button" class="h2h-allbtn" data-all-toggle aria-pressed="' + showAll + '">'
+                + (showAll ? 'Show scored only' : 'Show all games') + '</button></div>' : '')
             + pregameLine(g, aName, bName)
             + (live ? '<div class="h2h-mfoot">In progress · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' to play · ' + starts + ' Central · scores update every 10 min</div>' : '')
             + (upcoming ? '<div class="h2h-mfoot">Not started · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' scheduled · ' + starts + ' Central · odds are projected</div>' : '')
