@@ -304,6 +304,12 @@ describe('the card\'s "Show all games" button (public/h2h-card.js)', () => {
         expect(html).toContain('<span class="h2h-tv">-2</span>');
     });
 
+    test('the pre-game line reads "Pregame", no hyphen', () => {
+        const card = loadCard();
+        expect(card.matchupCard(finalCard({ winP: { a: 55, b: 45 } }), { byId: BY_ID })).toContain('Pregame odds: <b>55%</b> Big Mac');
+        expect(card.matchupCard(finalCard({ winP: { a: 50, b: 50 } }), { byId: BY_ID })).toContain('Pregame: even matchup');
+    });
+
     test('switched on before the lists arrive, it keeps the scored view', () => {
         const html = loadCard().matchupCard(finalCard(), { byId: BY_ID, allGames: true, showAll: true });
         expect(schools(html)).toEqual(['Oregon']);

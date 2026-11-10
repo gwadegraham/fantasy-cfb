@@ -191,8 +191,8 @@
         if (!g.final || !g.winP) return '';
         var favA = g.winP.a >= g.winP.b;
         var pct = favA ? g.winP.a : g.winP.b;
-        if (pct <= 50) return '<div class="h2h-mpre">Pre-game: even matchup</div>';
-        return '<div class="h2h-mpre">Pre-game odds: <b>' + pct + '%</b> ' + (favA ? aName : bName) + '</div>';
+        if (pct <= 50) return '<div class="h2h-mpre">Pregame: even matchup</div>';
+        return '<div class="h2h-mpre">Pregame odds: <b>' + pct + '%</b> ' + (favA ? aName : bName) + '</div>';
     }
     // Flip a game so `youId` sits on the A/left side.
     function orient(g, youId) {
