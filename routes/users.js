@@ -31,6 +31,7 @@ const { findPoll } = require('../modules/scoring-detectors');
 const { sanitizeSubscription, sanitizePrefs, MAX_SUBSCRIPTIONS } = require('../modules/push-subscription');
 const { DEFAULT_LEAD_MINUTES: CAPTAIN_DEFAULT_LEAD_MINUTES } = require('../modules/captain-reminder');
 const pushNotify = require('../modules/push-notify');
+const pushDelivery = require('../modules/push-delivery');
 const hoopsCaptain = require('../modules/hoops-captain');
 const { seasonModeWeeks } = require('../modules/hoops-modes');
 
@@ -234,8 +235,17 @@ router.post('/me/push', async (req, res) => {
             // someone whose browser keeps reissuing endpoints, and failing their
             // newest device is the wrong end to cut.
             subs.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-            subs.splice(0, subs.length - MAX_SUBSCRIPTIONS + 1);
+            const evicted = subs.splice(0, subs.length - MAX_SUBSCRIPTIONS + 1);
+            for (const gone of evicted) {
+                await pushDelivery.recordSetting(userId, 'device.evicted',
+                    { endpoint: gone.endpoint, userAgent: gone.userAgent,
+                      detail: `Oldest device dropped: the ${MAX_SUBSCRIPTIONS}-device limit was reached` });
+            }
         }
+        // A client new enough to send this registers a device whose worker
+        // posts delivery receipts (public/sw.js), so missing receipts count
+        // from now on. modules/push-health.js explains why that matters.
+        if (req.body && req.body.receipts === true) clean.receiptsSince = new Date();
         subs.push(clean);
         account.pushSubscriptions = subs;
         await franchiseRepo.saveBoth(ctx);
@@ -245,6 +255,10 @@ router.post('/me/push', async (req, res) => {
         if (req.body && req.body.via === 'open') {
             console.log(`Push: device re-registered on open for ${userId} (${subs.length} device(s))`);
         }
+        await pushDelivery.recordSetting(userId,
+            req.body && req.body.via === 'open' ? 'device.repaired' : 'device.registered',
+            { endpoint: clean.endpoint, userAgent: clean.userAgent,
+              detail: `${subs.length} device(s) registered after this` });
 
         res.json({
             deviceCount: subs.length,
@@ -268,7 +282,14 @@ router.delete('/me/push', async (req, res) => {
             : { $set: { pushSubscriptions: [] } };
         // pushSubscriptions is an ACCOUNT field — devices follow the person, not
         // their entry in one league.
+        const before = await franchiseRepo.byAccountId(userId, { fields: ['pushSubscriptions'] });
+        const held = ((before && before.pushSubscriptions) || []).length;
         await franchiseRepo.updateAccount(userId, update);
+        const matched = endpoint
+            ? ((before && before.pushSubscriptions) || []).some(s => s.endpoint === endpoint) : held > 0;
+        if (matched) await pushDelivery.recordSetting(userId, endpoint ? 'device.removed' : 'alerts.off',
+            { endpoint: endpoint || null, userAgent: req.get('User-Agent'),
+              detail: endpoint ? 'One device removed' : 'Turned alerts off — every device removed' });
         const user = await franchiseRepo.byAccountId(userId, { fields: ['pushSubscriptions'] });
         res.json({ deviceCount: ((user && user.pushSubscriptions) || []).length });
     } catch (err) {
@@ -293,14 +314,17 @@ router.patch('/me/push/prefs', async (req, res) => {
         const ctx = await franchiseRepo.loadForWrite(userId);
         if (!ctx) return res.status(404).json({ message: 'User not found.' });
         const { account } = ctx;
-        const prefs = Object.assign(
-            { score: true, leadChange: true, closeGame: true, final: true, captainLock: true, captainLockLeadMinutes: CAPTAIN_DEFAULT_LEAD_MINUTES, recapReady: true,
-                hoopsTipoff: true, hoopsCloseGame: true, hoopsFinal: true },
-            account.pushPrefs ? account.pushPrefs.toObject ? account.pushPrefs.toObject() : account.pushPrefs : {},
-            clean
-        );
+        const defaults = { score: true, leadChange: true, closeGame: true, final: true, captainLock: true, captainLockLeadMinutes: CAPTAIN_DEFAULT_LEAD_MINUTES, recapReady: true,
+            hoopsTipoff: true, hoopsCloseGame: true, hoopsFinal: true };
+        const stored = account.pushPrefs ? account.pushPrefs.toObject ? account.pushPrefs.toObject() : account.pushPrefs : {};
+        // What was in effect before this change, defaults filled in, so the
+        // evidence trail records only a real change.
+        const before = Object.assign({}, defaults, stored);
+        const prefs = Object.assign({}, before, clean);
         account.pushPrefs = prefs;
         await franchiseRepo.saveBoth(ctx);
+        const changed = pushDelivery.describePrefChange(before, clean);
+        if (changed) await pushDelivery.recordSetting(userId, 'prefs', { detail: changed, userAgent: req.get('User-Agent') });
         res.json({ prefs });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -315,7 +339,29 @@ router.post('/me/push/test', async (req, res) => {
     if (!userId) return res.status(401).json({ message: 'No profile in session.' });
     try {
         const out = await pushNotify.sendTest(userId);
+        await pushDelivery.recordSetting(userId, 'test', { detail: `Sent a test to ${out.sent || 0} device(s)`, userAgent: req.get('User-Agent') });
         res.json(out);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Is THIS device actually receiving alerts? public/push-alerts.js asks on
+// page load (throttled) with the browser's own endpoint, and shows a
+// "reconnect" banner on `silent`. POST so the endpoint — a capability URL —
+// never lands in a URL or an access log. Only the caller's own devices are
+// considered: an endpoint they do not hold answers `unknown`.
+router.post('/me/push/health', async (req, res) => {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: 'No profile in session.' });
+    const endpoint = req.body && req.body.endpoint;
+    try {
+        const user = await franchiseRepo.byAccountId(userId, { fields: ['pushSubscriptions'] });
+        const sub = ((user && user.pushSubscriptions) || []).find(s => s.endpoint === endpoint);
+        if (!sub) return res.json({ status: 'unknown' });
+        const { devices: [device] } = await pushDelivery.summarize(userId, [sub], { limit: 0 });
+        const h = device.health;
+        res.json({ status: h.status, silentStreak: h.silentStreak, lastReceivedAt: h.lastReceivedAt });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

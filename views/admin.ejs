@@ -17,6 +17,7 @@
     <script defer src="admin.js"></script>
     <script defer src="admin-clipboard.js"></script>
     <script defer src="admin-clipboard-view.js"></script>
+    <script defer src="admin-push.js"></script>
     <title data-league-title="League Management">League Management · Campus Clash</title>
     <%- include('partials/favicons') %>
     <link rel="manifest" href="/manifest.json" />
@@ -356,7 +357,7 @@
 
     <% if (isAdmin) { %>
     <section class="admin-group">
-        <div class="group-head"><h2>Monitoring</h2><span class="group-count">1</span></div>
+        <div class="group-head"><h2>Monitoring</h2><span class="group-count">2</span></div>
         <div class="admin-functions">
             <div class="function-container">
                 <div class="button-container">
@@ -371,6 +372,18 @@
                         <div><button type="submit">View API calls remaining</button></div>
                         <div class="api-info"><p class="api-info" api-calls-remaining></p></div>
                     </form>
+                </div>
+            </div>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayPushDeliveriesContainer()">
+                        <i class="fa-solid fa-bell" style="padding-right: 5px;"></i>
+                        Push deliveries
+                    </button>
+                </div>
+                <div class="sub-container" push-deliveries-container style="display: none">
+                    <p class="function-description">Every alert sent in the last 14 days, per manager and per device: whether Apple/Google accepted it, whether the phone reported it arrived, and whether it was tapped — plus each manager's own alert-setting changes.</p>
+                    <div class="pd-root" push-deliveries><p class="pd-empty">Loading…</p></div>
                 </div>
             </div>
         </div>

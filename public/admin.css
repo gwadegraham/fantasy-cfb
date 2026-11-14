@@ -1034,3 +1034,31 @@
 .admin-leagues-link a, .admin-leagues-link a:hover { display: inline-flex; align-items: center; gap: 6px; color: var(--cc-muted-bright);
     font: 600 13px Poppins, sans-serif; text-decoration: none; padding: 6px 12px; border: 1px solid var(--cc-border-2);
     border-radius: var(--cc-r-pill); background: var(--cc-surface-2); }
+
+/* ---- Push deliveries card (public/admin-push.js) ---------------------------- */
+.pd-root { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.pd-empty { color: var(--cc-muted); font-size: 0.85rem; margin: 0; }
+.pd-manager { border: 1px solid var(--cc-border); border-radius: var(--cc-r-md); background: var(--cc-surface-2); padding: 0 12px; }
+.pd-manager[open] { padding-bottom: 12px; }
+.pd-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0; cursor: pointer; list-style: none; }
+.pd-summary::-webkit-details-marker { display: none; }
+.pd-name { font-weight: 600; color: var(--cc-text); }
+.pd-chip { font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: var(--cc-r-pill); white-space: nowrap; }
+.pd-ok { background: rgba(34, 195, 122, 0.15); color: var(--cc-success); }
+.pd-bad { background: rgba(181, 66, 63, 0.2); color: var(--cc-danger-text); }
+.pd-warn { background: rgba(224, 179, 65, 0.15); color: var(--cc-amber); }
+.pd-dim { background: var(--cc-surface-3); color: var(--cc-muted); }
+.sub-container button.pd-copy { width: auto; margin: 0 0 8px; padding: 4px 12px; font-size: 0.8rem; }
+.pd-device { border-top: 1px solid var(--cc-border); padding-top: 8px; margin-top: 8px; }
+.pd-device-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pd-device-name { color: var(--cc-muted-bright); font-size: 0.88rem; }
+.pd-meta { color: var(--cc-muted-2); font-size: 0.75rem; margin-top: 2px; }
+.pd-sends, .pd-settings { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.pd-send { border-left: 3px solid var(--cc-border-2); padding-left: 8px; }
+.pd-arrived { border-left-color: var(--cc-success); }
+.pd-unconfirmed { border-left-color: var(--cc-amber); }
+.pd-refused { border-left-color: var(--cc-danger); }
+.pd-send-what { color: var(--cc-text); font-size: 0.82rem; }
+.pd-send-verdict { color: var(--cc-muted); font-size: 0.75rem; }
+.pd-settings-h { margin-top: 12px; color: var(--cc-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.pd-setting { color: var(--cc-muted-bright); font-size: 0.78rem; }

@@ -772,6 +772,9 @@ app.get('/cfp-bracket', async function(req, res) {
 
 app.use(express.json());
 app.use(express.static('public'));
+// Push delivery receipts from public/sw.js. No login, deliberately — see the
+// route file. Not under /users, so none of the role gates below apply.
+app.use('/push/receipt', require('./routes/push-receipt').build());
 app.use('/images',  express.static('images'));
 
 // Authorization for state-changing (non-GET) API calls, in two tiers:
@@ -809,6 +812,7 @@ app.use(['/users', '/draft', '/scoring-config', '/leagues'], (req, res, next) =>
     if (req.path === '/me/push' && (req.method === 'POST' || req.method === 'DELETE')) return next();
     if (req.path === '/me/push/prefs' && req.method === 'PATCH') return next();
     if (req.path === '/me/push/test' && req.method === 'POST') return next();
+    if (req.path === '/me/push/health' && req.method === 'POST') return next();
     return requireCommissioner(req, res, next);
 });
 
@@ -932,6 +936,9 @@ app.post('/dev/spoof/reset', (req, res) => {
 
 const jobRunsRouter = require('./routes/jobRuns');
 app.use('/job-runs', requireAuthOrToken, jobRunsRouter);
+
+// Admin-only on every method, GET included: it lists every manager's devices.
+app.use('/push-deliveries', requireAuthOrToken, requireAdmin, require('./routes/push-deliveries').build());
 
 const auditLogRouter = require('./routes/auditLog');
 app.use('/audit-log', requireAuthOrToken, auditLogRouter);
