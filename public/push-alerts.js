@@ -151,7 +151,10 @@
         var res = await fetch('/users/me/push', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(via ? { subscription: sub.toJSON(), via: via } : { subscription: sub.toJSON() })
+            // receipts: this page ships with a service worker that posts
+            // delivery receipts, so the server may judge this device by them.
+            body: JSON.stringify(via ? { subscription: sub.toJSON(), via: via, receipts: true }
+                : { subscription: sub.toJSON(), receipts: true })
         });
         if (!res.ok) {
             var err = await res.json().catch(function () { return {}; });
@@ -488,7 +491,128 @@
         render();
     }
 
-    var repairing = repairOnOpen();
+    // ---- silent-device check --------------------------------------------------
+    //
+    // A phone can hold a subscription that Apple accepts sends for but never
+    // delivers. public/sw.js now posts a receipt for every notification that
+    // lands, so the server can tell (modules/push-health.js): several sends in
+    // a row with no receipt is a device that is not hearing us. When that is
+    // THIS device, say so and offer a one-tap reconnect, which swaps the dead
+    // subscription for a fresh one and sends a test to prove it.
+    //
+    // Asked at most every 6 hours per device (a local timestamp), and only on
+    // the installed phone app with alerts on — the same population as
+    // repairOnOpen above.
+    var HEALTH_KEY = 'cc_push_health_at';
+    var HEALTH_EVERY_MS = 6 * 60 * 60 * 1000;
+    var DISMISS_KEY = 'cc_push_health_dismissed';
+    var DISMISS_MS = 3 * 24 * 60 * 60 * 1000;
 
-    window.PushAlerts = { mount: mount, repairOnOpen: repairOnOpen };
+    function readNum(key) {
+        try { return Number(window.localStorage.getItem(key)) || 0; } catch (e) { return 0; }
+    }
+    function writeNum(key, n) {
+        try { window.localStorage.setItem(key, String(n)); } catch (e) { /* best effort */ }
+    }
+
+    async function deviceHealth(endpoint) {
+        var res = await fetch('/users/me/push/health', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ endpoint: endpoint })
+        });
+        if (!res.ok) return null;
+        return res.json();
+    }
+
+    // Throw away this device's subscription and make a new one. Called from a
+    // tap, so iOS will allow the subscribe. The old endpoint is removed on the
+    // server too, or it would go on being sent to (and accepted) forever.
+    async function reconnect() {
+        var state = await getState();
+        var reg = await registerWorker();
+        var old = await reg.pushManager.getSubscription();
+        var oldEndpoint = old && old.endpoint;
+        if (old) { try { await old.unsubscribe(); } catch (e) { /* checked below */ } }
+        await subscribe(state.vapidPublicKey);
+        // unsubscribe() can fail by returning false rather than throwing, and
+        // then subscribe() reuses the SAME endpoint. Deleting "the old one"
+        // would then delete the device just registered and leave the manager
+        // with no alerts at all — so only delete it if it really changed.
+        var fresh = await reg.pushManager.getSubscription();
+        if (!fresh || fresh.endpoint === oldEndpoint) {
+            throw new Error('This phone kept its old connection. Open alert settings on My Team and use Turn off, then Turn on.');
+        }
+        if (oldEndpoint) {
+            await fetch('/users/me/push', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ endpoint: oldEndpoint })
+            });
+        }
+        writeNum(HEALTH_KEY, Date.now());
+        return sendTest();
+    }
+
+    function showSilentBanner() {
+        if (document.querySelector('.cc-push-silent')) return;
+        var bar = document.createElement('div');
+        bar.className = 'cc-push-silent';
+        bar.setAttribute('role', 'status');
+        var msg = document.createElement('span');
+        msg.className = 'cc-push-silent-msg';
+        msg.textContent = 'Alerts don’t seem to be reaching this phone.';
+        var fix = document.createElement('button');
+        fix.type = 'button';
+        fix.className = 'cc-push-silent-fix';
+        fix.textContent = 'Reconnect';
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'cc-push-silent-close';
+        close.setAttribute('aria-label', 'Dismiss');
+        close.textContent = '×';
+        fix.addEventListener('click', async function () {
+            fix.disabled = true;
+            msg.textContent = 'Reconnecting…';
+            try {
+                var out = await reconnect();
+                msg.textContent = out && out.sent
+                    ? 'Reconnected — a test alert is on its way.'
+                    : 'Reconnected. Open alert settings on My Team to send a test.';
+                fix.remove();
+                setTimeout(function () { bar.remove(); }, 6000);
+            } catch (e) {
+                msg.textContent = (e && e.message) || 'Could not reconnect. Try alert settings on My Team.';
+                fix.disabled = false;
+            }
+        });
+        close.addEventListener('click', function () {
+            writeNum(DISMISS_KEY, Date.now());
+            bar.remove();
+        });
+        bar.appendChild(msg);
+        bar.appendChild(fix);
+        bar.appendChild(close);
+        document.body.appendChild(bar);
+    }
+
+    async function checkSilent() {
+        try {
+            if (!supported() || !isStandalone() || !isPhone()) return;
+            if (Notification.permission !== 'granted' || turnedOffHere()) return;
+            var now = Date.now();
+            if (now - readNum(DISMISS_KEY) < DISMISS_MS) return;
+            if (now - readNum(HEALTH_KEY) < HEALTH_EVERY_MS) return;
+            var here = await thisDeviceEndpoint();
+            if (!here) return;
+            var health = await deviceHealth(here);
+            writeNum(HEALTH_KEY, now);
+            if (health && health.status === 'silent') showSilentBanner();
+        } catch (e) { /* diagnostics only */ }
+    }
+
+    var repairing = repairOnOpen();
+    repairing.then(checkSilent);
+
+    window.PushAlerts = { mount: mount, repairOnOpen: repairOnOpen, checkSilent: checkSilent, reconnect: reconnect };
 })();

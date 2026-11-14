@@ -40,6 +40,13 @@ const pushSubscriptionSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
+    },
+    // When this device's service worker first said it posts delivery receipts
+    // (public/sw.js). Until then a missing receipt proves nothing — it could be
+    // the old worker — so modules/push-health.js will not call the device
+    // silent on sends from before this instant.
+    receiptsSince: {
+        type: Date
     }
 }, { _id: false });
 

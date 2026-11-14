@@ -1355,3 +1355,45 @@ a.gc-clickable { display: block; }
 /* Scheduled game date/time — muted metadata styling */
 .gc-date { font-size: 0.75rem; color: var(--cc-muted); font-weight: 500; }
 .gc-time { font-size: 0.8rem; color: #A4A9C2; font-weight: 500; }
+
+/* ---- Silent push device banner (public/push-alerts.js checkSilent) ----------
+   Shown on the installed phone app when the server has seen several alerts
+   accepted for this device with no delivery receipt back. Sits just above the
+   phone tab bar; the tab bar only exists at phone widths, and so does this. */
+.cc-push-silent {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px) + 12px);
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 10px 10px 14px;
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-amber);
+    border-radius: var(--cc-r-md);
+    color: var(--cc-text);
+    font-size: 0.9rem;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+.cc-push-silent-msg { flex: 1; }
+.cc-push-silent-fix {
+    flex: none;
+    background: var(--cc-amber);
+    color: var(--cc-bg);
+    border: 0;
+    border-radius: var(--cc-r-pill);
+    padding: 6px 14px;
+    font-weight: 600;
+}
+.cc-push-silent-fix:disabled { opacity: 0.6; }
+.cc-push-silent-close {
+    flex: none;
+    background: none;
+    border: 0;
+    color: var(--cc-muted);
+    font-size: 1.3rem;
+    line-height: 1;
+    padding: 2px 6px;
+}

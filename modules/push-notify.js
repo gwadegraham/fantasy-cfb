@@ -37,6 +37,7 @@ const scoringModule = require('./scoring');
 const { engagementForSeason } = require('./scoring-defaults');
 const { captainFocusWeek, autoCaptainTeamId, captainForWeek, captainWeeklyBonus, resolveCaptain } = require('./captain');
 const { isDue, alreadySent, buildCaptainReminderPayload, leadMsFor } = require('./captain-reminder');
+const pushDelivery = require('./push-delivery');
 const { alreadyNoticed, latestRecap, buildRecapNoticePayload } = require('./recap-notice');
 const { isRecapSeason } = require('./weekly-recap');
 const { internalFetch } = require('./internal-api');
@@ -293,22 +294,49 @@ async function sendToUser(user, payload) {
     const subs = user.pushSubscriptions || [];
     let sent = 0;
     const dead = [];
+    // One delivery-log row per device (modules/push-delivery.js). `sid` rides
+    // in the payload so public/sw.js can report the notification ARRIVED —
+    // the push service's 201 only says Apple took it, and Apple takes it for
+    // a subscription the phone has silently dropped. The rows are written
+    // BEFORE the sends: a receipt can beat us back.
+    const planned = subs.map(sub => ({
+        sub,
+        row: {
+            sendId: pushDelivery.newSendId(), accountId: user._id,
+            device: pushDelivery.deviceKey(sub.endpoint),
+            deviceLabel: pushDelivery.deviceLabel(sub.userAgent),
+            type: payload.type || null, tag: payload.tag || null,
+            title: payload.title || null,
+            week: payload.week != null && Number.isFinite(Number(payload.week)) ? Number(payload.week) : undefined
+        }
+    }));
+    await pushDelivery.startSends(planned.map(p => p.row));
+    const results = [];
 
-    for (const sub of subs) {
+    for (const { sub, row } of planned) {
+        const result = { sendId: row.sendId };
         try {
-            await webpush.sendNotification(
+            const res = await webpush.sendNotification(
                 { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } },
-                JSON.stringify(payload)
+                JSON.stringify(Object.assign({}, payload, { sid: row.sendId }))
             );
             sent++;
+            result.status = 'accepted';
+            result.statusCode = res && res.statusCode;
         } catch (err) {
+            result.statusCode = err && err.statusCode;
+            result.error = String((err && (err.body || err.message)) || err).slice(0, 300);
             if (err && (err.statusCode === 404 || err.statusCode === 410)) {
                 dead.push(sub.endpoint);
+                result.status = 'gone';
             } else {
+                result.status = 'failed';
                 console.log(`Push: send failed for ${user._id}: ${err && err.message}`);
             }
         }
+        results.push(result);
     }
+    await pushDelivery.finishSends(results);
 
     if (dead.length) {
         try {
