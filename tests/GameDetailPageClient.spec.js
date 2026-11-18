@@ -234,6 +234,19 @@ describe('before kickoff: the stakes', () => {
         expect(txt('.sp-h')).toContain('Fantasy stakesPoints for a win');
         expect(txt('.fg-stakes')).toContain('Western Michigan · not on a roster');
     });
+
+    // UI audit G1: the server prices a win only before the start time, but the
+    // page keeps this card until the feed flags the game live. Past kickoff
+    // and not live yet, the read has owners and no prices — and the heading
+    // used to promise "Points for a win" over two rows with no points.
+    test('owners but no prices: the card names the managers without promising points', async () => {
+        const f = fantasyOf('pre');
+        delete f.away.ifWin; delete f.away.ifLoss; delete f.home.ifWin; delete f.home.ifLoss;
+        await boot('pre', { fantasy: Promise.resolve(f) });
+        expect(txt('.sp-h')).toContain('Manager matchup');
+        expect(txt('.sp-h')).not.toContain('Points for a win');
+        expect(txt('.fg-stakes .sp-stake')).toBe('Always Next Year · Boise State | Hogs Gone Wild · Western Michigan');
+    });
 });
 
 describe('which league', () => {

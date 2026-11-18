@@ -17,17 +17,19 @@ const { JSDOM } = require('jsdom');
 
 // The hooks renderPool queries in views/draftRoom.ejs.
 const FIXTURE = `
+<div id="draft-pool" style="display:none">
 <input id="poolSearch" value="">
 <select id="poolConf"><option value=""></option></select>
 <input type="checkbox" id="showDrafted">
 <table class="pool-table"><thead><tr id="pool-head"></tr></thead><tbody user-table-body></tbody></table>
 <div id="pool-cards"></div>
 <span id="poolCount"></span>
+</div>
 `;
 
 // Load draft-pool-view.js then draftRoom.js into one window, as the view's two
 // deferred script tags do.
-function room({ sport = 'football', pool = [], draft = null } = {}) {
+function room({ sport = 'football', pool = [], draft = null, stateKnown = true } = {}) {
     // `url` so jsdom provides a real localStorage; without an origin it is
     // undefined and setUserContext throws on load.
     // No `load` event: jsdom would fire window.onload, which runs the whole
@@ -73,6 +75,7 @@ function room({ sport = 'football', pool = [], draft = null } = {}) {
         poolSport = ${JSON.stringify(sport)};
         pool = ${JSON.stringify(pool)};
         draft = ${JSON.stringify(draft)};
+        draftStateKnown = ${JSON.stringify(stateKnown)};
         poolSort = ccDraftPool.defaultSort(poolSport, pool);
         renderPool();
     `, ctx);
@@ -81,6 +84,7 @@ function room({ sport = 'football', pool = [], draft = null } = {}) {
         head: () => win.document.getElementById('pool-head').innerHTML,
         body: () => win.document.querySelector('[user-table-body]').innerHTML,
         cards: () => win.document.getElementById('pool-cards').innerHTML,
+        poolShown: () => win.document.getElementById('draft-pool').style.display !== 'none',
         run: (code) => vm.runInContext(code, ctx)
     };
 }
@@ -277,6 +281,47 @@ describe('basketball — sorting and search', () => {
         clickDraft(r, 10);
         r.run(`document.getElementById('poolSearch').value = 'gonz';`);
         expect(pickArrives(r, 22, 'someone-else')).toBe('gonz');
+    });
+});
+
+// UI audit D1: after "Draft complete!" the pool still listed every undrafted
+// team with a dead Draft button — 78 cards on football, ~19,000px on
+// basketball — under the board and the grades.
+describe('a finished draft', () => {
+    const done = { status: 'complete', picks: [{ team: { id: 333 } }], onTheClock: {} };
+
+    test('hides the pool', () => {
+        const page = room({ pool: [fbRow(), fbRow({ id: 8, name: 'Auburn' })], draft: done });
+        expect(page.poolShown()).toBe(false);
+        expect(page.cards()).not.toContain('Auburn');
+    });
+
+    test('a live draft keeps it', () => {
+        const page = room({ pool: [fbRow(), fbRow({ id: 8, name: 'Auburn' })], draft: Object.assign({}, done, { status: 'active' }) });
+        expect(page.poolShown()).toBe(true);
+        expect(page.cards()).toContain('Auburn');
+    });
+
+    // QA: getTeams() renders before the socket's first draft-state. Shown
+    // then, a finished draft painted the whole pool and collapsed it a beat
+    // later — ~19,000px of dead cards on basketball.
+    // onDraftState → renderAll paints the status, board, ticker and grades
+    // too; this fixture has only the pool, so those are stubbed.
+    const otherRenders = 'renderStatus = renderBoard = renderTicker = renderOnTheClock = renderGrades = function () {};';
+
+    test('the pool waits for the first draft state, then shows for a live draft', () => {
+        const page = room({ pool: [fbRow()], stateKnown: false });
+        page.run(otherRenders);
+        expect(page.poolShown()).toBe(false);
+        page.run(`onDraftState(${JSON.stringify(Object.assign({}, done, { status: 'active', picks: [] }))});`);
+        expect(page.poolShown()).toBe(true);
+    });
+
+    test('and stays hidden when that first state is a finished draft', () => {
+        const page = room({ pool: [fbRow()], stateKnown: false });
+        page.run(otherRenders);
+        page.run(`onDraftState(${JSON.stringify(done)});`);
+        expect(page.poolShown()).toBe(false);
     });
 });
 

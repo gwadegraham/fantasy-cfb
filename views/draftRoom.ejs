@@ -64,7 +64,10 @@
     <!-- Draft grades: immediate report card once the draft completes -->
     <div id="draft-grades-panel" class="draft-grades-panel" style="display:none;"></div>
 
-    <div class="content pool">
+    <!-- Hidden until the first draft state arrives, and for good once the
+         draft is complete (draftRoom.js renderPool): every Draft button is
+         dead then, and the board already shows who went where. -->
+    <div class="content pool" id="draft-pool" style="display:none">
         <h2 class="pool-title">Available Teams</h2>
         <div class="pool-controls">
             <input type="text" id="poolSearch" placeholder="Search team…" oninput="renderPool()">

@@ -137,6 +137,22 @@
     }
 }
 
+@media (max-width: 767px) {
+    /* The roster grid's manager names. styles.css shrinks every .fl-table
+       cell to 8px under 768px, which left each name an 8px link 12px tall.
+       Readable text and a 44px tap target; the row is ~50px already. */
+    [get-users-container] .fl-table th.sticky-header {
+        font-size: 13px;
+    }
+
+    [get-users-container] .fl-table th.sticky-header a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0 4px;
+    }
+}
+
 @media only screen and (min-width: 64em) {
 
     .admin-functions {

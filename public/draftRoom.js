@@ -4,6 +4,7 @@
 
 var socket;
 var draft = null;            // latest draft state from the server (or null)
+var draftStateKnown = false; // a draft-state (or "no draft") has arrived; until then the pool stays hidden
 var teamList = [];
 var teamsById = {};
 var membersById = {};        // userId -> { firstName, lastName }
@@ -299,6 +300,16 @@ function poolCell(p, key, action) {
 function renderPool() {
     var body = document.querySelector('[user-table-body]');
     if (!body) return;
+    // A finished draft has nothing left to pick: the pool would be every
+    // undrafted team with a dead Draft button (78 cards on football, ~19,000px
+    // of them on basketball) under the board and the grades. Hide it.
+    // getTeams() renders before the socket's first draft-state, when `draft`
+    // is still null, so the pool also waits for that — otherwise a finished
+    // draft paints the whole pool and then collapses it.
+    var poolSection = document.getElementById('draft-pool');
+    var draftDone = !!(draft && draft.status === 'complete');
+    if (poolSection) poolSection.style.display = (draftDone || !draftStateKnown) ? 'none' : '';
+    if (draftDone) return;
     // A pool that could not be built keeps saying so. renderPool runs again on
     // every socket update, and without this each one would wipe the message.
     if (poolError) return renderPoolError();
@@ -423,6 +434,7 @@ async function connectSocket() {
             onPickMade._ownChimeAt = 0; onPickMade._ownPickTeamId = null;   // our optimistic pick was rejected — don't suppress the next chime
             if (e && /no draft/i.test(e.message || '')) {
                 draft = null;
+                draftStateKnown = true;
                 renderAll();
             } else {
                 failToast.options.text = (e && e.message) || 'Draft error';
@@ -430,6 +442,9 @@ async function connectSocket() {
             }
         });
     } catch (err) {
+        // No socket, so no draft state is coming: show the pool to browse.
+        draftStateKnown = true;
+        renderPool();
         failToast.options.text = 'Could not connect to the draft';
         failToast.showToast();
     }
@@ -437,6 +452,7 @@ async function connectSocket() {
 
 function onDraftState(state) {
     draft = state;
+    draftStateKnown = true;
     renderAll();
 }
 
