@@ -1249,7 +1249,12 @@
             // Two managers only when they are two people: one manager owning
             // both sides is not a matchup against themself.
             var both = f.away.owner && f.home.owner && String(f.away.owner.userId) !== String(f.home.owner.userId);
-            return '<h2 class="sp-h">' + (both ? 'Manager matchup' : 'Fantasy stakes') + '<small>Points for a win</small></h2>'
+            // The server prices a win only before the start time (and not at
+            // all if the scoring read fails). A game past kickoff that the
+            // feed has not flagged live yet still renders this pre-game card,
+            // so promise "Points for a win" only when there are points.
+            var priced = [f.away, f.home].some(function (s) { return s.owner && s.ifWin != null; });
+            return '<h2 class="sp-h">' + (both ? 'Manager matchup' : 'Fantasy stakes') + (priced ? '<small>Points for a win</small>' : '') + '</h2>'
                 + '<div class="sp-card fg-stakes">' + row(f.away, game.awayTeam, p == null ? null : 1 - p) + row(f.home, game.homeTeam, p) + '</div>';
         }
 
