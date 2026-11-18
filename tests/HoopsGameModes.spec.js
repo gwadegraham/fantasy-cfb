@@ -293,6 +293,20 @@ describe('head-to-head on a basketball league', () => {
         expect((await weekOf(ann._id, 1)).h2hResult).toBe('W');
     });
 
+    test.each(['postponed', 'cancelled', 'canceled'])('a %s game stops holding the week at once', async (status) => {
+        // 13 Nov 2026: an FAA ground stop called off Pepperdine @ Oregon. CBBD
+        // marked it postponed with no new date; waiting out the week-long
+        // grace held every manager's H2H result for six days.
+        await modes({ h2h: true });
+        const { ann } = await twoManagers();
+        await HoopsGame.create([q1Win(1, 1), loss(1, 2),
+            q1Win(1, 2, { status, startDate: new Date('2026-11-04T00:00:00Z') })]);
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
+        // A day after the called-off date, well inside the grace.
+        await applyHoopsH2H(LEAGUE, SEASON, { nowMs: Date.parse('2026-11-05T00:00:00Z') });
+        expect((await weekOf(ann._id, 1)).h2hResult).toBe('W');
+    });
+
     test('conference tournament points are not part of the matchup', async () => {
         // Ann loses a regular game; Bo's only win is in his conference
         // tournament. The matchup is 0-0, a tie, and pays nothing — though

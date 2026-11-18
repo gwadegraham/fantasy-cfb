@@ -75,7 +75,9 @@ function buildHoopsProjections({ users, ratings, games, field, ranks, cfg, seaso
     // for the decided state.
     // An unplayed game a week past its tip is not going to be played as
     // listed (a postponement, or the stale half of a rescheduled pair): the
-    // H2H gate and the matchup card already drop it (hoops-h2h gateGames),
+    // H2H gate and the matchup card already drop it (hoops-h2h gateGames,
+    // which also drops postponed/cancelled rows at once — the projection
+    // engine skips those itself, see hoops-projection isDead),
     // so the projection does too — otherwise it projects games the card,
     // and the scorer, never count.
     const regular = (games || []).filter(g => String(g.seasonType || '').toLowerCase() === 'regular' && !overdue(g, nowMs));
