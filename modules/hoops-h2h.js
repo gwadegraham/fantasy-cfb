@@ -17,10 +17,11 @@
 //     `noModes`.
 //
 // A week settles when every mode game a drafted team plays in it is final.
-// A game still unplayed a week after its scheduled tip is treated as not
-// happening (a postponement, or the stale half of a rescheduled pair — see
-// modules/hoops-stale-duplicates.js), so one cancellation cannot hold a week
-// open for the rest of the season.
+// A game CBBD marks postponed or cancelled stops gating at once; one still
+// unplayed a week after its scheduled tip is treated as not happening too
+// (a postponement CBBD never marked, or the stale half of a rescheduled pair
+// — see modules/hoops-stale-duplicates.js), so one cancellation cannot hold a
+// week open for the rest of the season.
 
 const HoopsGame = require('../models/hoopsGame');
 const ScoringConfig = require('../models/scoringConfig');
@@ -59,12 +60,13 @@ function withTeams(users, season) {
 }
 
 // The mode games that gate a week, in the shape modules/h2h.js reads, plus
-// the display fields the standings card wants. Overdue unplayed games are
-// dropped (see the header).
+// the display fields the standings card wants. Postponed, cancelled and
+// overdue unplayed games are dropped (see the header).
 function gateGames(rows, nowMs) {
-    const { isFinal } = scoringPass();
+    const { isFinal, isDead } = scoringPass();
     return (rows || [])
         .filter(isModeGame)
+        .filter(g => !isDead(g))
         .filter(g => isFinal(g) || !overdue(g, nowMs))
         .map(g => ({
             id: g.id, week: g.week, seasonType: 'regular',

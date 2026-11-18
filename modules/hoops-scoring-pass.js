@@ -52,6 +52,17 @@ function isFinal(game) {
     return home !== away;
 }
 
+// A listing that will not be played as listed: CBBD marks a game postponed
+// or cancelled the day it is called off, often before any new date exists
+// (the 13 Nov 2026 FAA ground stop took out Pepperdine @ Oregon that way).
+// Never final, so it never scores; callers that WAIT on unplayed games (the
+// H2H week gate) must not wait on one of these. If it is rescheduled under
+// the same id, CBBD flips it back to 'scheduled' with its new date.
+const DEAD_STATUSES = new Set(['postponed', 'cancelled', 'canceled']);
+function isDead(game) {
+    return DEAD_STATUSES.has(String(game.status).toLowerCase());
+}
+
 // Every team id on a roster, in roster order. Reads refs first because that
 // is how basketball stores them, and falls back to embedded teams so a
 // hand-corrected roster still scores.
@@ -317,4 +328,4 @@ async function writeCumulative(league, accountId, season) {
     );
 }
 
-module.exports = { scoreHoopsWeek, isFinal, rosterIds, writeWeek, writeCumulative, points, configFor };
+module.exports = { scoreHoopsWeek, isFinal, isDead, rosterIds, writeWeek, writeCumulative, points, configFor };

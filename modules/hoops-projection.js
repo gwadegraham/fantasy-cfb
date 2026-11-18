@@ -75,7 +75,7 @@
 const { evaluate } = require('./scoring');
 const { log5, HOME_ODDS } = require('./hoops-win-prob');
 const { venueFor } = require('./hoops-quadrants');
-const { isFinal } = require('./hoops-scoring-pass');
+const { isFinal, isDead } = require('./hoops-scoring-pass');
 const { isConfTournament } = require('./hoops-detectors');
 
 // Home court, as a multiplier on the home side's odds (neutral sites get 1):
@@ -205,13 +205,10 @@ function isConfTournamentGame(game) {
     return isConfTournament(game);
 }
 
-// A row that will never be played as listed. 18 of the 6,213 2025-26
-// regular-season rows were cancelled or postponed, most with a rescheduled
-// twin on file; projecting both would count the game twice.
-const DEAD_STATUSES = ['cancelled', 'canceled', 'postponed'];
-function isDead(game) {
-    return DEAD_STATUSES.includes(String(game.status || '').toLowerCase());
-}
+// A row that will never be played as listed (isDead, from the scoring pass).
+// 18 of the 6,213 2025-26 regular-season rows were cancelled or postponed,
+// most with a rescheduled twin on file; projecting both would count the game
+// twice.
 
 // The game as a result for `teamId`, for the scoring engine. Notes and the
 // tournament code are dropped so a synthesized result can only ever match a
