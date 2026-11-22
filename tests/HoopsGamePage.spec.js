@@ -587,7 +587,7 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         const get = stubCbbd();
         const espn = stubEspn();
         await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress', homePoints: 41, awayPoints: 38, period: 2, clock: '8:43' } });
-        const p = await gamePage.build(500);
+        const p = await gamePage.build(500, { now: NOW });
         expect(espn).toHaveBeenCalledWith('basketball', '401911532', expect.any(Function));
         expect(p.box).toEqual(ESPN_BOX);
         expect(p.shots).toEqual(ESPN_SHOTS);
@@ -600,7 +600,7 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
         await HoopsShots.create({ gameId: 500, season: SEASON, complete: true, shots: [{ teamId: 1, made: true, range: 'rim', x: 25, y: 6 }],
             log: [{ type: 'JumpShot', text: 'x', period: 1, clock: '19:00', side: 'home', home: 2, away: 0 }] });
-        const p = await gamePage.build(500);
+        const p = await gamePage.build(500, { now: NOW });
         expect(espn).not.toHaveBeenCalled();
         expect(p.box.source).toBeUndefined();
         expect(p.box.home.points).toBe(75);
@@ -611,7 +611,7 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
     test('the shape ESPN is asked with is bound to THIS game', async () => {
         const espn = stubEspn();
         await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress' } });
-        await gamePage.build(500);
+        await gamePage.build(500, { now: NOW });
         const SUMMARY = require('./fixtures/espn-hoops-summary-401920982.json');
         const out = espn.mock.calls[0][2](SUMMARY);
         expect(out.box).toMatchObject({ gameId: 500, home: { teamId: 1 }, away: { teamId: 2 } });
@@ -623,7 +623,7 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         await HoopsTeam.updateOne({ id: 1, season: SEASON }, { $set: { sourceId: '87' } });
         await HoopsTeam.updateOne({ id: 2, season: SEASON }, { $set: { sourceId: '222' } });
         await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress' } });
-        await gamePage.build(500);
+        await gamePage.build(500, { now: NOW });
         const SUMMARY = require('./fixtures/espn-hoops-summary-401920982.json');
         const out = espn.mock.calls[0][2](SUMMARY);
         expect(out.box.home).toMatchObject({ teamId: 1, points: 74 });
@@ -635,7 +635,7 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         const plays = [].concat(Array.from({ length: 7 }, () => foul('away')), [foul('home')]);
         stubEspn({ box: ESPN_BOX, shots: ESPN_SHOTS, plays });
         await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress' } });
-        const p = await gamePage.build(500);
+        const p = await gamePage.build(500, { now: NOW });
         expect(p.gamecast).toBe(true);
         expect(p.fouls).toEqual({ period: 2, home: { fouls: 1, bonus: 'single' }, away: { fouls: 7, bonus: null } });
     });
@@ -643,11 +643,11 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
     test('live without plays yet, or ESPN down: no Gamecast tab, no fouls', async () => {
         stubEspn();
         await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress' } });
-        let p = await gamePage.build(500);
+        let p = await gamePage.build(500, { now: NOW });
         expect([p.gamecast, p.fouls]).toEqual([false, null]);
         jest.restoreAllMocks();
         stubEspn(null);
-        p = await gamePage.build(500);
+        p = await gamePage.build(500, { now: NOW });
         expect([p.gamecast, p.fouls]).toEqual([false, null]);
     });
 
@@ -656,7 +656,7 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
         await HoopsShots.create({ gameId: 500, season: SEASON, complete: true, shots: [{ teamId: 1, made: true, x: 25, y: 6 }],
             log: [{ type: 'JumpShot', text: 'x', period: 1, clock: '19:00', side: 'home', home: 2, away: 0 }] });
-        const p = await gamePage.build(500);
+        const p = await gamePage.build(500, { now: NOW });
         expect([p.gamecast, p.fouls]).toEqual([true, null]);
         expect(espn).not.toHaveBeenCalled();
     });
@@ -665,7 +665,7 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         const espn = stubEspn({ box: ESPN_BOX, shots: ESPN_SHOTS, plays: [{ type: 'JumpShot', period: 1, clock: '19:00', side: 'home', home: 2, away: 0 }] });
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
         await HoopsShots.create({ gameId: 500, season: SEASON, complete: true, shots: [{ teamId: 1, made: true, x: 25, y: 6 }] });
-        const p = await gamePage.build(500);
+        const p = await gamePage.build(500, { now: NOW });
         expect(espn).toHaveBeenCalledTimes(1);
         expect(p.gamecast).toBe(true);
         expect(p.box.source).toBeUndefined();          // CBBD's box still wins
@@ -677,7 +677,7 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
         jest.spyOn(require('../modules/hoops-shots'), 'logFor').mockRejectedValue(new Error('db down'));
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
         await HoopsShots.create({ gameId: 500, season: SEASON, complete: true, shots: [{ teamId: 1, made: true, x: 25, y: 6 }] });
-        const p = await gamePage.build(500);
+        const p = await gamePage.build(500, { now: NOW });
         expect(p.gamecast).toBe(false);
         expect(p.home.school).toBe('Duke');
     });
@@ -694,7 +694,7 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
     test('a final whose box landed but not its chart: CBBD\'s box, ESPN\'s chart', async () => {
         stubEspn();
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
-        const p = await gamePage.build(500);
+        const p = await gamePage.build(500, { now: NOW });
         expect(p.box.home.points).toBe(75);
         expect(p.box.source).toBeUndefined();
         expect(p.shots).toEqual(ESPN_SHOTS);
@@ -702,13 +702,13 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
 
     test('a final with nothing stored yet: ESPN\'s box, so the page is not empty in the gap', async () => {
         stubEspn();
-        const p = await gamePage.build(500);
+        const p = await gamePage.build(500, { now: NOW });
         expect(p.box).toEqual(ESPN_BOX);
     });
 
     test('ESPN down: no box, and the page still builds', async () => {
         stubEspn(null);
-        const p = await gamePage.build(500);
+        const p = await gamePage.build(500, { now: NOW });
         expect([p.box, p.shots]).toEqual([null, null]);
         expect(p.home.school).toBe('Duke');
     });
@@ -716,7 +716,7 @@ describe('ESPN stands in until CBBD\'s own data is stored', () => {
     test('a game still to play, or one with no ESPN id: ESPN is never asked', async () => {
         const espn = stubEspn();
         await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'scheduled', homePoints: null, awayPoints: null } });
-        expect((await gamePage.build(500)).box).toBeNull();
+        expect((await gamePage.build(500, { now: NOW })).box).toBeNull();
         await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress' }, $unset: { sourceId: 1 } });
         expect((await gamePage.build(500)).box).toBeNull();
         expect(espn).not.toHaveBeenCalled();
