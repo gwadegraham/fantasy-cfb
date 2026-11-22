@@ -14,6 +14,7 @@ const path = require('path');
 
 window.ccKickoff = require('../public/kickoff-day.js');
 window.ccLogo = require('../public/logo.js').pickLogo;
+window.ccPollPick = require('../public/poll-pick.js');
 const KIT = fs.readFileSync(path.join(__dirname, '..', 'public', 'sport-page.js'), 'utf8');
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'public', 'team.js'), 'utf8');
 beforeAll(() => {
@@ -290,6 +291,18 @@ describe('the schedule: game rows with fantasy points', () => {
         expect(rows()[2].querySelector('.res b')).toBeNull();
         expect(rows()[2].querySelector('.ft-rk i')).toBeNull();
         expect(rows()[2].querySelector('.ft-rk').textContent).toBe('<i>9</i>');
+    });
+
+    // Nov 2026: Texas's next game (a week with no poll doc yet) showed AP #8;
+    // the newest doc had the committee at #5.
+    test('an upcoming game in a week with no poll yet shows the newest committee rank', () => {
+        const m = model();
+        m.rankings = [{ season: 2026, week: 2, polls: [
+            { poll: 'AP Top 25', ranks: [{ school: 'Georgia Tech', rank: 9 }] },
+            { poll: 'Playoff Committee Rankings', ranks: [{ school: 'Georgia Tech', rank: 4 }] }
+        ] }];
+        render(m, { hash: 'schedule' });
+        expect(rows()[2].querySelector('.ft-rk').textContent).toBe('4');
     });
 
     test('says which zone the times are in', () => {
