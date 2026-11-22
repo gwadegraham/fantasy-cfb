@@ -744,20 +744,8 @@ function ftOwnerStrip(d) {
 // one game: that week's poll for a regular-season game, falling back to the
 // latest poll; the week-16 poll for the postseason.
 function ftRankFor(d, game, school) {
-    var rankings = d.rankings || [];
-    var pollName = 'Playoff Committee Rankings';
-    if (!rankings.find(r => r.week == game.week)?.polls?.find(p => p.poll == pollName) && game.seasonType != 'postseason') {
-        pollName = 'AP Top 25';
-    }
-    var latest = rankings.slice().sort((a, b) => b.week - a.week)[0];
-    var ranks;
-    if (game.seasonType == 'regular') {
-        var wk = rankings.find(r => r.week == game.week && r.season == d.year);
-        ranks = (wk || latest)?.polls?.find(p => p.poll == pollName)?.ranks;
-    } else {
-        ranks = rankings.find(r => r.week == '16' && r.season == d.year)?.polls?.find(p => p.poll == pollName)?.ranks;
-    }
-    var hit = Array.isArray(ranks) ? ranks.find(w => w.school == school) : null;
+    var ranks = ccPollPick.ranksFor(d.rankings || [], game.week, game.seasonType, d.year);
+    var hit = ranks.find(w => w.school == school);
     return hit ? hit.rank : null;
 }
 

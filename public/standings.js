@@ -1146,21 +1146,9 @@ async function getRankings (week, seasonType, seasonYear) {
 
     var rankings = await response.json();
 
-    var pollName = 'Playoff Committee Rankings';
-    if (!rankings.find(r => r.week == week)?.polls?.find(p => p.poll == "Playoff Committee Rankings") && seasonType != "postseason" ) {
-        pollName = "AP Top 25";
-    }
-
-    rankings.sort((a, b) => {
-        return b.week - a.week;
-    });
-    
-    var weekRankings;
-    if (seasonType == 'regular') {
-        weekRankings = rankings.find(r => r.week == week && r.season == seasonYear) ? rankings.find(r => r.week == week && r.season == seasonYear)?.polls?.find(p => p.poll == pollName)?.ranks : rankings[0]?.polls?.find(p => p.poll == pollName)?.ranks;
-    } else {
-        weekRankings = rankings.find(r => r.week == '16' && r.season == seasonYear)?.polls?.find(p => p.poll == pollName)?.ranks;
-    }
+    // The week's doc (or the newest, for a week with none yet), then committee
+    // over AP within it — see public/poll-pick.js.
+    var weekRankings = ccPollPick.ranksFor(rankings, week, seasonType, seasonYear);
 
     // Always return an array so callers can safely call .findIndex even when the
     // week/season has no loaded rankings.
