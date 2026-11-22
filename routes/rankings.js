@@ -118,7 +118,7 @@ router.post('/retrieveRankings', async (req, res) => {
         const filter = { season: req.body.season, seasonType: req.body.seasonType, week: req.body.week };
         const upsert = () => Ranking.findOneAndUpdate(
             filter,
-            { $set: Object.assign({}, filter, { polls: data[0].polls }) },
+            { $set: Object.assign({}, filter, { polls: data[0].polls, fetchedAt: new Date() }) },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
         let newRanking;
@@ -176,7 +176,7 @@ router.post('/:season/refresh', async (req, res) => {
         for (const wk of data) {
             if (wk.week == null || !wk.seasonType) continue;
             const filter = { season: wk.season, seasonType: wk.seasonType, week: wk.week };
-            const doc = { season: wk.season, seasonType: wk.seasonType, week: wk.week, polls: wk.polls || [] };
+            const doc = { season: wk.season, seasonType: wk.seasonType, week: wk.week, polls: wk.polls || [], fetchedAt: new Date() };
             // One upsert, not find-then-insert: retrieveRankings can insert the
             // same week in between, and the unique index (models/ranking.js)
             // then fails the insert — which used to abort every week after it.

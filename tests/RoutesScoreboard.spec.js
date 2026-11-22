@@ -307,6 +307,23 @@ describe('ranking fallback', () => {
         expect(g401.home.rank).toBe(3);
     });
 
+    // Nov 2026: this route plucked 'AP Top 25' by hand, so once the committee
+    // published, the scoreboard kept AP ranks (South Carolina blank while the
+    // committee had them #21) and disagreed with what scoring banked.
+    test('the committee ranking beats AP once the week has one', async () => {
+        await Ranking.updateOne({ season: SEASON, week: 2 }, { $push: { polls: {
+            poll: 'Playoff Committee Rankings',
+            ranks: [{ rank: 5, school: 'Ohio State' }, { rank: 21, school: 'Alabama' }]
+        } } });
+        const res = await get(`/games/scoreboard/${LEAGUE}/${SEASON}/2`);
+        const g401 = res.body.games.find(g => g.id === 401);
+        expect(g401.home.rank).toBe(5);    // AP had 3
+        const g402 = res.body.games.find(g => g.id === 402);
+        expect(g402.home.rank).toBe(21);   // unranked in AP
+        // Texas is AP #7 but not in the committee's 25: unranked, not AP's 7.
+        expect(g401.away.rank).toBeFalsy();
+    });
+
     // Bowl and CFP weeks carry no polls of their own.
     test('postseason falls back to the final regular-season poll', async () => {
         await Game.create(gameDoc({ id: 900, week: 1, seasonType: 'postseason',

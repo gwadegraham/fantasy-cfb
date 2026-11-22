@@ -42,6 +42,12 @@ const rankingSchema = new mongoose.Schema({
     },
     polls: {
         type: [pollSchema]
+    },
+    // When this doc was last pulled from CFBD. modules/rankings-freshness.js
+    // reads it to re-pull a week whose committee ranking published after the
+    // first pull. Absent on docs written before Nov 2026 (falls back to _id time).
+    fetchedAt: {
+        type: Date
     }
 });
 

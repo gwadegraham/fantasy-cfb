@@ -4,6 +4,8 @@ const router = express.Router();
 const Game = require('../models/game');
 const BettingLine = require('../models/bettingLine');
 const Ranking = require('../models/ranking');
+// Committee ranking when the week has one, else AP — the same poll scoring reads.
+const { findPoll } = require('../modules/scoring-detectors');
 const Record = require('../models/record');
 const TeamSeasonStat = require('../models/teamSeasonStat');
 const PlayerSeasonLeader = require('../models/playerSeasonLeader');
@@ -293,14 +295,15 @@ router.get('/detail/:gameId', async (req, res) => {
         if (homeRec && homeRec.total) obj.homeRecord = homeRec.total.wins + '-' + homeRec.total.losses;
         if (awayRec && awayRec.total) obj.awayRecord = awayRec.total.wins + '-' + awayRec.total.losses;
 
-        // Look up AP rankings for this game's week
+        // This game's week's poll: the Playoff Committee ranking once it has
+        // published, else AP (findPoll — the poll scoring uses).
         const ranking = await Ranking.findOne({
             season: game.season,
             seasonType: game.seasonType || 'regular',
             week: game.week
         }).lean();
         if (ranking) {
-            const ap = ranking.polls.find(p => p.poll === 'AP Top 25');
+            const ap = findPoll(ranking);
             if (ap) {
                 const homeRank = ap.ranks.find(r => r.school === game.homeTeam);
                 const awayRank = ap.ranks.find(r => r.school === game.awayTeam);
@@ -639,10 +642,10 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
         });
 
         const ranks = {};
-        if (ranking && ranking.polls) {
-            const ap = ranking.polls.find(p => p.poll === 'AP Top 25');
-            (ap && ap.ranks ? ap.ranks : []).forEach(r => { ranks[r.school] = r.rank; });
-        }
+        // Committee ranking once published, else AP (findPoll). Plucking AP by
+        // hand showed AP ranks all November while scoring used the committee's.
+        const poll = findPoll(ranking);
+        (poll ? poll.ranks : []).forEach(r => { ranks[r.school] = r.rank; });
 
         // DraftKings when they have a line, else whoever does — the game cards
         // on My Team already prefer DK, and disagreeing here would show two
