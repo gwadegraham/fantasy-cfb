@@ -874,8 +874,25 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // Football's polls only: a basketball rank is a NET/Torvik number keyed
         // by id, and the card's opponent rank is a football-poll idea.
         const pollDoc = isHoops ? null : await projectionPoll(seasonNum);
-        const rankByName = {};
-        ((pollDoc && pollDoc.ranks) || []).forEach(r => { if (r && r.school) rankByName[r.school] = r.rank; });
+        // Each card's rank comes from ITS week's poll, as scoring reads it
+        // (getRankingsForGame: the game week's doc). Reading the latest poll for
+        // every week labelled a week-11 opponent with its week-12 rank: Nov 2026,
+        // Arkansas vs South Carolina showed #21 though SC was #17 that week and
+        // the win scored at #17. A week with no poll on file (games further
+        // ahead than the newest poll) falls back to the latest one.
+        const latestRankByName = {};
+        ((pollDoc && pollDoc.ranks) || []).forEach(r => { if (r && r.school) latestRankByName[r.school] = r.rank; });
+        const rankByWeek = {};
+        if (!isHoops) {
+            const weekDocs = await Ranking.find({ season: seasonNum, seasonType: 'regular' }, { week: 1, polls: 1, _id: 0 }).lean();
+            weekDocs.forEach(doc => {
+                const poll = findPoll(doc);
+                if (!poll) return;
+                const byName = (rankByWeek[doc.week] = {});
+                poll.ranks.forEach(r => { if (r && r.school) byName[r.school] = r.rank; });
+            });
+        }
+        const rankOf = (week, name) => ((rankByWeek[week] || latestRankByName)[name]) || null;
         // Opponent abbreviations (opponents aren't always rostered, so look them
         // up from the Team collection).
         const oppAbbrById = {};
@@ -1128,7 +1145,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
                     const isHome = g.homeId === t.teamId;
                     const oppName = isHome ? g.awayTeam : g.homeTeam;
                     opp = oppAbbrById[isHome ? g.awayId : g.homeId] || oppName || '';
-                    oppRank = rankByName[oppName] || null;
+                    oppRank = rankOf(w, oppName);
                     ha = haOf(g, isHome);
                     if (g.completed && g.homePoints != null && g.awayPoints != null) {
                         gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
@@ -1157,7 +1174,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (g.homePoints != null && g.awayPoints != null) {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
-            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(displayScore(id, w, t.id, scored.score)) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: haOf(g, isHome), oppRank: rankByName[oppName] || null, gameScore, gameId: g.id, captain: isCaptain(id, w, t.id), tip: tipKey(g) };
+            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(displayScore(id, w, t.id, scored.score)) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: haOf(g, isHome), oppRank: rankOf(w, oppName), gameScore, gameId: g.id, captain: isCaptain(id, w, t.id), tip: tipKey(g) };
         }));
         const teamsLive = (id, w) => liveRows(id, w).sort(byTip).map(dropTip);
         // EVERY game a manager's teams played in a settled week (?allGames):

@@ -125,6 +125,23 @@ describe('opponent ranks on the matchup card', () => {
         expect(rowsFor(res.body, ann._id).find(t => t.teamId === LSU).oppRank).toBe(8);
     });
 
+    // Nov 2026: every week's card read the LATEST poll, so a week-11 opponent
+    // wore its week-12 rank (Arkansas vs SC showed #21; SC was #17 that week and
+    // the win scored at #17). Scoring reads the game week's own poll.
+    test("a week's card uses that week's poll, not a later one", async () => {
+        const ann = await seedH2H();
+        await poll('AP Top 25');   // week 1: Clemson #23, Georgia #3
+        await Ranking.create({
+            season: SEASON, seasonType: 'regular', week: 2,
+            polls: [{ poll: 'AP Top 25', ranks: [{ rank: 5, school: 'Clemson', conference: 'ACC' }] }]
+        });
+
+        const res = await request(h2hApp).get(`/standings/h2h/${LEAGUE}/${SEASON}`);
+        const rows = rowsFor(res.body, ann._id);
+        expect(rows.find(t => t.teamId === LSU).oppRank).toBe(23);    // not week 2's 5
+        expect(rows.find(t => t.teamId === TEXAS).oppRank).toBe(3);   // not unranked
+    });
+
     test('a Coaches-Poll-only season shows no ranks rather than ones that will not score', async () => {
         const ann = await seedH2H();
         await poll('Coaches Poll');   // the preseason state — no AP ingested yet
