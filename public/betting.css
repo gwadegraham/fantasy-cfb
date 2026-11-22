@@ -318,7 +318,8 @@
 }
 .game-picker-item {
     display: grid;
-    grid-template-columns: 1fr auto;
+    /* teams | kickoff-or-score | game-page link */
+    grid-template-columns: 1fr auto auto;
     align-items: center;
     padding: 10px 12px;
     cursor: pointer;
@@ -359,7 +360,55 @@
     font-size: 11px;
     flex-shrink: 0;
 }
-.game-picker-time { font-size: 11px; color: var(--cc-muted-2); white-space: nowrap; text-align: right; }
+.game-picker-time {
+    font-size: 11px;
+    color: var(--cc-muted-2);
+    white-space: nowrap;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.25;
+}
+.game-picker-score {
+    color: var(--cc-text);
+    font-weight: 600;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+/* Same live marker as the league scoreboard's .sb-state-live. */
+.game-picker-clock.is-live,
+.leg-live-tag { color: var(--cc-accent); font-weight: 500; }
+.game-picker-clock.is-live::before,
+.leg-live-tag::before { content: "\25CF"; padding-right: 4px; }
+.leg-live-tag { white-space: nowrap; }
+/* On a phone the live line can't fit clock + score; let it break BETWEEN the
+   two, never inside "UTAH 21 – 17 CIN". */
+.leg-game .leg-final { white-space: nowrap; }
+/* The game page, as its own target: the row's tap picks the game. Negative
+   margins grow the hit area to ~40px without making the row taller. */
+.game-picker-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 40px;
+    margin: -10px -8px -10px 0;
+    color: var(--cc-muted-2);
+    font-size: 15px;
+    text-decoration: none;
+}
+.game-picker-link:hover,
+.game-picker-link:focus-visible { color: var(--cc-interactive); }
+.leg-game-link {
+    color: inherit;
+    text-decoration: none;
+    display: inline-flex;
+    flex-wrap: wrap;
+    column-gap: 6px;
+}
+.leg-game-link:hover,
+.leg-game-link:focus-visible { color: var(--cc-interactive); text-decoration: underline; }
 .game-picker-empty {
     text-align: center;
     padding: 24px;

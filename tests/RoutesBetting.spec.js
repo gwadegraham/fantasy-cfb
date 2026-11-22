@@ -975,6 +975,51 @@ describe('GET /betting/games/:season/:week', () => {
     });
 });
 
+// Live scores on the betting page. The fields are the live poller's writes, so
+// the page reads them from Mongo exactly as the league scoreboard does — zero
+// CFBD calls. `state` is the scoreboard's own gameState, so the two pages can't
+// disagree about whether a game is on.
+describe('GET /betting/games/:season/:week live fields', () => {
+    const HOUR = 60 * 60 * 1000;
+    function seed(id, startMs, over) {
+        return Game.create(Object.assign({
+            id, season: 2026, week: 7, seasonType: 'regular',
+            startDate: new Date(startMs).toISOString(), startTimeTbd: false,
+            neutralSite: false, conferenceGame: false,
+            homeId: id * 10, homeTeam: 'Home' + id, awayId: id * 10 + 1, awayTeam: 'Away' + id
+        }, over));
+    }
+
+    beforeEach(async () => {
+        const now = Date.now();
+        await seed(1, now - HOUR, { homePoints: 14, awayPoints: 10, period: 3, clock: '8:42' });
+        await seed(2, now + 24 * HOUR, { period: 1, clock: '15:00' });  // stale fields on an unplayed game
+        await seed(3, now - 5 * HOUR, { completed: true, homePoints: 31, awayPoints: 17, period: 4, clock: '0:00' });
+    });
+
+    it('asks Mongo for period and clock', async () => {
+        const spy = jest.spyOn(Game, 'find');
+        await request(app).get('/betting/games/2026/7');
+        expect(spy.mock.calls[0][1]).toMatchObject({ period: 1, clock: 1 });
+        spy.mockRestore();
+    });
+
+    it('marks each game pre / live / final, with the clock only while live', async () => {
+        const res = await request(app).get('/betting/games/2026/7');
+        const byId = Object.fromEntries(res.body.map(g => [g.id, g]));
+        expect(byId[1]).toMatchObject({ state: 'live', period: 3, clock: '8:42', homePoints: 14, awayPoints: 10 });
+        expect(byId[2]).toMatchObject({ state: 'pre', period: null, clock: null });
+        expect(byId[3]).toMatchObject({ state: 'final', period: null, clock: null, homePoints: 31 });
+    });
+
+    // The refresh loop's request: only what can still change.
+    it('?live=1 answers only the games in progress', async () => {
+        const res = await request(app).get('/betting/games/2026/7?live=1');
+        expect(res.status).toBe(200);
+        expect(res.body.map(g => g.id)).toEqual([1]);
+    });
+});
+
 describe('GET /betting/best-bets/:season/:week', () => {
     const BettingLine = require('../models/bettingLine');
     const Team = require('../models/team');

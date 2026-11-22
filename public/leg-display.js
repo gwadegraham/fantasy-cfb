@@ -50,6 +50,36 @@
         return s.away + ' ' + s.awayPoints + ' – ' + s.homePoints + ' ' + s.home;
     }
 
+    // Q3 8:42 / OT / OT2. Periods past 4 are overtime — CFBD keeps counting
+    // (5 = OT, 6 = OT2). Same labels as public/scoreboard.js clockLabel.
+    function clockLabel(game) {
+        if (!game || game.period == null) return 'Live';
+        var p = game.period;
+        var qtr = p <= 4 ? 'Q' + p : 'OT' + (p > 5 ? p - 4 : '');
+        return game.clock ? qtr + ' ' + game.clock : qtr;
+    }
+
+    // The in-progress score, shaped like finalScore plus the clock label, or
+    // null when the game is not live or nobody has scored it yet.
+    //
+    // `state` comes from the server (modules/league-scoreboard.js gameState) so
+    // this never re-derives "has it kicked off" from a phone's clock. A game
+    // past kickoff with no score yet is live but has nothing to print — the
+    // caller shows the clock alone rather than "0 – 0", which would be a lie.
+    function liveScore(game) {
+        if (!game || game.state !== 'live' || isFinal(game)) return null;
+        if (game.homePoints == null || game.awayPoints == null) return null;
+        var a = Number(game.awayPoints), h = Number(game.homePoints);
+        return {
+            away: game.awayAbbr || game.awayTeam || '',
+            home: game.homeAbbr || game.homeTeam || '',
+            awayPoints: a,
+            homePoints: h,
+            leader: a > h ? 'away' : (h > a ? 'home' : null),
+            label: clockLabel(game)
+        };
+    }
+
     // The matchup line when the game has NOT finished.
     function matchupText(game) {
         if (!game) return null;
@@ -149,6 +179,8 @@
         needsManualGrading: needsManualGrading,
         finalScore: finalScore,
         finalScoreText: finalScoreText,
+        liveScore: liveScore,
+        clockLabel: clockLabel,
         matchupText: matchupText
     };
 }));
