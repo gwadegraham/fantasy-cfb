@@ -8,6 +8,7 @@ const Game = require('../models/game');
 const Team = require('../models/team');
 const BettingLine = require('../models/bettingLine');
 const Ranking = require('../models/ranking');
+const { findPoll } = require('../modules/scoring-detectors');
 const requireBettingGroupMember = require('../modules/require-betting-group');
 const requireAdmin = require('../modules/require-admin');
 const { effectiveRoles } = require('../modules/dev-role');
@@ -208,12 +209,9 @@ router.get('/games/:season/:week', async (req, res) => {
         ]);
 
         const rankMap = new Map();
-        if (ranking && ranking.polls) {
-            const ap = ranking.polls.find(p => p.poll === 'AP Top 25');
-            if (ap && ap.ranks) {
-                ap.ranks.forEach(r => rankMap.set(r.school, r.rank));
-            }
-        }
+        // Committee ranking once published, else AP — the poll scoring uses.
+        const poll = findPoll(ranking);
+        if (poll) poll.ranks.forEach(r => rankMap.set(r.school, r.rank));
 
         games.forEach(g => { teamIds.add(g.homeId); teamIds.add(g.awayId); });
         const teams = await Team.find({ id: { $in: [...teamIds] } }, 'id logos abbreviation').lean();

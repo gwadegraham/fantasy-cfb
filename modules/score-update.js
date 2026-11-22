@@ -10,6 +10,20 @@ ApiKeyAuth.apiKey = CFBD_API_KEY;
 
 const Game = require('../models/game');
 const { getCalendar } = require('./cfbd-calendar');
+const { needsCfpRefresh, REFRESH_INTERVAL_MS } = require('./rankings-freshness');
+
+// Last committee re-pull ATTEMPT per season-week, success or not. fetchedAt only
+// moves when a pull succeeds, so without this a CFBD outage or 429 would retry
+// the billable call on every 30s live-poll tick until it recovered.
+const _cfpRepullAttempts = new Map();
+function cfpRepullDue(doc, season, week, now = Date.now()) {
+    if (!needsCfpRefresh(doc, week, now)) return false;
+    const key = season + '-' + week;
+    const last = _cfpRepullAttempts.get(key);
+    if (last && now - last < REFRESH_INTERVAL_MS) return false;
+    _cfpRepullAttempts.set(key, now);
+    return true;
+}
 const retrieveGamesModule = require('./retrieve-games.js');
 const scoringModule = require('./scoring.js');
 const teamScoringModule = require('./team-scoring.js');
@@ -271,11 +285,15 @@ async function doFullUpdate({ withBetting = false } = {}) {
             'Content-Type': 'application/json'
             }
         });
-        // Drain the body — an unread response body holds its socket open, and
-        // this runs on every poll.
-        await rankingsRes.json().catch(() => null);
+        // Always read the body — an unread response body holds its socket open,
+        // and this runs on every poll. It is also what the freshness check needs.
+        var storedRanking = await rankingsRes.json().catch(() => null);
 
-        if (rankingsRes.status == 200) {
+        // A doc that exists is not necessarily complete: it is created Monday
+        // night, and the Playoff Committee ranking lands in that same week on
+        // Tuesday. Re-pull (throttled) until it shows up — see
+        // modules/rankings-freshness.js for the Nov 2026 incident.
+        if (rankingsRes.status == 200 && !cfpRepullDue(storedRanking, season, weekNumber)) {
             console.log(`Rankings already in system for Season: ${season}, Season Type: regular, Week: ${weekNumber}`);
         } else {
             const created = await internalFetch(`${process.env.URL}/rankings/retrieveRankings`, {
@@ -619,6 +637,7 @@ function runLiveUpdate() {
 }
 
 module.exports = {
+    _cfpRepullAttempts,
     runFullUpdate, runLiveUpdate, postseasonWeeksToScore, resolveCurrentWeek,
     refreshCfpBracket, bracketWindowOpen, resetBracketThrottle,
     drainCompletions, runCompletionWork,

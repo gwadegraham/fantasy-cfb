@@ -155,6 +155,43 @@ describe('runFullUpdate scoring order', () => {
         expect(JSON.parse(post[1].body)).toEqual({ season: process.env.YEAR, seasonType: 'regular', week: '7' });
     });
 
+    // Nov 2026: the week-12 doc was stored Monday night, the committee ranking
+    // landed Tuesday, and "the doc exists" stopped us ever pulling it again.
+    it('re-pulls an existing late-season poll that lacks the committee ranking', async () => {
+        require('../modules/score-update')._cfpRepullAttempts.clear();
+        require('../modules/cfbd-calendar').getCalendar.mockResolvedValueOnce([
+            { week: 12, seasonType: 'regular', firstGameStart: '2000-01-01', lastGameStart: '2100-01-01' }
+        ]);
+        internalFetch.mockImplementation(async (url) => /\/rankings\/\d+\/\d+\//.test(url)
+            ? { status: 200, json: async () => ({ week: 12, polls: [{ poll: 'AP Top 25', ranks: [] }], fetchedAt: '2000-01-01T00:00:00Z' }) }
+            : { status: 201, json: async () => ({}) });
+        await runFullUpdate({ withBetting: false });
+
+        const post = internalFetch.mock.calls.find(c => /retrieveRankings/.test(c[0]));
+        expect(post).toBeDefined();
+        expect(JSON.parse(post[1].body)).toEqual({ season: process.env.YEAR, seasonType: 'regular', week: '12' });
+    });
+
+    // fetchedAt only moves on a SUCCESSFUL pull, so a CFBD outage or 429 must
+    // not turn into a billable retry on every 30s live tick.
+    it('does not retry a failed committee re-pull on the next tick', async () => {
+        require('../modules/score-update')._cfpRepullAttempts.clear();
+        const cal = [{ week: 12, seasonType: 'regular', firstGameStart: '2000-01-01', lastGameStart: '2100-01-01' }];
+        internalFetch.mockImplementation(async (url) => /\/rankings\/\d+\/\d+\//.test(url)
+            ? { status: 200, json: async () => ({ week: 12, polls: [{ poll: 'AP Top 25', ranks: [] }], fetchedAt: '2000-01-01T00:00:00Z' }) }
+            : /retrieveRankings/.test(url)
+                ? { status: 400, json: async () => ({ message: 'CFBD 429' }) }
+                : { status: 201, json: async () => ({}) });
+        const getCalendar = require('../modules/cfbd-calendar').getCalendar;
+        getCalendar.mockResolvedValueOnce(cal);
+        await runFullUpdate({ withBetting: false });
+        getCalendar.mockResolvedValueOnce(cal);
+        await runFullUpdate({ withBetting: false });
+
+        const posts = internalFetch.mock.calls.filter(c => /retrieveRankings/.test(c[0]));
+        expect(posts).toHaveLength(1);
+    });
+
     // CFBD's postseason window opens BEFORE the regular season's last game kicks
     // off (2026: week-15 window closes 2026-12-12T07:59Z, Army–Navy kicks off
     // 20:00Z that day), and the postseason pull is `seasonType=postseason` — which

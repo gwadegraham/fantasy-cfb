@@ -639,12 +639,13 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
                 if (line && typeof line.spread === 'number') spreadByGameId[b.id] = line.spread;
             });
 
-            // AP Top 25 by week, so the upset narrative can name the beaten
-            // team's rank ("upset of #3 Georgia"). Each Ranking doc is one week.
+            // The week's poll (committee once published, else AP — findPoll), so
+            // the upset narrative can name the beaten team's rank ("upset of #3
+            // Georgia") as every other page shows it. Each Ranking doc is one week.
             const rankByWeek = {};
             const rankings = await Ranking.find({ season: seasonNum, seasonType: 'regular' }, { week: 1, polls: 1, _id: 0 });
             rankings.forEach(rk => {
-                const ap = (rk.polls || []).find(p => p.poll === 'AP Top 25');
+                const ap = findPoll(rk);
                 if (!ap) return;
                 const byTeam = (rankByWeek[rk.week] = rankByWeek[rk.week] || {});
                 (ap.ranks || []).forEach(r => { if (r.school != null && r.rank != null) byTeam[r.school] = r.rank; });
