@@ -219,3 +219,54 @@ describe('legTally', () => {
         expect(legTally(null).text).toBe('—');
     });
 });
+
+// Live scores on the betting page (leg rows + game picker). `state` is the
+// server's call (modules/league-scoreboard.js gameState); these only decide what
+// to print for it.
+describe('liveScore', () => {
+    const { liveScore } = require('../public/leg-display.js');
+    const live = (o) => game(Object.assign({ completed: false, state: 'live', period: 3, clock: '8:42' }, o));
+
+    it('gives the running score, leader and clock while live', () => {
+        expect(liveScore(live())).toEqual({
+            away: 'STAN', home: 'DUKE', awayPoints: 7, homePoints: 21, leader: 'home', label: 'Q3 8:42'
+        });
+    });
+
+    it('names no leader on a tie', () => {
+        expect(liveScore(live({ awayPoints: 14, homePoints: 14 })).leader).toBeNull();
+    });
+
+    it('is null before kickoff, even with stale points on the document', () => {
+        expect(liveScore(live({ state: 'pre' }))).toBeNull();
+    });
+
+    // Final belongs to finalScore — the row must not show a clock over a result.
+    it('is null once the game is final', () => {
+        expect(liveScore(live({ completed: true }))).toBeNull();
+    });
+
+    // Kicked off but unscored: printing 0 – 0 would be a made-up score.
+    it('is null when the game is live but nobody has scored it yet', () => {
+        expect(liveScore(live({ homePoints: null, awayPoints: null }))).toBeNull();
+    });
+});
+
+describe('clockLabel', () => {
+    const { clockLabel } = require('../public/leg-display.js');
+
+    it('reads quarter and clock', () => {
+        expect(clockLabel({ period: 2, clock: '0:31' })).toBe('Q2 0:31');
+        expect(clockLabel({ period: 1 })).toBe('Q1');
+    });
+
+    // Same labels as the league scoreboard: CFBD counts on past 4.
+    it('labels overtime periods', () => {
+        expect(clockLabel({ period: 5, clock: null })).toBe('OT');
+        expect(clockLabel({ period: 6 })).toBe('OT2');
+    });
+
+    it('falls back to Live with no period', () => {
+        expect(clockLabel({ period: null })).toBe('Live');
+    });
+});

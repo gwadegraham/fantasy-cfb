@@ -184,12 +184,84 @@ async function loadParlays() {
 async function loadGames() {
     try {
         var res = await fetch('/betting/games/' + currentSeason + '/' + currentWeek);
-        if (!res.ok) return;
-        games = await res.json();
+        if (res.ok) games = await res.json();
     } catch (e) {
         games = [];
     }
+    // Every path re-arms the loop, a failed load included — otherwise one bad
+    // response on a Saturday would stop the scores for the rest of the visit.
+    scheduleLiveRefresh();
 }
+
+// ---- live scores -------------------------------------------------------------
+//
+// The league scoreboard's loop (public/scoreboard.js refresh), pointed at this
+// page's two places a game shows: each leg's game line and the open picker.
+// Every number comes from Mongo, which the live poller writes; the route makes
+// no CFBD call, so this costs our dyno, not the API budget.
+//
+// While anything is live: ask for just the live games every 10s (the poller's
+// own cadence) and patch them in place — a rebuild of #betting-content would
+// close an open bet board mid-pick. When the live set changes shape (a game
+// kicks off or goes final), take the full week instead, since the game that
+// left the live list is the one whose final score we need. Nothing live: back
+// off to 5 minutes, just to notice the next kickoff.
+var LIVE_MS = 10000;
+var IDLE_MS = 300000;
+var liveTimer = null;
+
+function liveIds(list) {
+    return list.filter(function (g) { return g.state === 'live'; })
+        .map(function (g) { return g.id; }).sort().join(',');
+}
+
+function patchGame(g) {
+    document.querySelectorAll('[data-leg-game="' + g.id + '"]').forEach(function (el) {
+        var link = el.querySelector('.leg-game-link');
+        if (link) link.innerHTML = matchupBody(g);
+    });
+    var row = document.querySelector('[data-picker-game="' + g.id + '"] .game-picker-time');
+    if (row) row.innerHTML = pickerStatus(g);
+}
+
+function scheduleLiveRefresh() {
+    clearTimeout(liveTimer);
+    // A hidden tab is a phone in a pocket; visibilitychange catches up.
+    if (document.hidden) return;
+    liveTimer = setTimeout(refreshLive, liveIds(games) ? LIVE_MS : IDLE_MS);
+}
+
+async function refreshLive() {
+    var week = currentWeek;
+    var before = liveIds(games);
+    try {
+        var res = await fetch('/betting/games/' + currentSeason + '/' + week + '?live=1');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        var live = await res.json();
+        // The arrows moved to another week while this was in flight; that
+        // week's loadGames owns the page now.
+        if (week !== currentWeek) return;
+
+        if (liveIds(live) !== before) {
+            await loadGames();
+            games.forEach(patchGame);
+            return;
+        }
+        live.forEach(function (g) {
+            var i = games.findIndex(function (x) { return x.id === g.id; });
+            if (i > -1) games[i] = g;
+            patchGame(g);
+        });
+    } catch (e) {
+        console.error('Live score refresh failed:', e);
+    }
+    scheduleLiveRefresh();
+}
+
+document.addEventListener('visibilitychange', function () {
+    if (document.hidden) clearTimeout(liveTimer);
+    else refreshLive();
+});
 
 async function loadSeasonSummary() {
     var el = document.getElementById('season-summary');
@@ -367,15 +439,40 @@ function gameIsFinal(game) { return ccLegDisplay.isFinal(game); }
 
 function matchupLine(game, gameId) {
     if (!game) return 'Game #' + gameId;
-    var s = ccLegDisplay.finalScore(game);
-    if (!s) return ccLegDisplay.matchupText(game);
+    return '<a class="leg-game-link" href="/game/' + game.id + '">' + matchupBody(game) + '</a>';
+}
 
-    // Bold the winner so the row reads at a glance; a tie bolds neither.
-    var away = s.away + ' ' + s.awayPoints;
-    var home = s.homePoints + ' ' + s.home;
-    if (s.winner === 'away') away = '<b>' + away + '</b>';
-    if (s.winner === 'home') home = '<b>' + home + '</b>';
-    return '<span class="leg-final">' + away + ' &ndash; ' + home + '</span>';
+// The text inside the leg's game link: the matchup before kickoff, the running
+// score + clock while live, the box score once final. Split from matchupLine so
+// the live refresh can rewrite it in place without rebuilding the leg row.
+function matchupBody(game) {
+    var s = ccLegDisplay.finalScore(game);
+    if (s) {
+        // Bold the winner so the row reads at a glance; a tie bolds neither.
+        var away = s.away + ' ' + s.awayPoints;
+        var home = s.homePoints + ' ' + s.home;
+        if (s.winner === 'away') away = '<b>' + away + '</b>';
+        if (s.winner === 'home') home = '<b>' + home + '</b>';
+        return '<span class="leg-final">' + away + ' &ndash; ' + home + '</span>';
+    }
+
+    var l = ccLegDisplay.liveScore(game);
+    if (l) {
+        var la = l.away + ' ' + l.awayPoints;
+        var lh = l.homePoints + ' ' + l.home;
+        if (l.leader === 'away') la = '<b>' + la + '</b>';
+        if (l.leader === 'home') lh = '<b>' + lh + '</b>';
+        return '<span class="leg-live-tag">' + esc(l.label) + '</span>'
+            + '<span class="leg-final">' + la + ' &ndash; ' + lh + '</span>';
+    }
+
+    // Kicked off but not scored yet (tip-off running late, or the poller has
+    // not reached it): the clock alone, never a made-up 0 – 0.
+    if (game.state === 'live') {
+        return '<span class="leg-live-tag">' + esc(ccLegDisplay.clockLabel(game)) + '</span>'
+            + esc(ccLegDisplay.matchupText(game));
+    }
+    return esc(ccLegDisplay.matchupText(game));
 }
 
 function renderCurrentParlay() {
@@ -494,7 +591,7 @@ function renderCurrentParlay() {
 
         return '<div class="leg' + (isEditing ? ' leg--editing' : '') + '" data-contributor="' + leg.contributor + '">'
             + '<div class="leg-contributor">' + avatarHtml(leg.contributor, color, init) + displayName(leg.contributor) + '</div>'
-            + '<div class="leg-detail"><div class="leg-pick">' + (leg.selection || '—') + '</div><div class="leg-game">' + matchup + '</div></div>'
+            + '<div class="leg-detail"><div class="leg-pick">' + (leg.selection || '—') + '</div><div class="leg-game" data-leg-game="' + leg.gameId + '">' + matchup + '</div></div>'
             + '<div class="leg-odds">' + formatOdds(leg.odds) + '</div>'
             + '<div class="leg-actions">' + resultHtml + editBtn + resolveHtml + '</div>'
             + editorHtml
@@ -791,16 +888,41 @@ function rankLabel(rank) {
     return rank ? '<span class="game-picker-rank">#' + rank + '</span>' : '';
 }
 
+// The right-hand column of a picker row: kickoff before the game, the score
+// and clock while it is on, "Final" and the score after.
+function pickerStatus(g) {
+    var f = ccLegDisplay.finalScore(g);
+    if (f) {
+        return '<span class="game-picker-score">' + f.awayPoints + '&ndash;' + f.homePoints + '</span>'
+            + '<span class="game-picker-clock">Final</span>';
+    }
+    var l = ccLegDisplay.liveScore(g);
+    if (l) {
+        return '<span class="game-picker-score">' + l.awayPoints + '&ndash;' + l.homePoints + '</span>'
+            + '<span class="game-picker-clock is-live">' + esc(l.label) + '</span>';
+    }
+    if (g.state === 'live') {
+        return '<span class="game-picker-clock is-live">' + esc(ccLegDisplay.clockLabel(g)) + '</span>';
+    }
+    return formatGameTime(g.startDate, g.startTimeTbd);
+}
+
+// Tapping the row picks the game for the leg — that stays the row's job. The
+// game page is a separate, smaller target at the end of the row, and it stops
+// its click there so opening the game never also selects it.
 function renderGameList(gamesToShow) {
     if (!gamesToShow.length) return '<div class="game-picker-empty">No games found.</div>';
     return gamesToShow.map(function (g) {
-        return '<div class="game-picker-item" onclick="selectGame(' + g.id + ')">'
+        return '<div class="game-picker-item" data-picker-game="' + g.id + '" onclick="selectGame(' + g.id + ')">'
             + '<div class="game-picker-teams">'
             + teamLogo(g.awayLogos) + rankLabel(g.awayRank) + '<span>' + g.awayTeam + '</span>'
             + '<span class="game-picker-at">@</span>'
             + teamLogo(g.homeLogos) + rankLabel(g.homeRank) + '<span>' + g.homeTeam + '</span>'
             + '</div>'
-            + '<span class="game-picker-time">' + formatGameTime(g.startDate, g.startTimeTbd) + '</span>'
+            + '<span class="game-picker-time">' + pickerStatus(g) + '</span>'
+            + '<a class="game-picker-link" href="/game/' + g.id + '" onclick="event.stopPropagation()"'
+            + ' aria-label="Open the ' + esc(g.awayTeam) + ' at ' + esc(g.homeTeam) + ' game page">'
+            + '<i class="fa-solid fa-circle-info" aria-hidden="true"></i></a>'
             + '</div>';
     }).join('');
 }

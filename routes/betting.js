@@ -17,6 +17,7 @@ const { deriveParlayStatus } = require('../modules/parlay-resolve');
 const { contributorStats, superlatives } = require('../modules/parlay-stats');
 const audit = require('../modules/audit-log');
 const bestBets = require('../modules/best-bets');
+const { gameState } = require('../modules/league-scoreboard');
 
 // Maintenance endpoint, called by the weekly enrichment job — not a member
 // action. It re-grades stat legs whose box scores weren't available when the
@@ -196,10 +197,20 @@ router.get('/games/:season/:week', async (req, res) => {
         // weight was ever sent to the client, only read. This projection is
         // exactly the set `merged` reads, plus the fields the week-0/1 split
         // needs. 21135ms -> 513ms.
+        //
+        // period + clock are the live poller's writes (every ~10s, from CFBD's
+        // free /scoreboard), so live scores here cost zero CFBD calls — the
+        // same source the league scoreboard reads.
         const GAME_FIELDS = {
             id: 1, homeTeam: 1, awayTeam: 1, homeId: 1, awayId: 1,
-            startDate: 1, startTimeTbd: 1, completed: 1, homePoints: 1, awayPoints: 1, _id: 0
+            startDate: 1, startTimeTbd: 1, completed: 1, homePoints: 1, awayPoints: 1,
+            period: 1, clock: 1, _id: 0
         };
+        // ?live=1 — only games in progress, for the page's refresh loop. Same
+        // contract as GET /games/scoreboard's: the client patches those rows
+        // and falls back to a full load when the live set changes shape.
+        const liveOnly = req.query.live === '1' || req.query.live === 'true';
+        const nowMs = Date.now();
 
         const teamIds = new Set();
         const [games, lines, ranking] = await Promise.all([
@@ -220,6 +231,7 @@ router.get('/games/:season/:week', async (req, res) => {
         const lineMap = new Map(lines.map(l => [l.id, l]));
 
         const merged = games.map(game => {
+            const state = gameState(game, nowMs);
             const bl = lineMap.get(game.id);
             let dk = null;
             if (bl && bl.lines) {
@@ -248,6 +260,13 @@ router.get('/games/:season/:week', async (req, res) => {
                 completed: game.completed,
                 homePoints: game.homePoints,
                 awayPoints: game.awayPoints,
+                // 'pre' | 'live' | 'final' — the scoreboard's own judgement
+                // (kickoff + game window + completed), so the two pages can't
+                // disagree on whether a game is on. Period and clock only ship
+                // while live, like the scoreboard's.
+                state,
+                period: state === 'live' && game.period != null ? game.period : null,
+                clock: state === 'live' ? (game.clock || null) : null,
                 dk: dk ? {
                     spread: dk.spread,
                     formattedSpread: dk.formattedSpread,
@@ -267,14 +286,17 @@ router.get('/games/:season/:week', async (req, res) => {
                 if (gap >= 72) { cutoff = dates[i]; break; }
             }
             if (cutoff && week === 0) {
-                return res.json(merged.filter(g => new Date(g.startDate).getTime() < cutoff));
+                return send(merged.filter(g => new Date(g.startDate).getTime() < cutoff));
             }
             if (cutoff && week === 1) {
-                return res.json(merged.filter(g => new Date(g.startDate).getTime() >= cutoff));
+                return send(merged.filter(g => new Date(g.startDate).getTime() >= cutoff));
             }
         }
 
-        res.json(merged);
+        send(merged);
+        function send(list) {
+            res.json(liveOnly ? list.filter(g => g.state === 'live') : list);
+        }
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
